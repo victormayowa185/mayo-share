@@ -1,6 +1,5 @@
 ﻿<!DOCTYPE html>
 <html>
-
 <head>
   <meta charset="UTF-8">
   <title>MAYO Share - Hotspot Test</title>
@@ -11,12 +10,12 @@
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      height: 100vh;
+      min-height: 100vh;
       margin: 0;
       background: #0A0A0A;
       color: white;
+      padding: 20px;
     }
-
     button {
       padding: 15px 30px;
       font-size: 18px;
@@ -25,16 +24,38 @@
       border: none;
       border-radius: 8px;
       cursor: pointer;
-      margin-top: 20px;
+      margin-top: 15px;
     }
-
-    #status {
-      margin-top: 20px;
+    button:disabled {
+      background: #555;
+      cursor: not-allowed;
+    }
+    #hotspotStatus, #shareUrl {
+      margin-top: 15px;
       font-size: 16px;
+      word-break: break-all;
+      text-align: center;
+    }
+    #qrContainer {
+      margin-top: 20px;
+      text-align: center;
+    }
+    #qrCodeImg {
+      max-width: 250px;
+      height: auto;
+    }
+    hr {
+      width: 100%;
+      border-color: #333;
+      margin: 25px 0;
+    }
+    .copy-btn {
+      background: #333;
+      padding: 8px 16px;
+      font-size: 14px;
     }
   </style>
 </head>
-
 <body>
   <h1>MAYO Share</h1>
 
@@ -42,7 +63,7 @@
   <button id="startHotspotBtn">Start Hotspot</button>
   <div id="hotspotStatus"></div>
 
-  <hr style="width:100%; border-color:#333; margin:20px 0">
+  <hr>
 
   <!-- File Sharing Section -->
   <div>
@@ -51,10 +72,21 @@
   </div>
   <button id="startServerBtn" disabled>Start Sharing</button>
   <button id="stopServerBtn" disabled>Stop Sharing</button>
-  <div id="shareUrl" style="margin-top:10px; font-size:16px;"></div>
+  <div id="shareUrl"></div>
+
+  <!-- QR Code and Copy Link -->
+  <div id="qrContainer" style="display: none;">
+    <img id="qrCodeImg" alt="QR Code" />
+    <br>
+    <button id="copyLinkBtn" class="copy-btn">Copy Link</button>
+  </div>
+
+  <!-- QR Code Library CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.1/build/qrcode.min.js"></script>
 
   <script>
     let selectedFilePath = null;
+    let currentShareUrl = null;
 
     // ---------- Hotspot ----------
     document.getElementById('startHotspotBtn').addEventListener('click', async () => {
@@ -67,15 +99,6 @@
         statusDiv.textContent = 'Error: ' + error;
       }
     });
-
-    (async () => {
-      try {
-        const result = await window.electronAPI.ping();
-        console.log('Ping result:', result);
-      } catch (err) {
-        console.error('Ping error:', err);
-      }
-    })();
 
     // ---------- File Selection ----------
     document.getElementById('selectFileBtn').addEventListener('click', async () => {
@@ -93,9 +116,14 @@
       const urlDiv = document.getElementById('shareUrl');
       try {
         const url = await window.electronAPI.startFileServer(selectedFilePath);
+        currentShareUrl = url;
         urlDiv.innerHTML = `Share this link: <a href="${url}" target="_blank">${url}</a>`;
         document.getElementById('stopServerBtn').disabled = false;
         document.getElementById('startServerBtn').disabled = true;
+
+        // Generate QR code
+        generateQRCode(url);
+        document.getElementById('qrContainer').style.display = 'block';
       } catch (err) {
         urlDiv.textContent = 'Error: ' + err;
       }
@@ -107,8 +135,44 @@
       document.getElementById('shareUrl').textContent = '';
       document.getElementById('stopServerBtn').disabled = true;
       document.getElementById('startServerBtn').disabled = false;
+      // Hide QR container
+      document.getElementById('qrContainer').style.display = 'none';
+      currentShareUrl = null;
     });
+
+    // ---------- QR Code Generation ----------
+    function generateQRCode(url) {
+      const qrImg = document.getElementById('qrCodeImg');
+      // Use the QRCode library to generate a data URL
+      QRCode.toDataURL(url, { width: 250, margin: 2 }, (err, dataURL) => {
+        if (err) {
+          console.error('QR generation failed:', err);
+          qrImg.alt = 'QR code generation failed';
+          return;
+        }
+        qrImg.src = dataURL;
+      });
+    }
+
+    // ---------- Copy Link ----------
+    document.getElementById('copyLinkBtn').addEventListener('click', () => {
+      if (!currentShareUrl) return;
+      navigator.clipboard.writeText(currentShareUrl).then(() => {
+        alert('Link copied to clipboard!');
+      }).catch(() => {
+        alert('Failed to copy link. Please copy manually.');
+      });
+    });
+
+    // ---------- Ping (diagnostic) ----------
+    (async () => {
+      try {
+        const result = await window.electronAPI.ping();
+        console.log('Ping result:', result);
+      } catch (err) {
+        console.error('Ping error:', err);
+      }
+    })();
   </script>
 </body>
-
 </html>
