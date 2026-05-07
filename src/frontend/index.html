@@ -1,15 +1,14 @@
 ﻿<!DOCTYPE html>
 <html>
-
 <head>
   <meta charset="UTF-8">
   <title>MAYO Share - P2P Transfer</title>
   <link rel="stylesheet" href="styles/main.css">
 </head>
-
 <body>
   <h1>MAYO Share</h1>
-  <!-- ========== HOTSPOT SECTION (keep existing) ========== -->
+
+  <!-- ========== HOTSPOT SECTION ========== -->
   <div class="section">
     <h3>Hotspot</h3>
     <button id="startHotspotBtn">Start Hotspot</button>
@@ -33,7 +32,6 @@
       <button id="joinSessionBtn">Join Session</button>
       <div id="joinDisplay" class="hidden">
         <p>Enter partner's offer code:</p>
-
         <input type="text" id="offerCodeInput" placeholder="Paste offer code here">
         <button id="processOfferBtn">Process Offer</button>
         <div id="answerDisplay" class="hidden">
@@ -58,9 +56,9 @@
     </div>
   </div>
 
-  <!-- Old HTTP server section (still works) -->
+  <!-- ========== HTTP SHARE SECTION ========== -->
   <div class="section">
-    <h3>HTTP Share (Legacy)</h3>
+    <h3>HTTP Share</h3>
     <div>
       <button id="selectFileBtn">Select File</button>
       <span id="selectedFileName" style="margin-left:10px;">No file chosen</span>
@@ -72,16 +70,22 @@
       <img id="qrCodeImg" alt="QR Code"><br>
       <button id="copyLinkBtn" class="copy-btn">Copy Link</button>
     </div>
+    <!-- Download status indicator -->
+    <div id="downloadStatus" class="hidden" style="margin-top:15px; text-align:center;">
+      <div id="spinner" class="spinner"></div>
+      <div id="checkmark" class="checkmark hidden">✔</div>
+      <div id="downloadText" style="color:#aaa; margin-top:5px;">Waiting for receiver...</div>
+    </div>
   </div>
 
   <!-- Libraries -->
   <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.1/build/qrcode.min.js"></script>
 
-
   <script>
     // ---------- GLOBALS ----------
     let selectedFilePath = null;         // for HTTP server
     let currentShareUrl = null;
+    let isDownloading = false;
 
     // P2P globals
     let localPC = null;
@@ -90,6 +94,13 @@
 
     // ---------- UTILS ----------
     function el(id) { return document.getElementById(id); }
+    function formatBytes(bytes) {
+      if (bytes === 0) return '0 B';
+      const k = 1024;
+      const sizes = ['B', 'KB', 'MB', 'GB'];
+      const i = Math.floor(Math.log(bytes) / Math.log(k));
+      return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+    }
 
     // ========== 1. HOTSPOT ==========
     el('startHotspotBtn').addEventListener('click', async () => {
@@ -104,11 +115,36 @@
     });
 
     // ========== 2. HTTP FILE SERVER ==========
+
+    // Drag and drop
+    const dropArea = document.body;
+    dropArea.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+    });
+    dropArea.addEventListener('drop', async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const files = e.dataTransfer.files;
+      if (files.length > 0) {
+        const filePath = files[0].path;   // Electron exposes .path for dropped files
+        selectedFilePath = filePath;
+        const fileName = files[0].name;
+        el('selectedFileName').textContent = fileName;
+        const size = await window.electronAPI.getFileSize(filePath);
+        el('selectedFileName').textContent += ` (${formatBytes(size)})`;
+        el('startServerBtn').disabled = false;
+      }
+    });
+
     el('selectFileBtn').addEventListener('click', async () => {
       const filePath = await window.electronAPI.selectFile();
       if (filePath) {
         selectedFilePath = filePath;
-        el('selectedFileName').textContent = filePath.split('\\').pop();
+        const fileName = filePath.split('\\').pop();
+        el('selectedFileName').textContent = fileName;
+        const size = await window.electronAPI.getFileSize(filePath);
+        el('selectedFileName').textContent += ` (${formatBytes(size)})`;
         el('startServerBtn').disabled = false;
       }
     });
@@ -122,6 +158,12 @@
         urlDiv.innerHTML = `Share this link: <a href="${url}" target="_blank">${url}</a>`;
         el('stopServerBtn').disabled = false;
         el('startServerBtn').disabled = true;
+
+        // Show spinner
+        el('downloadStatus').classList.remove('hidden');
+        el('spinner').classList.remove('hidden');
+        el('checkmark').classList.add('hidden');
+        el('downloadText').textContent = 'Waiting for receiver...';
 
         // Generate QR for the HTTP link
         if (typeof QRCode !== 'undefined') {
@@ -144,6 +186,8 @@
       el('startServerBtn').disabled = false;
       el('qrContainer').style.display = 'none';
       currentShareUrl = null;
+      el('downloadStatus').classList.add('hidden');
+      isDownloading = false;
     });
 
     el('copyLinkBtn').addEventListener('click', () => {
@@ -155,11 +199,25 @@
       });
     });
 
+    // Listen for download events from main process
+    window.electronAPI.onDownloadUpdate((status) => {
+      if (status === 'started') {
+        isDownloading = true;
+        el('spinner').classList.remove('hidden');
+        el('checkmark').classList.add('hidden');
+        el('downloadText').textContent = 'Sending file...';
+      } else if (status === 'completed') {
+        isDownloading = false;
+        el('spinner').classList.add('hidden');
+        el('checkmark').classList.remove('hidden');
+        el('downloadText').textContent = 'Download complete!';
+      }
+    });
+
     // ========== 3. P2P SESSION (WebRTC) ==========
 
     el('createSessionBtn').addEventListener('click', async () => {
       try {
-
         localPC = new RTCPeerConnection();
 
         localPC.addEventListener('iceconnectionstatechange', () => {
@@ -224,7 +282,7 @@
       if (!offerCompact) return;
       try {
         const offerSDP = await window.electronAPI.decompressSDP(offerCompact);
-        localPC = new RTCPeerConnection();  // no STUN
+        localPC = new RTCPeerConnection();
 
         localPC.ondatachannel = (event) => {
           localDC = event.channel;
@@ -260,7 +318,7 @@
       }
     });
 
-    // --- P2P file selection (placeholder – real send coming soon) ---
+    // --- P2P file selection (placeholder) ---
     el('selectFileP2PBtn').addEventListener('click', async () => {
       const filePath = await window.electronAPI.selectFile();
       if (filePath) {
@@ -271,7 +329,6 @@
     });
 
     el('sendFileBtn').addEventListener('click', () => {
-      // We will wire the actual file sending later
       el('sessionStatus').textContent = 'File transfer not yet implemented.';
     });
 
@@ -281,5 +338,4 @@
     })();
   </script>
 </body>
-
 </html>

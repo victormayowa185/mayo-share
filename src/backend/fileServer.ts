@@ -1,8 +1,9 @@
-﻿import { createServer, Server } from 'http';
+﻿import { createServer, Server, IncomingMessage, ServerResponse } from 'http';
 import { promises as fs, createReadStream } from 'fs';
 import path from 'path';
+import { EventEmitter } from 'events';
 
-export class FileServer {
+export class FileServer extends EventEmitter {
   private server: Server | null = null;
   private port: number = 3000;
   private filePath: string = '';
@@ -18,12 +19,14 @@ export class FileServer {
     await fs.access(this.filePath);
 
     return new Promise((resolve, reject) => {
-      this.server = createServer((req, res) => {
+      this.server = createServer((req: IncomingMessage, res: ServerResponse) => {
         const fileName = path.basename(this.filePath);
         res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(fileName)}"`);
         res.setHeader('Content-Type', 'application/octet-stream');
 
         const readStream = createReadStream(this.filePath);
+        this.emit('download-started');   // <-- notify
+
         readStream.pipe(res);
 
         readStream.on('error', (err) => {
@@ -32,6 +35,10 @@ export class FileServer {
             res.end('File read error');
           }
           console.error('Stream error:', err);
+        });
+
+        res.on('finish', () => {
+          this.emit('download-completed');   // <-- notify
         });
       });
 

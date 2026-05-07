@@ -1,14 +1,15 @@
-  import { app, BrowserWindow, ipcMain, dialog } from 'electron';
-  import path from 'path';
-  import { execFile } from 'child_process';
-  import { FileServer } from './fileServer';
-  import fs from 'fs';
-  import os from 'os';
+import { app, BrowserWindow, ipcMain, dialog } from 'electron';
+import path from 'path';
+import { execFile } from 'child_process';
+import { FileServer } from './fileServer';
+import { statSync } from 'fs';
+import fs from 'fs';
+import os from 'os';
 
-  let mainWindow: BrowserWindow | null = null;
-  let currentHotspotIP = '192.168.137.1';   // default fallback
+let mainWindow: BrowserWindow | null = null;
+let currentHotspotIP = '192.168.137.1';   // default fallback
 
-  const HOTSPOT_SCRIPT = `
+const HOTSPOT_SCRIPT = `
   \$staticIP       = "192.168.137.1"
   \$prefixLength   = 24
 
@@ -102,95 +103,109 @@
   `;
 
 
-  const fileServer = new FileServer();
+const fileServer = new FileServer();
 
-  // ---------- Window ----------
-  function createWindow(): void {
-    mainWindow = new BrowserWindow({
-      width: 800,
-      height: 600,
-      webPreferences: {
-        preload: path.join(__dirname, '..', 'preload', 'index.js'),
-        contextIsolation: true,
-        nodeIntegration: false,
-      },
-    });
-    mainWindow.loadFile(path.join(__dirname, '..', '..', 'src', 'frontend', 'index.html'));
-  }
-
-  // ---------- Hotspot ----------
-  ipcMain.handle('start-hotspot', async (): Promise<string> => {
-    return new Promise((resolve) => {
-      const tempScriptPath = path.join(os.tmpdir(), `mayo-hotspot-${Date.now()}.ps1`);
-
-      try {
-        fs.writeFileSync(tempScriptPath, HOTSPOT_SCRIPT, 'utf8');
-      } catch (err) {
-        resolve(`ERROR: Could not write temp script: ${err}`);
-        return;
-      }
-
-      execFile(
-        'powershell.exe',
-        ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', tempScriptPath],
-        { timeout: 60000 },
-        (error, stdout, stderr) => {
-          try { fs.unlinkSync(tempScriptPath); } catch { }
-
-          let output = stdout || '';
-          if (stderr && !stdout) output += stderr;
-          if (error) output += '\n[EXIT CODE]: ' + error.message;
-
-          // Extract the hotspot IP from the script's output
-          const ipMatch = output.match(/Hotspot IP \(for sharing\):\s*([\d.]+)/);
-          if (ipMatch && ipMatch[1]) {
-            currentHotspotIP = ipMatch[1];
-          }
-
-          resolve(output || 'Script produced no output');
-        }
-      );
-    });
+// ---------- Window ----------
+function createWindow(): void {
+  mainWindow = new BrowserWindow({
+    width: 800,
+    height: 600,
+    webPreferences: {
+      preload: path.join(__dirname, '..', 'preload', 'index.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
   });
+  mainWindow.loadFile(path.join(__dirname, '..', '..', 'src', 'frontend', 'index.html'));
+}
 
-  // ---------- File selection ----------
-  ipcMain.handle('select-file', async (): Promise<string | null> => {
-    if (!mainWindow) return null;
-    const result = await dialog.showOpenDialog(mainWindow, {
-      properties: ['openFile'],
-      title: 'Select a file to share',
-    });
-    if (result.canceled || result.filePaths.length === 0) return null;
-    return result.filePaths[0];
-  });
+// ---------- Hotspot ----------
+ipcMain.handle('start-hotspot', async (): Promise<string> => {
+  return new Promise((resolve) => {
+    const tempScriptPath = path.join(os.tmpdir(), `mayo-hotspot-${Date.now()}.ps1`);
 
-  // ---------- File server ----------
-  ipcMain.handle('start-file-server', async (_event, filePath: string): Promise<string> => {
     try {
-      // Pass the detected hotspot IP and let the server listen on all interfaces
-      const url = await fileServer.start(filePath, undefined, currentHotspotIP);
-      return url;
+      fs.writeFileSync(tempScriptPath, HOTSPOT_SCRIPT, 'utf8');
     } catch (err) {
-      throw new Error(`Could not start server: ${err}`);
+      resolve(`ERROR: Could not write temp script: ${err}`);
+      return;
     }
-  });
 
-  ipcMain.handle('stop-file-server', async (): Promise<void> => {
-    fileServer.stop();
-  });
+    execFile(
+      'powershell.exe',
+      ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', tempScriptPath],
+      { timeout: 60000 },
+      (error, stdout, stderr) => {
+        try { fs.unlinkSync(tempScriptPath); } catch { }
 
-  ipcMain.handle('compress-sdp', async (_event, sdp: string): Promise<string> => {
-    return Buffer.from(sdp, 'utf-8').toString('base64');
-  });
+        let output = stdout || '';
+        if (stderr && !stdout) output += stderr;
+        if (error) output += '\n[EXIT CODE]: ' + error.message;
 
-  ipcMain.handle('decompress-sdp', async (_event, compact: string): Promise<string> => {
-    return Buffer.from(compact, 'base64').toString('utf-8');
-  });
+        // Extract the hotspot IP from the script's output
+        const ipMatch = output.match(/Hotspot IP \(for sharing\):\s*([\d.]+)/);
+        if (ipMatch && ipMatch[1]) {
+          currentHotspotIP = ipMatch[1];
+        }
 
-  ipcMain.handle('ping', async () => 'pong');
-
-  // ---------- App startup ----------
-  app.whenReady().then(createWindow);
-  app.on('window-all-closed', () => {
-    if (process.platform !== 'darwin') app.quit();
+        resolve(output || 'Script produced no output');
+      }
+    );
   });
+});
+
+// ---------- File selection ----------
+ipcMain.handle('select-file', async (): Promise<string | null> => {
+  if (!mainWindow) return null;
+  const result = await dialog.showOpenDialog(mainWindow, {
+    properties: ['openFile'],
+    title: 'Select a file to share',
+  });
+  if (result.canceled || result.filePaths.length === 0) return null;
+  return result.filePaths[0];
+});
+
+// ---------- File server ----------
+ipcMain.handle('start-file-server', async (_event, filePath: string): Promise<string> => {
+  try {
+    // Pass the detected hotspot IP and let the server listen on all interfaces
+    const url = await fileServer.start(filePath, undefined, currentHotspotIP);
+    return url;
+  } catch (err) {
+    throw new Error(`Could not start server: ${err}`);
+  }
+});
+
+ipcMain.handle('stop-file-server', async (): Promise<void> => {
+  fileServer.stop();
+});
+
+ipcMain.handle('get-file-size', async (_event, filePath: string): Promise<number> => {
+  const stats = statSync(filePath);
+  return stats.size;
+});
+
+
+fileServer.on('download-started', () => {
+  mainWindow?.webContents.send('download-update', 'started');
+});
+fileServer.on('download-completed', () => {
+  mainWindow?.webContents.send('download-update', 'completed');
+});
+
+
+ipcMain.handle('compress-sdp', async (_event, sdp: string): Promise<string> => {
+  return Buffer.from(sdp, 'utf-8').toString('base64');
+});
+
+ipcMain.handle('decompress-sdp', async (_event, compact: string): Promise<string> => {
+  return Buffer.from(compact, 'base64').toString('utf-8');
+});
+
+ipcMain.handle('ping', async () => 'pong');
+
+// ---------- App startup ----------
+app.whenReady().then(createWindow);
+app.on('window-all-closed', () => {
+  if (process.platform !== 'darwin') app.quit();
+});

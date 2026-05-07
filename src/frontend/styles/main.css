@@ -1,68 +1,111 @@
  body {
-      font-family: Arial, sans-serif;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      min-height: 100vh;
-      margin: 0;
-      background: #0A0A0A;
-      color: white;
-      padding: 20px;
-    }
-    button {
-      padding: 12px 24px;
-      font-size: 16px;
-      background: #0066FF;
-      color: white;
-      border: none;
-      border-radius: 8px;
-      cursor: pointer;
-      margin: 8px;
-    }
-    button:disabled {
-      background: #555;
-      cursor: not-allowed;
-    }
-    .section {
-      border: 1px solid #333;
-      border-radius: 10px;
-      padding: 20px;
-      margin: 15px 0;
-      width: 100%;
-      max-width: 500px;
-    }
-    input[type="text"] {
-      padding: 8px;
-      font-size: 16px;
-      border-radius: 5px;
-      border: none;
-      width: 180px;
-      text-align: center;
-    }
-    #qrContainer img, #offerQr img, #answerQr img {
-      max-width: 200px;
-      height: auto;
-      margin: 10px auto;
-    }
-    .code-display {
-      font-size: 24px;
-      font-weight: bold;
-      letter-spacing: 3px;
-      background: #222;
-      display: inline-block;
-      padding: 8px 16px;
-      border-radius: 6px;
-      margin: 10px 0;
-    }
-    .hidden {
-      display: none;
-    }
-    hr {
-      width: 100%;
-      border-color: #333;
-    }
-    #status {
-      margin-top: 10px;
-      color: #aaa;
-    }
+     font-family: Arial, sans-serif;
+     display: flex;
+     flex-direction: column;
+     align-items: center;
+     justify-content: center;
+     min-height: 100vh;
+     margin: 0;
+     background: #0A0A0A;
+     color: white;
+     padding: 20px;
+ }
+
+ button {
+     padding: 12px 24px;
+     font-size: 16px;
+     background: #0066FF;
+     color: white;
+     border: none;
+     border-radius: 8px;
+     cursor: pointer;
+     margin: 8px;
+ }
+
+ button:disabled {
+     background: #555;
+     cursor: not-allowed;
+ }
+
+ .section {
+     border: 1px solid #333;
+     border-radius: 10px;
+     padding: 20px;
+     margin: 15px 0;
+     width: 100%;
+     max-width: 500px;
+ }
+
+ input[type="text"] {
+     padding: 8px;
+     font-size: 16px;
+     border-radius: 5px;
+     border: none;
+     width: 180px;
+     text-align: center;
+ }
+
+ #qrContainer img,
+ #offerQr img,
+ #answerQr img {
+     max-width: 200px;
+     height: auto;
+     margin: 10px auto;
+ }
+
+ .code-display {
+     font-size: 24px;
+     font-weight: bold;
+     letter-spacing: 3px;
+     background: #222;
+     display: inline-block;
+     padding: 8px 16px;
+     border-radius: 6px;
+     margin: 10px 0;
+ }
+
+ .hidden {
+     display: none;
+ }
+
+ hr {
+     width: 100%;
+     border-color: #333;
+ }
+
+ #status {
+     margin-top: 10px;
+     color: #aaa;
+ }
+
+
+ /* Spinner */
+ .spinner {
+     border: 4px solid #333;
+     border-top: 4px solid #0066FF;
+     border-radius: 50%;
+     width: 30px;
+     height: 30px;
+     animation: spin 0.8s linear infinite;
+     margin: 0 auto;
+ }
+
+ @keyframes spin {
+     0% {
+         transform: rotate(0deg);
+     }
+
+     100% {
+         transform: rotate(360deg);
+     }
+ }
+
+ /* Checkmark */
+ .checkmark {
+     font-size: 32px;
+     color: #4CAF50;
+ }
+
+ .hidden {
+     display: none;
+ }
