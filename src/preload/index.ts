@@ -6,4 +6,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   startFileServer: (filePath: string) => ipcRenderer.invoke('start-file-server', filePath),
   stopFileServer: () => ipcRenderer.invoke('stop-file-server'),
   ping: () => ipcRenderer.invoke('ping'),
+  compressSDP: (sdp: string) => ipcRenderer.invoke('compress-sdp', sdp),
+  decompressSDP: (compact: string) => ipcRenderer.invoke('decompress-sdp', compact),
 });

@@ -1,96 +1,99 @@
 ﻿<!DOCTYPE html>
 <html>
+
 <head>
   <meta charset="UTF-8">
-  <title>MAYO Share - Hotspot Test</title>
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      min-height: 100vh;
-      margin: 0;
-      background: #0A0A0A;
-      color: white;
-      padding: 20px;
-    }
-    button {
-      padding: 15px 30px;
-      font-size: 18px;
-      background: #0066FF;
-      color: white;
-      border: none;
-      border-radius: 8px;
-      cursor: pointer;
-      margin-top: 15px;
-    }
-    button:disabled {
-      background: #555;
-      cursor: not-allowed;
-    }
-    #hotspotStatus, #shareUrl {
-      margin-top: 15px;
-      font-size: 16px;
-      word-break: break-all;
-      text-align: center;
-    }
-    #qrContainer {
-      margin-top: 20px;
-      text-align: center;
-    }
-    #qrCodeImg {
-      max-width: 250px;
-      height: auto;
-    }
-    hr {
-      width: 100%;
-      border-color: #333;
-      margin: 25px 0;
-    }
-    .copy-btn {
-      background: #333;
-      padding: 8px 16px;
-      font-size: 14px;
-    }
-  </style>
+  <title>MAYO Share - P2P Transfer</title>
+  <link rel="stylesheet" href="styles/main.css">
 </head>
+
 <body>
   <h1>MAYO Share</h1>
-
-  <!-- Hotspot Section -->
-  <button id="startHotspotBtn">Start Hotspot</button>
-  <div id="hotspotStatus"></div>
-
-  <hr>
-
-  <!-- File Sharing Section -->
-  <div>
-    <button id="selectFileBtn">Select File</button>
-    <span id="selectedFileName" style="margin-left:10px;">No file chosen</span>
-  </div>
-  <button id="startServerBtn" disabled>Start Sharing</button>
-  <button id="stopServerBtn" disabled>Stop Sharing</button>
-  <div id="shareUrl"></div>
-
-  <!-- QR Code and Copy Link -->
-  <div id="qrContainer" style="display: none;">
-    <img id="qrCodeImg" alt="QR Code" />
-    <br>
-    <button id="copyLinkBtn" class="copy-btn">Copy Link</button>
+  <!-- ========== HOTSPOT SECTION (keep existing) ========== -->
+  <div class="section">
+    <h3>Hotspot</h3>
+    <button id="startHotspotBtn">Start Hotspot</button>
+    <div id="hotspotStatus" style="margin-top:10px;"></div>
   </div>
 
-  <!-- QR Code Library CDN -->
+  <!-- ========== P2P SESSION SECTION ========== -->
+  <div class="section">
+    <h3>P2P Session</h3>
+    <div id="sessionArea">
+      <button id="createSessionBtn">Create Session</button>
+      <div id="offerDisplay" class="hidden">
+        <p>Your session code (share with partner):</p>
+        <div id="offerCode" class="code-display"></div>
+        <div id="offerQr"></div>
+        <p>Enter partner's answer code:</p>
+        <input type="text" id="answerCodeInput" placeholder="Paste answer code here">
+        <button id="submitAnswerBtn">Submit Answer</button>
+      </div>
+
+      <button id="joinSessionBtn">Join Session</button>
+      <div id="joinDisplay" class="hidden">
+        <p>Enter partner's offer code:</p>
+
+        <input type="text" id="offerCodeInput" placeholder="Paste offer code here">
+        <button id="processOfferBtn">Process Offer</button>
+        <div id="answerDisplay" class="hidden">
+          <p>Your answer code (give back to partner):</p>
+          <div id="answerCode" class="code-display"></div>
+          <div id="answerQr"></div>
+        </div>
+      </div>
+    </div>
+    <div id="sessionStatus" style="margin-top:10px; color: #0f0;"></div>
+
+    <!-- File sharing via P2P (will be wired later) -->
+    <div id="p2pFileArea" class="hidden">
+      <hr>
+      <button id="selectFileP2PBtn">Select File</button>
+      <span id="p2pSelectedFile" style="margin-left:10px;">No file chosen</span>
+      <button id="sendFileBtn" disabled>Send File</button>
+      <div id="receiveFiles" class="hidden">
+        <p>Receiving files…</p>
+        <div id="incomingFiles"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Old HTTP server section (still works) -->
+  <div class="section">
+    <h3>HTTP Share (Legacy)</h3>
+    <div>
+      <button id="selectFileBtn">Select File</button>
+      <span id="selectedFileName" style="margin-left:10px;">No file chosen</span>
+    </div>
+    <button id="startServerBtn" disabled>Start Sharing</button>
+    <button id="stopServerBtn" disabled>Stop Sharing</button>
+    <div id="shareUrl"></div>
+    <div id="qrContainer" style="display: none;">
+      <img id="qrCodeImg" alt="QR Code"><br>
+      <button id="copyLinkBtn" class="copy-btn">Copy Link</button>
+    </div>
+  </div>
+
+  <!-- Libraries -->
   <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.1/build/qrcode.min.js"></script>
 
+
   <script>
-    let selectedFilePath = null;
+    // ---------- GLOBALS ----------
+    let selectedFilePath = null;         // for HTTP server
     let currentShareUrl = null;
 
-    // ---------- Hotspot ----------
-    document.getElementById('startHotspotBtn').addEventListener('click', async () => {
-      const statusDiv = document.getElementById('hotspotStatus');
+    // P2P globals
+    let localPC = null;
+    let localDC = null;
+    let selectedP2PFile = null;
+
+    // ---------- UTILS ----------
+    function el(id) { return document.getElementById(id); }
+
+    // ========== 1. HOTSPOT ==========
+    el('startHotspotBtn').addEventListener('click', async () => {
+      const statusDiv = el('hotspotStatus');
       statusDiv.textContent = 'Starting hotspot...';
       try {
         const result = await window.electronAPI.startHotspot();
@@ -100,62 +103,50 @@
       }
     });
 
-    // ---------- File Selection ----------
-    document.getElementById('selectFileBtn').addEventListener('click', async () => {
+    // ========== 2. HTTP FILE SERVER ==========
+    el('selectFileBtn').addEventListener('click', async () => {
       const filePath = await window.electronAPI.selectFile();
       if (filePath) {
         selectedFilePath = filePath;
-        document.getElementById('selectedFileName').textContent = filePath.split('\\').pop();
-        document.getElementById('startServerBtn').disabled = false;
+        el('selectedFileName').textContent = filePath.split('\\').pop();
+        el('startServerBtn').disabled = false;
       }
     });
 
-    // ---------- Start File Server ----------
-    document.getElementById('startServerBtn').addEventListener('click', async () => {
+    el('startServerBtn').addEventListener('click', async () => {
       if (!selectedFilePath) return;
-      const urlDiv = document.getElementById('shareUrl');
+      const urlDiv = el('shareUrl');
       try {
         const url = await window.electronAPI.startFileServer(selectedFilePath);
         currentShareUrl = url;
         urlDiv.innerHTML = `Share this link: <a href="${url}" target="_blank">${url}</a>`;
-        document.getElementById('stopServerBtn').disabled = false;
-        document.getElementById('startServerBtn').disabled = true;
+        el('stopServerBtn').disabled = false;
+        el('startServerBtn').disabled = true;
 
-        // Generate QR code
-        generateQRCode(url);
-        document.getElementById('qrContainer').style.display = 'block';
+        // Generate QR for the HTTP link
+        if (typeof QRCode !== 'undefined') {
+          QRCode.toDataURL(url, { width: 250, margin: 2 }, (err, dataURL) => {
+            if (!err) {
+              el('qrCodeImg').src = dataURL;
+              el('qrContainer').style.display = 'block';
+            }
+          });
+        }
       } catch (err) {
         urlDiv.textContent = 'Error: ' + err;
       }
     });
 
-    // ---------- Stop File Server ----------
-    document.getElementById('stopServerBtn').addEventListener('click', async () => {
+    el('stopServerBtn').addEventListener('click', async () => {
       await window.electronAPI.stopFileServer();
-      document.getElementById('shareUrl').textContent = '';
-      document.getElementById('stopServerBtn').disabled = true;
-      document.getElementById('startServerBtn').disabled = false;
-      // Hide QR container
-      document.getElementById('qrContainer').style.display = 'none';
+      el('shareUrl').textContent = '';
+      el('stopServerBtn').disabled = true;
+      el('startServerBtn').disabled = false;
+      el('qrContainer').style.display = 'none';
       currentShareUrl = null;
     });
 
-    // ---------- QR Code Generation ----------
-    function generateQRCode(url) {
-      const qrImg = document.getElementById('qrCodeImg');
-      // Use the QRCode library to generate a data URL
-      QRCode.toDataURL(url, { width: 250, margin: 2 }, (err, dataURL) => {
-        if (err) {
-          console.error('QR generation failed:', err);
-          qrImg.alt = 'QR code generation failed';
-          return;
-        }
-        qrImg.src = dataURL;
-      });
-    }
-
-    // ---------- Copy Link ----------
-    document.getElementById('copyLinkBtn').addEventListener('click', () => {
+    el('copyLinkBtn').addEventListener('click', () => {
       if (!currentShareUrl) return;
       navigator.clipboard.writeText(currentShareUrl).then(() => {
         alert('Link copied to clipboard!');
@@ -164,15 +155,131 @@
       });
     });
 
-    // ---------- Ping (diagnostic) ----------
-    (async () => {
+    // ========== 3. P2P SESSION (WebRTC) ==========
+
+    el('createSessionBtn').addEventListener('click', async () => {
       try {
-        const result = await window.electronAPI.ping();
-        console.log('Ping result:', result);
+
+        localPC = new RTCPeerConnection();
+
+        localPC.addEventListener('iceconnectionstatechange', () => {
+          console.log('ICE state:', localPC.iceConnectionState);
+          if (localPC.iceConnectionState === 'connected' || localPC.iceConnectionState === 'completed') {
+            el('sessionStatus').textContent = 'Connected! (ICE completed)';
+            el('p2pFileArea').classList.remove('hidden');
+          }
+        });
+
+        localDC = localPC.createDataChannel('mayo-share', { ordered: true });
+        localDC.onopen = () => {
+          el('sessionStatus').textContent = 'Connected! Data channel open.';
+          el('p2pFileArea').classList.remove('hidden');
+        };
+        localDC.onmessage = (e) => {
+          console.log('Message from data channel:', e.data);
+        };
+
+        const offer = await localPC.createOffer();
+        await localPC.setLocalDescription(offer);
+
+        await new Promise(resolve => {
+          if (localPC.iceGatheringState === 'complete') resolve();
+          else localPC.addEventListener('icegatheringstatechange', resolve, { once: true });
+        });
+
+        const compactOffer = await window.electronAPI.compressSDP(localPC.localDescription.sdp);
+        el('offerCode').textContent = compactOffer;
+        el('offerDisplay').classList.remove('hidden');
+        el('createSessionBtn').disabled = true;
+
+        QRCode.toDataURL(compactOffer, { width: 200, margin: 2 }, (err, dataURL) => {
+          if (!err) el('offerQr').innerHTML = `<img src="${dataURL}" alt="Offer QR">`;
+        });
       } catch (err) {
-        console.error('Ping error:', err);
+        el('sessionStatus').textContent = 'Error creating session: ' + err.message;
       }
+    });
+
+    // --- Submit Answer (Offerer side) ---
+    el('submitAnswerBtn').addEventListener('click', async () => {
+      const answerCompact = el('answerCodeInput').value.trim();
+      if (!answerCompact) return;
+      try {
+        const answerSDP = await window.electronAPI.decompressSDP(answerCompact);
+        await localPC.setRemoteDescription(new RTCSessionDescription({ type: 'answer', sdp: answerSDP }));
+        el('sessionStatus').textContent = 'Answer accepted – connection should open soon.';
+      } catch (err) {
+        el('sessionStatus').textContent = 'Invalid answer: ' + err.message;
+      }
+    });
+
+    // --- Join Session (Receiver) ---
+    el('joinSessionBtn').addEventListener('click', () => {
+      el('joinDisplay').classList.remove('hidden');
+      el('joinSessionBtn').disabled = true;
+    });
+
+    el('processOfferBtn').addEventListener('click', async () => {
+      const offerCompact = el('offerCodeInput').value.trim();
+      if (!offerCompact) return;
+      try {
+        const offerSDP = await window.electronAPI.decompressSDP(offerCompact);
+        localPC = new RTCPeerConnection();  // no STUN
+
+        localPC.ondatachannel = (event) => {
+          localDC = event.channel;
+          localDC.onopen = () => {
+            el('sessionStatus').textContent = 'Connected! Data channel open.';
+            el('p2pFileArea').classList.remove('hidden');
+            el('receiveFiles').classList.remove('hidden');
+          };
+          localDC.onmessage = (e) => {
+            console.log('Received via P2P:', e.data);
+          };
+        };
+
+        await localPC.setRemoteDescription(new RTCSessionDescription({ type: 'offer', sdp: offerSDP }));
+        const answer = await localPC.createAnswer();
+        await localPC.setLocalDescription(answer);
+
+        await new Promise(resolve => {
+          if (localPC.iceGatheringState === 'complete') resolve();
+          else localPC.addEventListener('icegatheringstatechange', resolve, { once: true });
+        });
+
+        const compactAnswer = await window.electronAPI.compressSDP(localPC.localDescription.sdp);
+        el('answerCode').textContent = compactAnswer;
+        el('answerDisplay').classList.remove('hidden');
+        el('processOfferBtn').disabled = true;
+
+        QRCode.toDataURL(compactAnswer, { width: 200, margin: 2 }, (err, dataURL) => {
+          if (!err) el('answerQr').innerHTML = `<img src="${dataURL}" alt="Answer QR">`;
+        });
+      } catch (err) {
+        el('sessionStatus').textContent = 'Error processing offer: ' + err.message;
+      }
+    });
+
+    // --- P2P file selection (placeholder – real send coming soon) ---
+    el('selectFileP2PBtn').addEventListener('click', async () => {
+      const filePath = await window.electronAPI.selectFile();
+      if (filePath) {
+        selectedP2PFile = filePath;
+        el('p2pSelectedFile').textContent = filePath.split('\\').pop();
+        el('sendFileBtn').disabled = false;
+      }
+    });
+
+    el('sendFileBtn').addEventListener('click', () => {
+      // We will wire the actual file sending later
+      el('sessionStatus').textContent = 'File transfer not yet implemented.';
+    });
+
+    // ---------- PING ----------
+    (async () => {
+      try { console.log(await window.electronAPI.ping()); } catch { }
     })();
   </script>
 </body>
+
 </html>
