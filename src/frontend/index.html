@@ -1,0 +1,114 @@
+﻿<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="UTF-8">
+  <title>MAYO Share - Hotspot Test</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      margin: 0;
+      background: #0A0A0A;
+      color: white;
+    }
+
+    button {
+      padding: 15px 30px;
+      font-size: 18px;
+      background: #0066FF;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      margin-top: 20px;
+    }
+
+    #status {
+      margin-top: 20px;
+      font-size: 16px;
+    }
+  </style>
+</head>
+
+<body>
+  <h1>MAYO Share</h1>
+
+  <!-- Hotspot Section -->
+  <button id="startHotspotBtn">Start Hotspot</button>
+  <div id="hotspotStatus"></div>
+
+  <hr style="width:100%; border-color:#333; margin:20px 0">
+
+  <!-- File Sharing Section -->
+  <div>
+    <button id="selectFileBtn">Select File</button>
+    <span id="selectedFileName" style="margin-left:10px;">No file chosen</span>
+  </div>
+  <button id="startServerBtn" disabled>Start Sharing</button>
+  <button id="stopServerBtn" disabled>Stop Sharing</button>
+  <div id="shareUrl" style="margin-top:10px; font-size:16px;"></div>
+
+  <script>
+    let selectedFilePath = null;
+
+    // ---------- Hotspot ----------
+    document.getElementById('startHotspotBtn').addEventListener('click', async () => {
+      const statusDiv = document.getElementById('hotspotStatus');
+      statusDiv.textContent = 'Starting hotspot...';
+      try {
+        const result = await window.electronAPI.startHotspot();
+        statusDiv.textContent = result;
+      } catch (error) {
+        statusDiv.textContent = 'Error: ' + error;
+      }
+    });
+
+    (async () => {
+      try {
+        const result = await window.electronAPI.ping();
+        console.log('Ping result:', result);
+      } catch (err) {
+        console.error('Ping error:', err);
+      }
+    })();
+
+    // ---------- File Selection ----------
+    document.getElementById('selectFileBtn').addEventListener('click', async () => {
+      const filePath = await window.electronAPI.selectFile();
+      if (filePath) {
+        selectedFilePath = filePath;
+        document.getElementById('selectedFileName').textContent = filePath.split('\\').pop();
+        document.getElementById('startServerBtn').disabled = false;
+      }
+    });
+
+    // ---------- Start File Server ----------
+    document.getElementById('startServerBtn').addEventListener('click', async () => {
+      if (!selectedFilePath) return;
+      const urlDiv = document.getElementById('shareUrl');
+      try {
+        const url = await window.electronAPI.startFileServer(selectedFilePath);
+        urlDiv.innerHTML = `Share this link: <a href="${url}" target="_blank">${url}</a>`;
+        document.getElementById('stopServerBtn').disabled = false;
+        document.getElementById('startServerBtn').disabled = true;
+      } catch (err) {
+        urlDiv.textContent = 'Error: ' + err;
+      }
+    });
+
+    // ---------- Stop File Server ----------
+    document.getElementById('stopServerBtn').addEventListener('click', async () => {
+      await window.electronAPI.stopFileServer();
+      document.getElementById('shareUrl').textContent = '';
+      document.getElementById('stopServerBtn').disabled = true;
+      document.getElementById('startServerBtn').disabled = false;
+    });
+  </script>
+</body>
+
+</html>

@@ -1,0 +1,15 @@
+﻿{
+  "name": "mayo-manual",
+  "version": "1.0.0",
+  "description": "",
+  "main": "dist/backend/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "npm run build && electron ."
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.0",
+    "electron": "^41.5.0",
+    "typescript": "^6.0.3"
+  }
+}
