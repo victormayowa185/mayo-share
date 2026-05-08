@@ -1,10 +1,12 @@
 ﻿<!DOCTYPE html>
 <html>
+
 <head>
   <meta charset="UTF-8">
   <title>MAYO Share - P2P Transfer</title>
   <link rel="stylesheet" href="styles/main.css">
 </head>
+
 <body>
   <h1>MAYO Share</h1>
 
@@ -240,10 +242,21 @@
         const offer = await localPC.createOffer();
         await localPC.setLocalDescription(offer);
 
-        await new Promise(resolve => {
-          if (localPC.iceGatheringState === 'complete') resolve();
-          else localPC.addEventListener('icegatheringstatechange', resolve, { once: true });
-        });
+        // Wait for ICE gathering to complete, with a 10s timeout
+        await Promise.race([
+          new Promise(resolve => {
+            if (localPC.iceGatheringState === 'complete') {
+              resolve(null);
+            } else {
+              localPC.addEventListener('icegatheringstatechange', () => {
+                if (localPC.iceGatheringState === 'complete') resolve(null);
+              });
+              // In case it's already complete by the time we check again
+              if (localPC.iceGatheringState === 'complete') resolve(null);
+            }
+          }),
+          new Promise(resolve => setTimeout(() => resolve('timeout'), 10000))
+        ]);
 
         const compactOffer = await window.electronAPI.compressSDP(localPC.localDescription.sdp);
         el('offerCode').textContent = compactOffer;
@@ -300,10 +313,21 @@
         const answer = await localPC.createAnswer();
         await localPC.setLocalDescription(answer);
 
-        await new Promise(resolve => {
-          if (localPC.iceGatheringState === 'complete') resolve();
-          else localPC.addEventListener('icegatheringstatechange', resolve, { once: true });
-        });
+        // Wait for ICE gathering to complete, with a 10s timeout
+        await Promise.race([
+          new Promise(resolve => {
+            if (localPC.iceGatheringState === 'complete') {
+              resolve(null);
+            } else {
+              localPC.addEventListener('icegatheringstatechange', () => {
+                if (localPC.iceGatheringState === 'complete') resolve(null);
+              });
+              // In case it's already complete by the time we check again
+              if (localPC.iceGatheringState === 'complete') resolve(null);
+            }
+          }),
+          new Promise(resolve => setTimeout(() => resolve('timeout'), 10000))
+        ]);
 
         const compactAnswer = await window.electronAPI.compressSDP(localPC.localDescription.sdp);
         el('answerCode').textContent = compactAnswer;
@@ -338,4 +362,5 @@
     })();
   </script>
 </body>
+
 </html>
