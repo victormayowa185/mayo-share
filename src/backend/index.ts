@@ -2,6 +2,7 @@ import { app, BrowserWindow, ipcMain, dialog } from 'electron';
 import path from 'path';
 import { execFile } from 'child_process';
 import { FileServer } from './fileServer';
+import { open, close, read, writeFile, appendFileSync } from 'fs';
 import { statSync } from 'fs';
 import fs from 'fs';
 import os from 'os';
@@ -183,6 +184,34 @@ ipcMain.handle('stop-file-server', async (): Promise<void> => {
 ipcMain.handle('get-file-size', async (_event, filePath: string): Promise<number> => {
   const stats = statSync(filePath);
   return stats.size;
+});
+
+
+// ---------- File chunking (for P2P) ----------
+
+ipcMain.handle('read-file-chunk', async (_event, filePath: string, start: number, size: number): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    // Open file, read chunk, return as base64
+    open(filePath, 'r', (err, fd) => {
+      if (err) return reject(err);
+      const buf = Buffer.alloc(size);
+      read(fd, buf, 0, size, start, (err, bytesRead) => {
+        close(fd, () => {});
+        if (err) return reject(err);
+        resolve(buf.slice(0, bytesRead).toString('base64'));
+      });
+    });
+  });
+});
+
+ipcMain.handle('create-receive-file', async (_event, filePath: string): Promise<void> => {
+  await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
+  await fs.promises.writeFile(filePath, '');
+});
+
+ipcMain.handle('append-receive-chunk', async (_event, filePath: string, base64Data: string): Promise<void> => {
+  const buf = Buffer.from(base64Data, 'base64');
+  appendFileSync(filePath, buf);
 });
 
 

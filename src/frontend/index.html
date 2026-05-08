@@ -17,7 +17,7 @@
     <div id="hotspotStatus" style="margin-top:10px;"></div>
   </div>
 
-  <!-- ========== P2P SESSION SECTION ========== -->
+     <!-- ========== P2P SESSION SECTION ========== -->
   <div class="section">
     <h3>P2P Session</h3>
     <div id="sessionArea">
@@ -45,12 +45,12 @@
     </div>
     <div id="sessionStatus" style="margin-top:10px; color: #0f0;"></div>
 
-    <!-- File sharing via P2P (will be wired later) -->
+    <!-- File sharing via P2P (with queue) -->
     <div id="p2pFileArea" class="hidden">
       <hr>
-      <button id="selectFileP2PBtn">Select File</button>
-      <span id="p2pSelectedFile" style="margin-left:10px;">No file chosen</span>
-      <button id="sendFileBtn" disabled>Send File</button>
+      <button id="addFileToQueueBtn">Add Files</button>
+      <button id="sendAllBtn" disabled>Send All</button>
+      <div id="fileQueueContainer" style="margin-top:10px;"></div>
       <div id="receiveFiles" class="hidden">
         <p>Receiving files…</p>
         <div id="incomingFiles"></div>
@@ -92,7 +92,12 @@
     // P2P globals
     let localPC = null;
     let localDC = null;
-    let selectedP2PFile = null;
+    let fileQueue = [];                // [{ id, name, path, size, status, progress }]
+    let currentSendId = null;
+    let isSending = false;
+
+    // Receiver state: map transfer id -> { name, size, path, received, progress element }
+    const receiveMap = {};
 
     // ---------- UTILS ----------
     function el(id) { return document.getElementById(id); }
@@ -117,19 +122,13 @@
     });
 
     // ========== 2. HTTP FILE SERVER ==========
-
-    // Drag and drop
     const dropArea = document.body;
-    dropArea.addEventListener('dragover', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-    });
+    dropArea.addEventListener('dragover', (e) => { e.preventDefault(); e.stopPropagation(); });
     dropArea.addEventListener('drop', async (e) => {
-      e.preventDefault();
-      e.stopPropagation();
+      e.preventDefault(); e.stopPropagation();
       const files = e.dataTransfer.files;
       if (files.length > 0) {
-        const filePath = files[0].path;   // Electron exposes .path for dropped files
+        const filePath = files[0].path;
         selectedFilePath = filePath;
         const fileName = files[0].name;
         el('selectedFileName').textContent = fileName;
@@ -160,14 +159,10 @@
         urlDiv.innerHTML = `Share this link: <a href="${url}" target="_blank">${url}</a>`;
         el('stopServerBtn').disabled = false;
         el('startServerBtn').disabled = true;
-
-        // Show spinner
         el('downloadStatus').classList.remove('hidden');
         el('spinner').classList.remove('hidden');
         el('checkmark').classList.add('hidden');
         el('downloadText').textContent = 'Waiting for receiver...';
-
-        // Generate QR for the HTTP link
         if (typeof QRCode !== 'undefined') {
           QRCode.toDataURL(url, { width: 250, margin: 2 }, (err, dataURL) => {
             if (!err) {
@@ -201,7 +196,6 @@
       });
     });
 
-    // Listen for download events from main process
     window.electronAPI.onDownloadUpdate((status) => {
       if (status === 'started') {
         isDownloading = true;
@@ -216,16 +210,106 @@
       }
     });
 
-    // ========== 3. P2P SESSION (WebRTC) ==========
+    // ========== 3. P2P SESSION (WebRTC) + FILE QUEUE ==========
 
+    // --- Queue UI helpers ---
+    function renderQueue() {
+      const container = el('fileQueueContainer');
+      container.innerHTML = '';
+      fileQueue.forEach((file, idx) => {
+        const div = document.createElement('div');
+        div.className = 'queue-item';
+        div.innerHTML = `
+        <span>${file.name} (${formatBytes(file.size)})</span>
+        <span>${file.status === 'transferring' ? ` ${Math.round(file.progress)}%` : ` [${file.status}]`}</span>
+        <button data-idx="${idx}" class="removeFileBtn" ${file.status === 'transferring' ? 'disabled' : ''}>❌</button>
+      `;
+        container.appendChild(div);
+      });
+      el('sendAllBtn').disabled = fileQueue.length === 0 || isSending;
+    }
+
+    function resetDoneQueue() {
+      if (!isSending && fileQueue.length > 0 && fileQueue.every(f => f.status === 'done' || f.status === 'cancelled')) {
+        fileQueue = [];
+        renderQueue();
+      }
+    }
+
+    // --- Data channel message handler (full receive) ---
+    async function handleDataChannelMessage(raw) {
+      if (typeof raw !== 'string') return;
+      let msg;
+      try {
+        msg = JSON.parse(raw);
+      } catch (e) {
+        return;
+      }
+
+      switch (msg.type) {
+        case 'file-start': {
+          const { id, name, size } = msg;
+          const savePath = `C:\\mayo-received\\${name}`;
+          await window.electronAPI.createReceiveFile(savePath);
+          receiveMap[id] = { name, size, path: savePath, received: 0 };
+
+          const fileDiv = document.createElement('div');
+          fileDiv.id = `recv-${id}`;
+          fileDiv.innerHTML = `
+          <span>${name}</span>
+          <progress id="prog-${id}" value="0" max="${size}"></progress>
+          <span id="pct-${id}">0%</span>
+        `;
+          el('incomingFiles').appendChild(fileDiv);
+          break;
+        }
+        case 'file-chunk': {
+          const { id, data, offset, totalSize } = msg;
+          if (!receiveMap[id]) return;
+          await window.electronAPI.appendReceiveChunk(receiveMap[id].path, data);
+          receiveMap[id].received += (offset + data.length > receiveMap[id].received ? (offset + data.length) - receiveMap[id].received : data.length); // rough
+          // Actually chunk size = data decoded length, we can approximate: after append, the file size increases
+          // We'll use the offset from the message: the data length in bytes after base64 decode
+          const chunkBytes = (data.length * 3) / 4; // rough estimate, but better to use actual decoded length
+          // Let's improve: decode base64 to get actual byte size
+          const decodedLen = atob(data).length;
+          receiveMap[id].received = offset + decodedLen;
+          const pct = Math.round((receiveMap[id].received / totalSize) * 100);
+          const progEl = document.getElementById(`prog-${id}`);
+          const pctEl = document.getElementById(`pct-${id}`);
+          if (progEl) progEl.value = receiveMap[id].received;
+          if (pctEl) pctEl.textContent = pct + '%';
+          break;
+        }
+        case 'file-end': {
+          const { id } = msg;
+          if (receiveMap[id]) {
+            el('sessionStatus').textContent = `File received: ${receiveMap[id].name}`;
+            delete receiveMap[id];
+          }
+          break;
+        }
+        case 'file-cancel': {
+          const { id } = msg;
+          if (receiveMap[id]) {
+            delete receiveMap[id];
+            // Optionally remove the UI element
+            const div = document.getElementById(`recv-${id}`);
+            if (div) div.remove();
+          }
+          break;
+        }
+      }
+    }
+
+    // --- Create Session (Offerer) ---
     el('createSessionBtn').addEventListener('click', async () => {
       try {
         localPC = new RTCPeerConnection();
-
         localPC.addEventListener('iceconnectionstatechange', () => {
           console.log('ICE state:', localPC.iceConnectionState);
           if (localPC.iceConnectionState === 'connected' || localPC.iceConnectionState === 'completed') {
-            el('sessionStatus').textContent = 'Connected! (ICE completed)';
+            el('sessionStatus').textContent = 'Connected! Data channel open.';
             el('p2pFileArea').classList.remove('hidden');
           }
         });
@@ -235,23 +319,18 @@
           el('sessionStatus').textContent = 'Connected! Data channel open.';
           el('p2pFileArea').classList.remove('hidden');
         };
-        localDC.onmessage = (e) => {
-          console.log('Message from data channel:', e.data);
-        };
+        localDC.onmessage = (e) => handleDataChannelMessage(e.data);
 
         const offer = await localPC.createOffer();
         await localPC.setLocalDescription(offer);
 
-        // Wait for ICE gathering to complete, with a 10s timeout
         await Promise.race([
           new Promise(resolve => {
-            if (localPC.iceGatheringState === 'complete') {
-              resolve(null);
-            } else {
+            if (localPC.iceGatheringState === 'complete') resolve(null);
+            else {
               localPC.addEventListener('icegatheringstatechange', () => {
                 if (localPC.iceGatheringState === 'complete') resolve(null);
               });
-              // In case it's already complete by the time we check again
               if (localPC.iceGatheringState === 'complete') resolve(null);
             }
           }),
@@ -304,25 +383,20 @@
             el('p2pFileArea').classList.remove('hidden');
             el('receiveFiles').classList.remove('hidden');
           };
-          localDC.onmessage = (e) => {
-            console.log('Received via P2P:', e.data);
-          };
+          localDC.onmessage = (e) => handleDataChannelMessage(e.data);
         };
 
         await localPC.setRemoteDescription(new RTCSessionDescription({ type: 'offer', sdp: offerSDP }));
         const answer = await localPC.createAnswer();
         await localPC.setLocalDescription(answer);
 
-        // Wait for ICE gathering to complete, with a 10s timeout
         await Promise.race([
           new Promise(resolve => {
-            if (localPC.iceGatheringState === 'complete') {
-              resolve(null);
-            } else {
+            if (localPC.iceGatheringState === 'complete') resolve(null);
+            else {
               localPC.addEventListener('icegatheringstatechange', () => {
                 if (localPC.iceGatheringState === 'complete') resolve(null);
               });
-              // In case it's already complete by the time we check again
               if (localPC.iceGatheringState === 'complete') resolve(null);
             }
           }),
@@ -342,19 +416,80 @@
       }
     });
 
-    // --- P2P file selection (placeholder) ---
-    el('selectFileP2PBtn').addEventListener('click', async () => {
+    // --- Add file to queue ---
+    el('addFileToQueueBtn').addEventListener('click', async () => {
       const filePath = await window.electronAPI.selectFile();
       if (filePath) {
-        selectedP2PFile = filePath;
-        el('p2pSelectedFile').textContent = filePath.split('\\').pop();
-        el('sendFileBtn').disabled = false;
+        const name = filePath.split('\\').pop();
+        const size = await window.electronAPI.getFileSize(filePath);
+        fileQueue.push({ id: Date.now().toString() + Math.random(), name, path: filePath, size, status: 'queued', progress: 0 });
+        renderQueue();
       }
     });
 
-    el('sendFileBtn').addEventListener('click', () => {
-      el('sessionStatus').textContent = 'File transfer not yet implemented.';
+    // --- Remove file from queue (delegate to container) ---
+    el('fileQueueContainer').addEventListener('click', (e) => {
+      if (e.target.classList.contains('removeFileBtn')) {
+        const idx = parseInt(e.target.dataset.idx);
+        const file = fileQueue[idx];
+        if (file && file.status !== 'transferring') {
+          fileQueue.splice(idx, 1);
+          renderQueue();
+        }
+      }
     });
+
+    // --- Send All ---
+    el('sendAllBtn').addEventListener('click', async () => {
+      if (!localDC || localDC.readyState !== 'open') {
+        el('sessionStatus').textContent = 'Data channel not open.';
+        return;
+      }
+      isSending = true;
+      renderQueue();
+      for (let i = 0; i < fileQueue.length; i++) {
+        const file = fileQueue[i];
+        if (file.status === 'done' || file.status === 'cancelled') continue;
+        file.status = 'transferring';
+        renderQueue();
+
+        // Send file-start
+        localDC.send(JSON.stringify({ type: 'file-start', id: file.id, name: file.name, size: file.size }));
+
+        const CHUNK_SIZE = 64 * 1024; // 64 KB
+        let offset = 0;
+        while (offset < file.size) {
+          const chunkSize = Math.min(CHUNK_SIZE, file.size - offset);
+          const base64 = await window.electronAPI.readFileChunk(file.path, offset, chunkSize);
+          localDC.send(JSON.stringify({
+            type: 'file-chunk',
+            id: file.id,
+            data: base64,
+            offset,
+            totalSize: file.size
+          }));
+          offset += chunkSize;
+          file.progress = Math.round((offset / file.size) * 100);
+          renderQueue();
+          await new Promise(r => setTimeout(r, 1)); // tiny yield to avoid blocking UI
+        }
+        // Send file-end
+        localDC.send(JSON.stringify({ type: 'file-end', id: file.id }));
+        file.status = 'done';
+        renderQueue();
+      }
+      isSending = false;
+      renderQueue();
+      el('sessionStatus').textContent = 'All files sent!';
+    });
+
+    // Initial queue render + ensure receive directory
+    renderQueue();
+    // Ensure receive folder exists (just log, main process will create file on write)
+    (async () => {
+      // Ensure C:\mayo-received exists? The main process will create files inside; if dir missing, writeFile may fail.
+      // We'll add a handler to create the directory if needed, but for now warn.
+    })();
 
     // ---------- PING ----------
     (async () => {

@@ -12,4 +12,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   compressSDP: (sdp: string) => ipcRenderer.invoke('compress-sdp', sdp),
   decompressSDP: (compact: string) => ipcRenderer.invoke('decompress-sdp', compact),
   ping: () => ipcRenderer.invoke('ping'),
+  readFileChunk: (filePath: string, start: number, size: number) => ipcRenderer.invoke('read-file-chunk', filePath, start, size),
+  createReceiveFile: (filePath: string) => ipcRenderer.invoke('create-receive-file', filePath),
+  appendReceiveChunk: (filePath: string, data: string) => ipcRenderer.invoke('append-receive-chunk', filePath, data),
 });
