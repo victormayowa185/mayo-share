@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { FaArrowLeft, FaCheckCircle } from 'react-icons/fa';
 import styles from '../../styles/screens/QuickShare.module.css';
 
 interface Props {
@@ -80,7 +81,9 @@ const QuickShare: React.FC<Props> = ({ onBack }) => {
 
   return (
     <div className={styles.container}>
-      <button className={styles.backBtn} onClick={() => { stopSharing(); onBack(); }}>← Back</button>
+      <button className={styles.backBtn} onClick={() => { stopSharing(); onBack(); }}>
+        <FaArrowLeft style={{ marginRight: 6 }} /> Back
+      </button>
       <h2 className={styles.title}>Quick Share</h2>
       <p className={styles.subtitle}>Share a file — receiver opens the link in any browser.</p>
 
@@ -106,14 +109,22 @@ const QuickShare: React.FC<Props> = ({ onBack }) => {
           <div className={styles.urlRow}>
             <span className={styles.url}>{shareUrl}</span>
             <button className={styles.copyBtn} onClick={copyLink}>
-              {copied ? '✅ Copied' : 'Copy Link'}
+              {copied ? (
+                <><FaCheckCircle style={{ marginRight: 4 }} /> Copied</>
+              ) : (
+                'Copy Link'
+              )}
             </button>
           </div>
 
           <div className={styles.statusRow}>
             {status === 'sharing' && <><div className={styles.spinner} /> <span>Waiting for receiver...</span></>}
             {status === 'downloading' && <><div className={styles.spinner} /> <span style={{ color: '#0066FF' }}>Sending file...</span></>}
-            {status === 'done' && <span className={styles.doneMsg}>✅ Download complete!</span>}
+            {status === 'done' && (
+              <span className={styles.doneMsg}>
+                <FaCheckCircle style={{ marginRight: 6 }} /> Download complete!
+              </span>
+            )}
           </div>
 
           <button className={styles.stopBtn} onClick={stopSharing}>Stop Sharing</button>

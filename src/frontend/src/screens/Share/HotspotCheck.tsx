@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { FaArrowLeft, FaCheckCircle, FaArrowRight } from 'react-icons/fa';
 import styles from '../../styles/screens/HotspotCheck.module.css';
 
 interface Props {
@@ -27,7 +28,9 @@ const HotspotCheck: React.FC<Props> = ({ onReady, onBack }) => {
 
   return (
     <div className={styles.container}>
-      <button className={styles.backBtn} onClick={onBack}>← Back</button>
+      <button className={styles.backBtn} onClick={onBack}>
+        <FaArrowLeft style={{ marginRight: 6 }} /> Back
+      </button>
       <h2 className={styles.title}>Start Offline Hotspot</h2>
       <p className={styles.subtitle}>Your hotspot must be active before sharing files.</p>
 
@@ -43,8 +46,13 @@ const HotspotCheck: React.FC<Props> = ({ onReady, onBack }) => {
 
       {success && (
         <div className={styles.successRow}>
-          <div className={styles.successMsg}>✅ Hotspot is active!</div>
-          <button className={styles.btn} onClick={onReady}>Continue →</button>
+          <div className={styles.successMsg}>
+            <FaCheckCircle style={{ marginRight: 8 }} />
+            Hotspot is active!
+          </div>
+          <button className={styles.btn} onClick={onReady}>
+            Continue <FaArrowRight style={{ marginLeft: 6 }} />
+          </button>
         </div>
       )}
     </div>

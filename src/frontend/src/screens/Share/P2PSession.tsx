@@ -1,4 +1,5 @@
 import React, { useState, useRef } from 'react';
+import { FaArrowLeft, FaCircle, FaTimes } from 'react-icons/fa';
 import styles from '../../styles/screens/P2PSession.module.css';
 
 interface Props {
@@ -231,7 +232,9 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
 
   return (
     <div className={styles.container}>
-      <button className={styles.backBtn} onClick={onBack}>← Back</button>
+      <button className={styles.backBtn} onClick={onBack}>
+        <FaArrowLeft style={{ marginRight: 6 }} /> Back
+      </button>
       <h2 className={styles.title}>Device Connect</h2>
 
       {/* Mode selection */}
@@ -286,7 +289,10 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
       {/* Connected file area */}
       {connected && (
         <div className={styles.fileArea}>
-          <div className={styles.connectedBadge}>🟢 Connected</div>
+          <div className={styles.connectedBadge}>
+            <FaCircle size={12} color="#4CAF50" style={{ marginRight: 8 }} />
+            Connected
+          </div>
 
           <div className={styles.actionRow}>
             <button className={styles.btn} onClick={addFiles} disabled={isSending}>Add Files</button>
@@ -307,7 +313,9 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
                     {f.status === 'transferring' ? `${f.progress}%` : `[${f.status}]`}
                   </span>
                   {f.status !== 'transferring' && f.status !== 'done' && (
-                    <button className={styles.removeBtn} onClick={() => removeFile(f.id)}>❌</button>
+                    <button className={styles.removeBtn} onClick={() => removeFile(f.id)} title="Remove file">
+                      <FaTimes size={16} />
+                    </button>
                   )}
                 </div>
               ))}

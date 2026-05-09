@@ -1,6 +1,8 @@
 import React from 'react';
 import { Screen } from '../../App';
 import TopBar from '../../components/TopBar';
+import { IoIosSend } from 'react-icons/io';
+import { MdGetApp } from 'react-icons/md';
 import styles from '../../styles/screens/HomeScreen.module.css';
 
 interface Props {
@@ -18,14 +20,14 @@ const HomeScreen: React.FC<Props> = ({ setScreen }) => {
 
         <div className={styles.cardsContainer}>
           <ActionCard
-            emoji="📤"
+            icon={<IoIosSend size={48} />}
             title="Share Files"
             description="Send files to another device over your local hotspot"
             onClick={() => setScreen('share-hotspot-check')}
             color="#0066FF"
           />
           <ActionCard
-            emoji="📥"
+            icon={<MdGetApp size={48} />}
             title="Receive Files"
             description="Accept files from another device on the same network"
             onClick={() => setScreen('receive')}
@@ -38,14 +40,14 @@ const HomeScreen: React.FC<Props> = ({ setScreen }) => {
 };
 
 interface CardProps {
-  emoji: string;
+  icon: React.ReactNode;       // replaced emoji string
   title: string;
   description: string;
   onClick: () => void;
   color: string;
 }
 
-const ActionCard: React.FC<CardProps> = ({ emoji, title, description, onClick, color }) => (
+const ActionCard: React.FC<CardProps> = ({ icon, title, description, onClick, color }) => (
   <div
     className={styles.card}
     onClick={onClick}
@@ -58,7 +60,7 @@ const ActionCard: React.FC<CardProps> = ({ emoji, title, description, onClick, c
       (e.currentTarget as HTMLDivElement).style.transform = 'translateY(0)';
     }}
   >
-    <div className={styles.cardEmoji}>{emoji}</div>
+    <div className={styles.cardEmoji}>{icon}</div>
     <div className={styles.cardTitle}>{title}</div>
     <div className={styles.cardDescription}>{description}</div>
   </div>

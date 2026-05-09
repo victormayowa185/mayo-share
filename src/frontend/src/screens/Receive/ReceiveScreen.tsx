@@ -1,4 +1,7 @@
 import React, { useState, useRef } from 'react';
+import { FaArrowLeft, FaCheckCircle, FaCircle } from 'react-icons/fa';
+import { FaLink } from 'react-icons/fa6';
+import { VscGlobe } from 'react-icons/vsc';
 import styles from '../../styles/screens/ReceiveScreen.module.css';
 
 interface Props {
@@ -60,7 +63,7 @@ const ReceiveScreen: React.FC<Props> = ({ onBack }) => {
 
     if (msg.type === 'file-end') {
       const { id } = msg;
-      setSessionStatus(`✅ File received: ${receiveMap[id]?.name || ''}`);
+      setSessionStatus(`File received: ${receiveMap[id]?.name || ''}`);
       await window.electronAPI.clearResumeState(id);
       setReceiveMap(prev => { const n = { ...prev }; delete n[id]; return n; });
     }
@@ -109,18 +112,24 @@ const ReceiveScreen: React.FC<Props> = ({ onBack }) => {
 
   return (
     <div className={styles.container}>
-      <button className={styles.backBtn} onClick={onBack}>← Back</button>
+      <button className={styles.backBtn} onClick={onBack}>
+        <FaArrowLeft style={{ marginRight: 6 }} /> Back
+      </button>
       <h2 className={styles.title}>Receive Files</h2>
 
       {mode === 'choose' && (
         <div className={styles.modeCards}>
           <div className={styles.modeCard} onClick={() => setMode('p2p')}>
-            <div className={styles.cardEmoji}>🔗</div>
+            <div className={styles.cardEmoji}>
+              <FaLink size={36} />
+            </div>
             <div className={styles.cardTitle}>Join Device Connect</div>
             <div className={styles.cardDesc}>Accept files from a MAYO Share session. Paste the offer code from the sender.</div>
           </div>
           <div className={styles.modeCard} onClick={() => setMode('quick')}>
-            <div className={styles.cardEmoji}>🌐</div>
+            <div className={styles.cardEmoji}>
+              <VscGlobe size={36} />
+            </div>
             <div className={styles.cardTitle}>Open Quick Share Link</div>
             <div className={styles.cardDesc}>Download a file shared via Quick Share. Enter the URL or scan the QR code.</div>
           </div>
@@ -145,7 +154,9 @@ const ReceiveScreen: React.FC<Props> = ({ onBack }) => {
             </>
           ) : (
             <>
-              <div className={styles.connectedBadge}>🟢 Connected — waiting for files</div>
+              <div className={styles.connectedBadge}>
+                <FaCircle size={12} color="#4CAF50" style={{ marginRight: 6 }} /> Connected — waiting for files
+              </div>
               {Object.entries(receiveMap).map(([id, entry]) => (
                 <div key={id} className={styles.fileRow}>
                   <span className={styles.fileName}>{entry.name}</span>
@@ -175,7 +186,9 @@ const ReceiveScreen: React.FC<Props> = ({ onBack }) => {
 
       {sessionStatus && (
         <div className={`${styles.status} ${sessionStatus.includes('Error') ? styles.error : ''}`}>
-          {sessionStatus}
+          {sessionStatus.includes('File received') ? (
+            <><FaCheckCircle style={{ marginRight: 6, color: '#4CAF50' }} />{sessionStatus}</>
+          ) : sessionStatus}
         </div>
       )}
     </div>

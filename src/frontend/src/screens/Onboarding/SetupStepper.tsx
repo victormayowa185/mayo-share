@@ -1,4 +1,10 @@
 import React, { useState } from 'react';
+import {
+  FaCheckCircle,
+  FaTimesCircle,
+  FaArrowLeft,
+  FaArrowRight,
+} from 'react-icons/fa';
 import styles from '../../styles/screens/SetupStepper.module.css';
 
 interface Props {
@@ -95,12 +101,12 @@ const SetupStepper: React.FC<Props> = ({ onComplete }) => {
             </button>
             {verifyStatus === 'ok' && (
               <div className={styles.successMsg}>
-                ✅ Setup complete! You are ready to use MAYO Share.
+                <FaCheckCircle style={{ marginRight: 8 }} /> Setup complete! You are ready to use MAYO Share.
               </div>
             )}
             {verifyStatus === 'fail' && (
               <div className={styles.failMsg}>
-                ❌ Adapter not found. Please go back and repeat the steps.
+                <FaTimesCircle style={{ marginRight: 8 }} /> Adapter not found. Please go back and repeat the steps.
               </div>
             )}
           </div>
@@ -111,12 +117,12 @@ const SetupStepper: React.FC<Props> = ({ onComplete }) => {
       <div className={styles.navRow}>
         {currentStep > 0 && (
           <button onClick={() => setCurrentStep(s => s - 1)} className={styles.ghostBtn}>
-            ← Back
+            <FaArrowLeft style={{ marginRight: 6 }} /> Back
           </button>
         )}
         {!isLastStep && (
           <button onClick={() => setCurrentStep(s => s + 1)} className={styles.btn}>
-            Next →
+            Next <FaArrowRight style={{ marginLeft: 6 }} />
           </button>
         )}
         {isLastStep && verifyStatus === 'ok' && (
@@ -125,7 +131,7 @@ const SetupStepper: React.FC<Props> = ({ onComplete }) => {
             className={styles.btn}
             style={{ background: '#4CAF50' }}
           >
-            Enter MAYO Share →
+            Enter MAYO Share <FaArrowRight style={{ marginLeft: 6 }} />
           </button>
         )}
         <button onClick={onComplete} className={styles.ghostBtn}>

@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
-import styles from '../styles/components/TopBar.module.css';
+import { FaRegQuestionCircle } from 'react-icons/fa';
+import { CgProfile } from 'react-icons/cg';
+import styles from '../../styles/components/TopBar.module.css';
 
 const TopBar: React.FC = () => {
   const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -9,7 +11,9 @@ const TopBar: React.FC = () => {
       <div className={styles.logo}>🦅 MAYO Share</div>
 
       <div className={styles.actions}>
-        <button className={styles.iconBtn} title="Help">❓</button>
+        <button className={styles.iconBtn} title="Help">
+          <FaRegQuestionCircle size={20} />
+        </button>
 
         <div className={styles.dropdownWrapper}>
           <button
@@ -17,7 +21,7 @@ const TopBar: React.FC = () => {
             title="Profile"
             onClick={() => setDropdownOpen(o => !o)}
           >
-            👤
+            <CgProfile size={20} />
           </button>
 
           {dropdownOpen && (
@@ -28,11 +32,12 @@ const TopBar: React.FC = () => {
               />
               <div className={styles.menu}>
                 <div className={styles.menuItemMuted}>
-                  <span>👤</span>
+                  <CgProfile size={18} />
                   <span>My Device</span>
                 </div>
                 <div className={styles.divider} />
                 <div className={styles.menuItem}>
+                  {/* Replace with your theme icon import later */}
                   <span>🌓</span>
                   <span>Theme: Dark</span>
                 </div>
