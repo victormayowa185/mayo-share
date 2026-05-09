@@ -117,7 +117,7 @@ function createWindow(): void {
       nodeIntegration: false,
     },
   });
-  mainWindow.loadFile(path.join(__dirname, '..', '..', 'src', 'frontend', 'index.html'));
+  mainWindow.loadFile(path.join(__dirname, '..', '..', 'dist', 'renderer', 'index.html'));
 }
 
 // ---------- Hotspot ----------
@@ -156,14 +156,14 @@ ipcMain.handle('start-hotspot', async (): Promise<string> => {
 });
 
 // ---------- File selection ----------
-ipcMain.handle('select-file', async (): Promise<string | null> => {
+ipcMain.handle('select-file', async (): Promise<string[] | null> => {
   if (!mainWindow) return null;
   const result = await dialog.showOpenDialog(mainWindow, {
-    properties: ['openFile'],
-    title: 'Select a file to share',
+    properties: ['openFile', 'multiSelections'],
+    title: 'Select files to share',
   });
   if (result.canceled || result.filePaths.length === 0) return null;
-  return result.filePaths[0];
+  return result.filePaths;
 });
 
 // ---------- File server ----------
@@ -196,13 +196,37 @@ ipcMain.handle('read-file-chunk', async (_event, filePath: string, start: number
       if (err) return reject(err);
       const buf = Buffer.alloc(size);
       read(fd, buf, 0, size, start, (err, bytesRead) => {
-        close(fd, () => {});
+        close(fd, () => { });
         if (err) return reject(err);
         resolve(buf.slice(0, bytesRead).toString('base64'));
       });
     });
   });
 });
+
+// for file resume
+
+ipcMain.handle('save-resume-state', async (_event, transferId: string, offset: number, filePath: string): Promise<void> => {
+  const resumePath = path.join(os.tmpdir(), `mayo-resume-${transferId}.json`);
+  await fs.promises.writeFile(resumePath, JSON.stringify({ offset, filePath }), 'utf8');
+});
+
+ipcMain.handle('get-resume-state', async (_event, transferId: string): Promise<{ offset: number; filePath: string } | null> => {
+  const resumePath = path.join(os.tmpdir(), `mayo-resume-${transferId}.json`);
+  try {
+    const raw = await fs.promises.readFile(resumePath, 'utf8');
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+});
+
+ipcMain.handle('clear-resume-state', async (_event, transferId: string): Promise<void> => {
+  const resumePath = path.join(os.tmpdir(), `mayo-resume-${transferId}.json`);
+  try { await fs.promises.unlink(resumePath); } catch { }
+});
+
+
 
 ipcMain.handle('create-receive-file', async (_event, filePath: string): Promise<void> => {
   await fs.promises.mkdir(path.dirname(filePath), { recursive: true });

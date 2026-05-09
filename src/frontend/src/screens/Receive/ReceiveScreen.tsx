@@ -1,0 +1,2 @@
+// ReceiveScreen — coming soon
+export {};

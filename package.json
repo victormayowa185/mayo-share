@@ -4,12 +4,22 @@
   "description": "",
   "main": "dist/backend/index.js",
   "scripts": {
-    "build": "tsc",
-    "start": "npm run build && electron ."
-  },
+  "build": "tsc",
+  "build:frontend": "vite build",
+  "dev:frontend": "vite",
+  "start": "npm run build && npm run build:frontend && electron ."
+},
   "devDependencies": {
     "@types/node": "^20.0.0",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.1",
     "electron": "^39.2.7",
-    "typescript": "^5.4.0"
+    "typescript": "^5.4.0",
+    "vite": "^8.0.11"
+  },
+  "dependencies": {
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6"
   }
 }

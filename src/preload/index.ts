@@ -15,4 +15,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   readFileChunk: (filePath: string, start: number, size: number) => ipcRenderer.invoke('read-file-chunk', filePath, start, size),
   createReceiveFile: (filePath: string) => ipcRenderer.invoke('create-receive-file', filePath),
   appendReceiveChunk: (filePath: string, data: string) => ipcRenderer.invoke('append-receive-chunk', filePath, data),
+  saveResumeState: (transferId: string, offset: number, filePath: string) => ipcRenderer.invoke('save-resume-state', transferId, offset, filePath),
+  getResumeState: (transferId: string) => ipcRenderer.invoke('get-resume-state', transferId),
+  clearResumeState: (transferId: string) => ipcRenderer.invoke('clear-resume-state', transferId),
 });

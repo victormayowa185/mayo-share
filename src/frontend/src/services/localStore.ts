@@ -1,0 +1,2 @@
+// localStore — coming soon
+export {};

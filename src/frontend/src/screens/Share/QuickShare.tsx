@@ -1,0 +1,2 @@
+// QuickShare — coming soon
+export {};
