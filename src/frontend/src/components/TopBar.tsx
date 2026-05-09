@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import styles from '../../styles/components/TopBar.module.css';
+import styles from '../styles/components/TopBar.module.css';
 
 const TopBar: React.FC = () => {
   const [dropdownOpen, setDropdownOpen] = useState(false);

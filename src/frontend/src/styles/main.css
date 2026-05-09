@@ -1,0 +1,25 @@
+/* ========== Global Resets & Variables ========== */
+
+@import url('https://fonts.googleapis.com/css2?family=Mulish:wght@400;500;600;700&display=swap');
+
+*, *::before, *::after {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Mulish', Arial, sans-serif;
+  background: #0A0A0A;
+  color: white;
+  min-height: 100vh;
+}
+
+/* Utility classes */
+.text-muted {
+  color: #888;
+}
+
+.text-center {
+  text-align: center;
+}

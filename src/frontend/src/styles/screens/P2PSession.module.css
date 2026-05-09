@@ -1,0 +1,161 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 48px 24px;
+  min-height: calc(100vh - 60px);
+  color: white;
+}
+
+.backBtn {
+  align-self: flex-start;
+  background: transparent;
+  border: 1px solid #333;
+  color: #888;
+  padding: 8px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  margin-bottom: 32px;
+  font-size: 0.9rem;
+}
+.backBtn:hover { border-color: #555; color: #ccc; }
+
+.title { font-size: 1.6rem; margin-bottom: 32px; }
+
+.modeRow { display: flex; gap: 16px; margin-bottom: 24px; }
+
+.btn {
+  padding: 12px 28px;
+  background: #0066FF;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 1rem;
+  cursor: pointer;
+}
+.btn:hover:not(:disabled) { background: #0055dd; }
+.btn:disabled { background: #333; cursor: not-allowed; }
+
+.ghostBtn {
+  padding: 12px 28px;
+  background: transparent;
+  color: #ccc;
+  border: 1px solid #333;
+  border-radius: 8px;
+  font-size: 1rem;
+  cursor: pointer;
+}
+.ghostBtn:hover { border-color: #555; }
+
+.codePanel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  max-width: 480px;
+}
+
+.label { color: #888; font-size: 0.9rem; align-self: flex-start; }
+
+.codeBox {
+  width: 100%;
+  background: #111;
+  border: 1px solid #333;
+  border-radius: 8px;
+  color: #ccc;
+  padding: 12px;
+  font-size: 0.78rem;
+  font-family: monospace;
+  resize: none;
+  word-break: break-all;
+}
+
+.copyBtn {
+  background: #222;
+  border: 1px solid #333;
+  color: #ccc;
+  padding: 8px 20px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+.copyBtn:hover { background: #2a2a2a; }
+
+.status {
+  margin-top: 16px;
+  color: #4CAF50;
+  font-size: 0.95rem;
+  text-align: center;
+}
+.error { color: #f44336; }
+
+.spinner {
+  border: 3px solid #333;
+  border-top: 3px solid #0066FF;
+  border-radius: 50%;
+  width: 28px;
+  height: 28px;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+.fileArea {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  width: 100%;
+  max-width: 520px;
+  margin-top: 16px;
+}
+
+.connectedBadge {
+  background: #0a1a0a;
+  border: 1px solid #4CAF50;
+  color: #4CAF50;
+  padding: 6px 16px;
+  border-radius: 20px;
+  font-size: 0.9rem;
+}
+
+.actionRow { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
+
+.sendBtn {
+  padding: 12px 28px;
+  background: #4CAF50;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 1rem;
+  cursor: pointer;
+}
+.sendBtn:hover:not(:disabled) { background: #43a047; }
+.sendBtn:disabled { background: #333; cursor: not-allowed; }
+
+.queue {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.queueItem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #111;
+  border: 1px solid #222;
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 0.88rem;
+}
+
+.queueName { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.queueSize { color: #888; white-space: nowrap; }
+.queueStatus { color: #0066FF; white-space: nowrap; min-width: 60px; text-align: right; }
+.removeBtn { background: transparent; border: none; cursor: pointer; font-size: 0.9rem; }
+
+.progress { flex: 1; height: 6px; accent-color: #0066FF; }
+
+.incomingSection { width: 100%; }

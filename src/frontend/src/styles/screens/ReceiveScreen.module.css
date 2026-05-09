@@ -1,0 +1,133 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 48px 24px;
+  min-height: calc(100vh - 60px);
+  color: white;
+  
+}
+
+.backBtn {
+  align-self: flex-start;
+  background: transparent;
+  border: 1px solid #333;
+  color: #888;
+  padding: 8px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  margin-bottom: 32px;
+  font-size: 0.9rem;
+}
+.backBtn:hover { border-color: #555; color: #ccc; }
+
+.title { font-size: 1.6rem; margin-bottom: 32px; }
+
+.modeCards {
+  display: flex;
+  gap: 24px;
+  flex-wrap: wrap;
+  justify-content: center;
+  margin-bottom: 24px;
+}
+
+.modeCard {
+  background: #111;
+  border: 1px solid #222;
+  border-radius: 16px;
+  padding: 28px 24px;
+  width: 220px;
+  cursor: pointer;
+  text-align: center;
+  transition: border-color 0.2s, transform 0.15s;
+}
+.modeCard:hover { border-color: #0066FF; transform: translateY(-3px); }
+
+.cardEmoji { font-size: 2.5rem; margin-bottom: 12px; }
+.cardTitle { font-size: 1rem; font-weight: bold; margin-bottom: 8px; }
+.cardDesc { color: #888; font-size: 0.85rem; line-height: 1.5; }
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  max-width: 480px;
+}
+
+.label { color: #888; font-size: 0.9rem; align-self: flex-start; }
+
+.codeBox {
+  width: 100%;
+  background: #111;
+  border: 1px solid #333;
+  border-radius: 8px;
+  color: #ccc;
+  padding: 12px;
+  font-size: 0.78rem;
+  font-family: monospace;
+  resize: none;
+  word-break: break-all;
+}
+
+.urlInput {
+  width: 100%;
+  background: #111;
+  border: 1px solid #333;
+  border-radius: 8px;
+  color: #ccc;
+  padding: 12px;
+  font-size: 0.95rem;
+}
+
+.btn {
+  padding: 12px 28px;
+  background: #0066FF;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 1rem;
+  cursor: pointer;
+}
+.btn:hover { background: #0055dd; }
+
+.copyBtn {
+  background: #222;
+  border: 1px solid #333;
+  color: #ccc;
+  padding: 8px 20px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.connectedBadge {
+  background: #0a1a0a;
+  border: 1px solid #4CAF50;
+  color: #4CAF50;
+  padding: 8px 20px;
+  border-radius: 20px;
+  font-size: 0.9rem;
+  margin-bottom: 16px;
+}
+
+.fileRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  background: #111;
+  border: 1px solid #222;
+  border-radius: 8px;
+  padding: 10px 14px;
+}
+
+.fileName { flex: 1; font-size: 0.9rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.progress { flex: 1; height: 6px; accent-color: #0066FF; }
+.pct { color: #0066FF; font-size: 0.85rem; white-space: nowrap; }
+
+.hint { color: #555; font-size: 0.85rem; text-align: center; }
+
+.status { margin-top: 20px; color: #4CAF50; font-size: 0.95rem; text-align: center; }
+.error { color: #f44336; }

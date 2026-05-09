@@ -1,6 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import HomeScreen from './screens/Home/HomeScreen';
 import SetupStepper from './screens/Onboarding/SetupStepper';
+import HotspotCheck from './screens/Share/HotspotCheck';
+import TransferMethodPicker from './screens/Share/TransferMethodPicker';
+import QuickShare from './screens/Share/QuickShare';
+import P2PSession from './screens/Share/P2PSession';
+import ReceiveScreen from './screens/Receive/ReceiveScreen';
 
 export type Screen =
   | 'home'
@@ -25,18 +30,9 @@ const App: React.FC = () => {
     setSetupComplete(true);
   };
 
-  const resetSetup = () => {
-    localStorage.removeItem('mayo-setup-complete');
-    setSetupComplete(false);
-    setScreen('home');
-  };
-
   if (setupComplete === null) {
     return (
-      <div style={{
-        background: '#0A0A0A', minHeight: '100vh',
-        display: 'flex', alignItems: 'center', justifyContent: 'center'
-      }}>
+      <div style={{ background: '#0A0A0A', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <div style={{ color: '#0066FF', fontSize: '1.5rem' }}>🦅 MAYO Share</div>
       </div>
     );
@@ -46,13 +42,37 @@ const App: React.FC = () => {
     return <SetupStepper onComplete={completeSetup} />;
   }
 
-  return (
-    <HomeScreen
-      currentScreen={screen}
-      setScreen={setScreen}
-      onHelpClick={resetSetup}
-    />
-  );
+  switch (screen) {
+    case 'share-hotspot-check':
+      return (
+        <HotspotCheck
+          onReady={() => setScreen('share-method-picker')}
+          onBack={() => setScreen('home')}
+        />
+      );
+
+    case 'share-method-picker':
+      return (
+        <TransferMethodPicker
+          onSelectP2P={() => setScreen('share-p2p')}
+          onSelectQuick={() => setScreen('share-quick')}
+          onBack={() => setScreen('share-hotspot-check')}
+        />
+      );
+
+    case 'share-quick':
+      return <QuickShare onBack={() => setScreen('share-method-picker')} />;
+
+    case 'share-p2p':
+      return <P2PSession onBack={() => setScreen('share-method-picker')} />;
+
+    case 'receive':
+      return <ReceiveScreen onBack={() => setScreen('home')} />;
+
+    case 'home':
+    default:
+      return <HomeScreen currentScreen={screen} setScreen={setScreen} />;
+  }
 };
 
 export default App;
