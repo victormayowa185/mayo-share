@@ -1,0 +1,109 @@
+/* ========== SetupStepper Styles ========== */
+
+.container {
+  background: #0A0A0A;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-family: Arial, sans-serif;
+  padding: 40px 20px;
+}
+
+.logo {
+  font-size: 2rem;
+  margin-bottom: 8px;
+}
+
+.subtitle {
+  color: #888;
+  margin-bottom: 40px;
+}
+
+.steps {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 40px;
+}
+
+.stepDot {
+  width: 32px;
+  height: 4px;
+  border-radius: 2px;
+  transition: background 0.3s;
+}
+
+.card {
+  background: #111;
+  border: 1px solid #222;
+  border-radius: 16px;
+  padding: 32px;
+  max-width: 480px;
+  width: 100%;
+  text-align: center;
+}
+
+.stepNumber {
+  color: #0066FF;
+  font-size: 0.85rem;
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.title {
+  margin: 0 0 16px;
+  font-size: 1.3rem;
+}
+
+.instruction {
+  color: #ccc;
+  line-height: 1.6;
+  margin-bottom: 12px;
+}
+
+.note {
+  color: #777;
+  font-size: 0.9rem;
+  margin-bottom: 28px;
+}
+
+.btn {
+  padding: 12px 28px;
+  font-size: 16px;
+  background: #0066FF;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.ghostBtn {
+  padding: 12px 28px;
+  font-size: 16px;
+  background: transparent;
+  color: #888;
+  border: 1px solid #333;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.successMsg {
+  color: #4CAF50;
+  margin-top: 16px;
+  font-size: 1.1rem;
+}
+
+.failMsg {
+  color: #f44336;
+  margin-top: 16px;
+  font-size: 0.95rem;
+}
+
+.navRow {
+  display: flex;
+  gap: 16px;
+  margin-top: 32px;
+}

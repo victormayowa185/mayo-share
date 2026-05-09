@@ -1,0 +1,63 @@
+/* src/frontend/src/styles/screens/HomeScreen.module.css */
+
+.container {
+  background: #0A0A0A;
+  min-height: 100vh;
+  color: white;
+  font-family: Arial, sans-serif;
+}
+
+.inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: calc(100vh - 60px);
+  padding: 40px 20px;
+  gap: 20px;
+}
+
+.heading {
+  font-size: 1.8rem;
+  margin-bottom: 8px;
+}
+
+.subtitle {
+  color: #888;
+  margin-bottom: 32px;
+}
+
+.cardsContainer {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.card {
+  background: #111;
+  border: 1px solid #222;
+  border-radius: 16px;
+  padding: 32px 28px;
+  width: 220px;
+  cursor: pointer;
+  text-align: center;
+  transition: border-color 0.2s, transform 0.1s;
+}
+
+.cardEmoji {
+  font-size: 3rem;
+  margin-bottom: 16px;
+}
+
+.cardTitle {
+  font-size: 1.2rem;
+  font-weight: bold;
+  margin-bottom: 8px;
+}
+
+.cardDescription {
+  color: #888;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}

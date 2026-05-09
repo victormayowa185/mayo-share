@@ -1,6 +1,7 @@
 import React from 'react';
 import { Screen } from '../../App';
 import TopBar from '../../components/TopBar';
+import styles from '../../styles/screens/HomeScreen.module.css';
 
 interface Props {
   currentScreen: Screen;
@@ -9,21 +10,13 @@ interface Props {
 
 const HomeScreen: React.FC<Props> = ({ setScreen }) => {
   return (
-    <div style={{ background: '#0A0A0A', minHeight: '100vh', color: 'white', fontFamily: 'Arial, sans-serif' }}>
+    <div className={styles.container}>
       <TopBar />
-      <div style={{
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        minHeight: 'calc(100vh - 60px)',
-        padding: '40px 20px',
-        gap: '20px',
-      }}>
-        <h1 style={{ fontSize: '1.8rem', marginBottom: '8px' }}>What do you want to do?</h1>
-        <p style={{ color: '#888', marginBottom: '32px' }}>Choose an action to get started</p>
+      <div className={styles.inner}>
+        <h1 className={styles.heading}>What do you want to do?</h1>
+        <p className={styles.subtitle}>Choose an action to get started</p>
 
-        <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap', justifyContent: 'center' }}>
+        <div className={styles.cardsContainer}>
           <ActionCard
             emoji="📤"
             title="Share Files"
@@ -54,17 +47,8 @@ interface CardProps {
 
 const ActionCard: React.FC<CardProps> = ({ emoji, title, description, onClick, color }) => (
   <div
+    className={styles.card}
     onClick={onClick}
-    style={{
-      background: '#111',
-      border: `1px solid #222`,
-      borderRadius: '16px',
-      padding: '32px 28px',
-      width: '220px',
-      cursor: 'pointer',
-      textAlign: 'center',
-      transition: 'border-color 0.2s, transform 0.1s',
-    }}
     onMouseEnter={e => {
       (e.currentTarget as HTMLDivElement).style.borderColor = color;
       (e.currentTarget as HTMLDivElement).style.transform = 'translateY(-2px)';
@@ -74,9 +58,9 @@ const ActionCard: React.FC<CardProps> = ({ emoji, title, description, onClick, c
       (e.currentTarget as HTMLDivElement).style.transform = 'translateY(0)';
     }}
   >
-    <div style={{ fontSize: '3rem', marginBottom: '16px' }}>{emoji}</div>
-    <div style={{ fontSize: '1.2rem', fontWeight: 'bold', marginBottom: '8px' }}>{title}</div>
-    <div style={{ color: '#888', fontSize: '0.9rem', lineHeight: '1.5' }}>{description}</div>
+    <div className={styles.cardEmoji}>{emoji}</div>
+    <div className={styles.cardTitle}>{title}</div>
+    <div className={styles.cardDescription}>{description}</div>
   </div>
 );
 

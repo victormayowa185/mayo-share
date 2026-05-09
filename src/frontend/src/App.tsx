@@ -16,7 +16,6 @@ const App: React.FC = () => {
   const [setupComplete, setSetupComplete] = useState<boolean | null>(null);
 
   useEffect(() => {
-    // Check if setup was already completed (stored in localStorage for now)
     const done = localStorage.getItem('mayo-setup-complete');
     setSetupComplete(done === 'true');
   }, []);
@@ -26,22 +25,34 @@ const App: React.FC = () => {
     setSetupComplete(true);
   };
 
-  // Still loading
+  const resetSetup = () => {
+    localStorage.removeItem('mayo-setup-complete');
+    setSetupComplete(false);
+    setScreen('home');
+  };
+
   if (setupComplete === null) {
     return (
-      <div style={{ background: '#0A0A0A', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{
+        background: '#0A0A0A', minHeight: '100vh',
+        display: 'flex', alignItems: 'center', justifyContent: 'center'
+      }}>
         <div style={{ color: '#0066FF', fontSize: '1.5rem' }}>🦅 MAYO Share</div>
       </div>
     );
   }
 
-  // First launch — show onboarding
   if (!setupComplete) {
     return <SetupStepper onComplete={completeSetup} />;
   }
 
-  // Main app
-  return <HomeScreen currentScreen={screen} setScreen={setScreen} />;
+  return (
+    <HomeScreen
+      currentScreen={screen}
+      setScreen={setScreen}
+      onHelpClick={resetSetup}
+    />
+  );
 };
 
 export default App;
