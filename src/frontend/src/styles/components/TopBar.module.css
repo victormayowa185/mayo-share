@@ -37,6 +37,38 @@
   letter-spacing: 0.5px;
 }
 
+
+
+/* ---------- Custom Tooltip ---------- */
+.iconBtn {
+  position: relative;   /* so the tooltip positions itself against the button */
+}
+
+.iconBtn::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: -30px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #2a2a2a;
+  color: #eee;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 0.7rem;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s, transform 0.15s;
+  z-index: 200;
+}
+
+.iconBtn:hover::after {
+  opacity: 1;
+  transform: translateX(-50%) translateY(-4px);
+}
+
+
+
 .actions {
   display: flex;
   gap: 8px;
