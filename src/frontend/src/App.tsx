@@ -9,6 +9,7 @@ import ReceiveScreen from './screens/Receive/ReceiveScreen';
 import ActivityScreen from './screens/Activity/ActivityScreen';
 import SupportScreen from './screens/Support/SupportScreen';
 import RateUsScreen from './screens/RateUs/RateUsScreen';
+import StatusBar from './components/StatusBar';
 
 export type Screen =
   | 'home'
@@ -20,12 +21,15 @@ export type Screen =
   | 'settings'
   | 'activity'
   | 'support'
-  | 'rate'
-  ;
+  | 'rate';
 
 const App: React.FC = () => {
   const [screen, setScreen] = useState<Screen>('home');
   const [setupComplete, setSetupComplete] = useState<boolean | null>(null);
+
+  // Hotspot status lifted to App level
+  const [hotspotActive, setHotspotActive] = useState(false);
+  const [hotspotIP, setHotspotIP] = useState('');
 
   useEffect(() => {
     const done = localStorage.getItem('mayo-setup-complete');
@@ -40,7 +44,7 @@ const App: React.FC = () => {
   if (setupComplete === null) {
     return (
       <div style={{ background: '#0A0A0A', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <div style={{ color: '#0066FF', fontSize: '1.5rem' }}>🦅 MAYO Share</div>
+        <div style={{ color: '#b169e0', fontSize: '1.5rem' }}>MAYO Share</div>
       </div>
     );
   }
@@ -49,45 +53,60 @@ const App: React.FC = () => {
     return <SetupStepper onComplete={completeSetup} />;
   }
 
-  switch (screen) {
-    case 'share-hotspot-check':
-      return (
-        <HotspotCheck
-          onReady={() => setScreen('share-method-picker')}
-          onBack={() => setScreen('home')}
-        />
-      );
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', background: '#0A0A0A' }}>
+      {/* Main content */}
+      <div style={{ flex: 1 }}>
+        {screen === 'share-hotspot-check' && (
+          <HotspotCheck
+            onReady={() => setScreen('share-method-picker')}
+            onBack={() => setScreen('home')}
+            onHotspotStarted={(ip) => {
+              setHotspotActive(true);
+              setHotspotIP(ip);
+            }}
+          />
+        )}
+        {screen === 'share-method-picker' && (
+          <TransferMethodPicker
+            onSelectP2P={() => setScreen('share-p2p')}
+            onSelectQuick={() => setScreen('share-quick')}
+            onBack={() => setScreen('share-hotspot-check')}
+          />
+        )}
+        {screen === 'share-quick' && (
+          <QuickShare onBack={() => setScreen('share-method-picker')} />
+        )}
+        {screen === 'share-p2p' && (
+          <P2PSession onBack={() => setScreen('share-method-picker')} />
+        )}
+        {screen === 'receive' && (
+          <ReceiveScreen onBack={() => setScreen('home')} />
+        )}
+        {screen === 'activity' && (
+          <ActivityScreen onBack={() => setScreen('home')} />
+        )}
+        {screen === 'support' && (
+          <SupportScreen onBack={() => setScreen('home')} />
+        )}
+        {screen === 'rate' && (
+          <RateUsScreen onBack={() => setScreen('home')} />
+        )}
+        {(screen === 'home' || screen === undefined) && (
+          <HomeScreen currentScreen={screen} setScreen={setScreen} />
+        )}
+      </div>
 
-    case 'share-method-picker':
-      return (
-        <TransferMethodPicker
-          onSelectP2P={() => setScreen('share-p2p')}
-          onSelectQuick={() => setScreen('share-quick')}
-          onBack={() => setScreen('share-hotspot-check')}
-        />
-      );
-
-    case 'share-quick':
-      return <QuickShare onBack={() => setScreen('share-method-picker')} />;
-
-    case 'share-p2p':
-      return <P2PSession onBack={() => setScreen('share-method-picker')} />;
-
-    case 'receive':
-      return <ReceiveScreen onBack={() => setScreen('home')} />;
-
-    case 'activity':
-      return <ActivityScreen onBack={() => setScreen('home')} />;
-    case 'support':
-      return <SupportScreen onBack={() => setScreen('home')} />;
-    case 'rate':
-      return <RateUsScreen onBack={() => setScreen('home')} />;
-
-    case 'home':
-    default:
-      return <HomeScreen currentScreen={screen} setScreen={setScreen} />;
-
-  }
+      {/* Status Bar – always visible after setup */}
+      <StatusBar
+        hotspotActive={hotspotActive}
+        hotspotIP={hotspotIP}
+        transferLabel={null}
+        transferProgress={null}
+        appVersion="1.0.0"
+      />
+    </div>
+  );
 };
 
 export default App;

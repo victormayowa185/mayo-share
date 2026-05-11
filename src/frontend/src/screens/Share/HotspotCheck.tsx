@@ -5,9 +5,10 @@ import styles from '../../styles/screens/HotspotCheck.module.css';
 interface Props {
   onReady: () => void;
   onBack: () => void;
+  onHotspotStarted: (ip: string) => void;
 }
 
-const HotspotCheck: React.FC<Props> = ({ onReady, onBack }) => {
+const HotspotCheck: React.FC<Props> = ({ onReady, onBack, onHotspotStarted }) => {
   const [status, setStatus] = useState('');
   const [running, setRunning] = useState(false);
   const [success, setSuccess] = useState(false);
@@ -18,7 +19,14 @@ const HotspotCheck: React.FC<Props> = ({ onReady, onBack }) => {
     try {
       const result = await window.electronAPI.startHotspot();
       setStatus(result);
-      if (result.includes('SUCCESS')) setSuccess(true);
+      if (result.includes('SUCCESS')) {
+        setSuccess(true);
+        // Extract hotspot IP from the script output
+        const ipMatch = result.match(/Hotspot IP \(for sharing\):\s*([\d.]+)/);
+        if (ipMatch && ipMatch[1]) {
+          onHotspotStarted(ipMatch[1]);
+        }
+      }
     } catch (err: any) {
       setStatus('Error: ' + (err.message || err));
     } finally {
