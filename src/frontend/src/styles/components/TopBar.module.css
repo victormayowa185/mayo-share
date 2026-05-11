@@ -4,7 +4,7 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background: #111;
+  background: #111111b2;
   border-bottom: 1px solid #222;
   padding: 0 24px;
   height: 60px;
@@ -14,7 +14,24 @@
 }
 
 .logo {
-  color: #0066FF;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.logoIcon {
+  color: white;              /* makes inline SVG inherit white fill */
+  display: flex;
+  align-items: center;
+}
+
+.logoIcon svg {
+  width: 30px;               /* adjust to your liking */
+  height: auto;
+}
+
+.logoText {
+  color: #b169e0;            /* your brand purple */
   font-weight: bold;
   font-size: 1.2rem;
   letter-spacing: 0.5px;
@@ -33,7 +50,7 @@
   font-size: 1.1rem;
   cursor: pointer;
   padding: 8px;
-  border-radius: 8px;
+  border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -41,9 +58,10 @@
 }
 
 .iconBtn:hover {
-  background: #222;
+  background: #b169e0;
 }
 
+/* --- rest of your dropdown styles stay exactly as you had them --- */
 .dropdownWrapper {
   position: relative;
 }
@@ -75,11 +93,12 @@
   color: #ccc;
   cursor: pointer;
   font-size: 0.9rem;
-  transition: background 0.15s;
+  transition: background 0.15s, color 0.15s;
 }
 
 .menuItem:hover {
   background: #252525;
+  color: white;
 }
 
 .menuItemMuted {

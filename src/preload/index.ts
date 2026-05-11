@@ -3,6 +3,7 @@ import { contextBridge, ipcRenderer } from 'electron';
 contextBridge.exposeInMainWorld('electronAPI', {
   startHotspot: () => ipcRenderer.invoke('start-hotspot'),
   selectFile: () => ipcRenderer.invoke('select-file'),
+  getHostname: () => ipcRenderer.invoke('get-hostname'),
   selectFolder: () => ipcRenderer.invoke('select-folder'),
   startFileServer: (filePaths: string[]) => ipcRenderer.invoke('start-file-server', filePaths),
   stopFileServer: () => ipcRenderer.invoke('stop-file-server'),

@@ -6,6 +6,9 @@ import TransferMethodPicker from './screens/Share/TransferMethodPicker';
 import QuickShare from './screens/Share/QuickShare';
 import P2PSession from './screens/Share/P2PSession';
 import ReceiveScreen from './screens/Receive/ReceiveScreen';
+import ActivityScreen from './screens/Activity/ActivityScreen';
+import SupportScreen from './screens/Support/SupportScreen';
+import RateUsScreen from './screens/RateUs/RateUsScreen';
 
 export type Screen =
   | 'home'
@@ -14,7 +17,11 @@ export type Screen =
   | 'share-p2p'
   | 'share-quick'
   | 'receive'
-  | 'settings';
+  | 'settings'
+  | 'activity'
+  | 'support'
+  | 'rate'
+  ;
 
 const App: React.FC = () => {
   const [screen, setScreen] = useState<Screen>('home');
@@ -69,9 +76,17 @@ const App: React.FC = () => {
     case 'receive':
       return <ReceiveScreen onBack={() => setScreen('home')} />;
 
+    case 'activity':
+      return <ActivityScreen onBack={() => setScreen('home')} />;
+    case 'support':
+      return <SupportScreen onBack={() => setScreen('home')} />;
+    case 'rate':
+      return <RateUsScreen onBack={() => setScreen('home')} />;
+
     case 'home':
     default:
       return <HomeScreen currentScreen={screen} setScreen={setScreen} />;
+
   }
 };
 

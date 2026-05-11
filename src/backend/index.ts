@@ -119,7 +119,7 @@ function createWindow(): void {
   });
   mainWindow.loadFile(path.join(__dirname, '..', '..', 'dist', 'renderer', 'index.html'));
 
-   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     require('electron').shell.openExternal(url);
     return { action: 'deny' };
   });
@@ -190,6 +190,12 @@ ipcMain.handle('get-file-size', async (_event, filePath: string): Promise<number
   return stats.size;
 });
 
+
+
+// HOST NAME 
+ipcMain.handle('get-hostname', async () => {
+  return os.hostname();
+});
 
 // for selecting folder 
 ipcMain.handle('select-folder', async (): Promise<string[] | null> => {
@@ -310,7 +316,7 @@ ipcMain.handle('save-temp-file', async (_event, fileName: string, base64Data: st
   const buf = Buffer.from(base64Data, 'base64');
   await fs.promises.writeFile(filePath, buf);
   return filePath;
-}); 
+});
 
 
 ipcMain.handle('compress-sdp', async (_event, sdp: string): Promise<string> => {
