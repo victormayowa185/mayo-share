@@ -5,10 +5,11 @@ declare global {
     electronAPI: {
       startHotspot: () => Promise<string>;
       selectFile: () => Promise<string[] | null>;
-      startFileServer: (filePath: string) => Promise<string>;
+      selectFolder: () => Promise<string[] | null>;
+      startFileServer: (filePaths: string[]) => Promise<string>;
       stopFileServer: () => Promise<void>;
       getFileSize: (filePath: string) => Promise<number>;
-      onDownloadUpdate: (callback: (status: string) => void) => void;
+      onDownloadUpdate: (callback: (data: { event: string; fileName: string }) => void) => void;
       compressSDP: (sdp: string) => Promise<string>;
       decompressSDP: (compact: string) => Promise<string>;
       ping: () => Promise<string>;
@@ -18,6 +19,8 @@ declare global {
       saveResumeState: (transferId: string, offset: number, filePath: string) => Promise<void>;
       getResumeState: (transferId: string) => Promise<{ offset: number; filePath: string } | null>;
       clearResumeState: (transferId: string) => Promise<void>;
+      getClipboardFiles: () => Promise<{ paths: string[]; type: 'files' | 'none' }>;
+      saveTempFile: (fileName: string, base64Data: string) => Promise<string>;
     };
   }
 }

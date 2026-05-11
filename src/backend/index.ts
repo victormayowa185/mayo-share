@@ -167,10 +167,9 @@ ipcMain.handle('select-file', async (): Promise<string[] | null> => {
 });
 
 // ---------- File server ----------
-ipcMain.handle('start-file-server', async (_event, filePath: string): Promise<string> => {
+ipcMain.handle('start-file-server', async (_event, filePaths: string[]): Promise<string> => {
   try {
-    // Pass the detected hotspot IP and let the server listen on all interfaces
-    const url = await fileServer.start(filePath, undefined, currentHotspotIP);
+    const url = await fileServer.start(filePaths, undefined, currentHotspotIP);
     return url;
   } catch (err) {
     throw new Error(`Could not start server: ${err}`);
@@ -184,6 +183,36 @@ ipcMain.handle('stop-file-server', async (): Promise<void> => {
 ipcMain.handle('get-file-size', async (_event, filePath: string): Promise<number> => {
   const stats = statSync(filePath);
   return stats.size;
+});
+
+
+// for selecting folder 
+ipcMain.handle('select-folder', async (): Promise<string[] | null> => {
+  if (!mainWindow) return null;
+  const result = await dialog.showOpenDialog(mainWindow, {
+    properties: ['openDirectory'],
+    title: 'Select a folder to share',
+  });
+  if (result.canceled || result.filePaths.length === 0) return null;
+
+  // Recursively collect all files in the folder
+  const folderPath = result.filePaths[0];
+  const allFiles: string[] = [];
+
+  const walk = async (dir: string) => {
+    const entries = await fs.promises.readdir(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        await walk(fullPath);
+      } else {
+        allFiles.push(fullPath);
+      }
+    }
+  };
+
+  await walk(folderPath);
+  return allFiles.length > 0 ? allFiles : null;
 });
 
 
@@ -239,12 +268,44 @@ ipcMain.handle('append-receive-chunk', async (_event, filePath: string, base64Da
 });
 
 
-fileServer.on('download-started', () => {
-  mainWindow?.webContents.send('download-update', 'started');
+fileServer.on('download-started', (_index: number, fileName: string) => {
+  mainWindow?.webContents.send('download-update', { event: 'started', fileName });
 });
-fileServer.on('download-completed', () => {
-  mainWindow?.webContents.send('download-update', 'completed');
+fileServer.on('download-completed', (_index: number, fileName: string) => {
+  mainWindow?.webContents.send('download-update', { event: 'completed', fileName });
 });
+
+
+
+// ---------- Clipboard file paths ----------
+ipcMain.handle('get-clipboard-files', async (): Promise<{ paths: string[]; type: 'files' | 'none' }> => {
+  const { clipboard } = await import('electron');
+  // On Windows, copied files are available via nativeImage or file list
+  // electron clipboard doesn't expose file paths directly, so we read from the raw formats
+  try {
+    const rawFilenames = clipboard.read('FileNameW'); // Windows-specific
+    if (rawFilenames && rawFilenames.length > 0) {
+      // Parse null-terminated wide string list
+      const paths: string[] = rawFilenames
+        .split('\0')
+        .map(p => p.trim())
+        .filter(p => p.length > 0 && (fs.existsSync(p)));
+      if (paths.length > 0) return { paths, type: 'files' };
+    }
+  } catch { /* not available */ }
+  return { paths: [], type: 'none' };
+});
+
+
+
+ipcMain.handle('save-temp-file', async (_event, fileName: string, base64Data: string): Promise<string> => {
+  const tempDir = path.join(os.tmpdir(), 'mayo-share-temp');
+  await fs.promises.mkdir(tempDir, { recursive: true });
+  const filePath = path.join(tempDir, fileName);
+  const buf = Buffer.from(base64Data, 'base64');
+  await fs.promises.writeFile(filePath, buf);
+  return filePath;
+}); 
 
 
 ipcMain.handle('compress-sdp', async (_event, sdp: string): Promise<string> => {

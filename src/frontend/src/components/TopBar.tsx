@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { FaRegQuestionCircle } from 'react-icons/fa';
+import { FaRegQuestionCircle, FaMoon, FaHistory, FaQuestionCircle, FaStar } from 'react-icons/fa';
 import { CgProfile } from 'react-icons/cg';
-import styles from '../../styles/components/TopBar.module.css';
+import styles from '../styles/components/TopBar.module.css';
 
 const TopBar: React.FC = () => {
   const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -37,20 +37,19 @@ const TopBar: React.FC = () => {
                 </div>
                 <div className={styles.divider} />
                 <div className={styles.menuItem}>
-                  {/* Replace with your theme icon import later */}
-                  <span>🌓</span>
+                  <FaMoon size={16} />
                   <span>Theme: Dark</span>
                 </div>
                 <div className={styles.menuItem}>
-                  <span>📋</span>
+                  <FaHistory size={16} />
                   <span>Activity</span>
                 </div>
                 <div className={styles.menuItem}>
-                  <span>🆘</span>
+                  <FaQuestionCircle size={16} />
                   <span>Get Support</span>
                 </div>
                 <div className={styles.menuItem}>
-                  <span>⭐</span>
+                  <FaStar size={16} />
                   <span>Rate Us</span>
                 </div>
               </div>

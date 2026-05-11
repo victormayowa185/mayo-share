@@ -1,57 +1,156 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { FaArrowLeft, FaCheckCircle } from 'react-icons/fa';
+import React, { useState, useEffect, useCallback } from 'react';
+import { FaArrowLeft, FaCheckCircle, FaTimes, FaFolderOpen } from 'react-icons/fa';
 import styles from '../../styles/screens/QuickShare.module.css';
 
 interface Props {
   onBack: () => void;
 }
 
-type Status = 'idle' | 'sharing' | 'downloading' | 'done';
+interface FileEntry {
+  id: string;
+  path: string;
+  name: string;
+  size: number;
+  downloadStatus: 'idle' | 'downloading' | 'done';
+}
+
+const formatBytes = (b: number) => {
+  if (b === 0) return '0 B';
+  const k = 1024, sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(b) / Math.log(k));
+  return parseFloat((b / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+};
 
 const QuickShare: React.FC<Props> = ({ onBack }) => {
-  const [selectedFile, setSelectedFile] = useState<string | null>(null);
-  const [fileName, setFileName] = useState('');
-  const [fileSize, setFileSize] = useState(0);
+  const [files, setFiles] = useState<FileEntry[]>([]);
   const [shareUrl, setShareUrl] = useState('');
   const [qrDataUrl, setQrDataUrl] = useState('');
-  const [status, setStatus] = useState<Status>('idle');
+  const [isSharing, setIsSharing] = useState(false);
   const [copied, setCopied] = useState(false);
-  const qrRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    return () => {
-      window.electronAPI.stopFileServer();
-    };
+    return () => { window.electronAPI.stopFileServer(); };
   }, []);
 
-  const selectFile = async () => {
+  // Listen for download events
+  useEffect(() => {
+    window.electronAPI.onDownloadUpdate((data) => {
+      setFiles(prev => prev.map(f =>
+        f.name === data.fileName
+          ? { ...f, downloadStatus: data.event === 'started' ? 'downloading' : 'done' }
+          : f
+      ));
+    });
+  }, []);
+
+  // Ctrl+V paste handler
+  const handlePaste = useCallback(async (e: ClipboardEvent) => {
+    if (isSharing) return;
+    e.preventDefault();
+
+    const clipboard = e.clipboardData;
+    if (!clipboard) return;
+
+    // Case 1: clipboard has files (dragged/copied from explorer)
+    if (clipboard.files && clipboard.files.length > 0) {
+      const newFiles: FileEntry[] = [];
+      for (let i = 0; i < clipboard.files.length; i++) {
+        const f = clipboard.files[i];
+        const filePath = (f as any).path;
+        if (filePath) {
+          newFiles.push({
+            id: Date.now().toString() + Math.random(),
+            path: filePath,
+            name: f.name,
+            size: f.size,
+            downloadStatus: 'idle',
+          });
+        }
+      }
+      if (newFiles.length > 0) { setFiles(prev => [...prev, ...newFiles]); return; }
+    }
+
+    // Case 2: clipboard has an image (screenshot, copy from browser)
+    const imageItem = Array.from(clipboard.items).find(item => item.type.startsWith('image/'));
+    if (imageItem) {
+      const blob = imageItem.getAsFile();
+      if (blob) {
+        const reader = new FileReader();
+        reader.onload = async () => {
+          const base64 = (reader.result as string).split(',')[1];
+          const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+          const fileName = `screenshot-${timestamp}.png`;
+          const savedPath = await window.electronAPI.saveTempFile(fileName, base64);
+          const size = blob.size;
+          setFiles(prev => [...prev, {
+            id: Date.now().toString() + Math.random(),
+            path: savedPath, name: fileName, size, downloadStatus: 'idle',
+          }]);
+        };
+        reader.readAsDataURL(blob);
+        return;
+      }
+    }
+
+    // Case 3: clipboard has text
+    const text = clipboard.getData('text/plain');
+    if (text && text.trim()) {
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const fileName = `pasted-text-${timestamp}.txt`;
+      const base64 = btoa(unescape(encodeURIComponent(text)));
+      const savedPath = await window.electronAPI.saveTempFile(fileName, base64);
+      const size = new Blob([text]).size;
+      setFiles(prev => [...prev, {
+        id: Date.now().toString() + Math.random(),
+        path: savedPath, name: fileName, size, downloadStatus: 'idle',
+      }]);
+    }
+  }, [isSharing]);
+
+  useEffect(() => {
+    document.addEventListener('paste', handlePaste as any);
+    return () => document.removeEventListener('paste', handlePaste as any);
+  }, [handlePaste]);
+
+  const addFiles = async () => {
     const paths = await window.electronAPI.selectFile();
-    if (!paths || paths.length === 0) return;
-    const filePath = paths[0];
-    const size = await window.electronAPI.getFileSize(filePath);
-    setSelectedFile(filePath);
-    setFileName(filePath.split('\\').pop() || filePath);
-    setFileSize(size);
+    if (!paths) return;
+    const newFiles: FileEntry[] = await Promise.all(paths.map(async p => ({
+      id: Date.now().toString() + Math.random(),
+      path: p,
+      name: p.split('\\').pop() || p,
+      size: await window.electronAPI.getFileSize(p),
+      downloadStatus: 'idle' as const,
+    })));
+    setFiles(prev => [...prev, ...newFiles]);
   };
 
-  const startSharing = async () => {
-    if (!selectedFile) return;
-    try {
-      const url = await window.electronAPI.startFileServer(selectedFile);
-      setShareUrl(url);
-      setStatus('sharing');
+  const addFolder = async () => {
+    const paths = await window.electronAPI.selectFolder();
+    if (!paths) return;
+    const newFiles: FileEntry[] = await Promise.all(paths.map(async p => ({
+      id: Date.now().toString() + Math.random(),
+      path: p,
+      name: p.split('\\').pop() || p,
+      size: await window.electronAPI.getFileSize(p),
+      downloadStatus: 'idle' as const,
+    })));
+    setFiles(prev => [...prev, ...newFiles]);
+  };
 
-      // Generate QR
+  const removeFile = (id: string) => setFiles(prev => prev.filter(f => f.id !== id));
+
+  const startSharing = async () => {
+    if (files.length === 0) return;
+    try {
+      const url = await window.electronAPI.startFileServer(files.map(f => f.path));
+      setShareUrl(url);
+      setIsSharing(true);
       if ((window as any).QRCode) {
-        (window as any).QRCode.toDataURL(url, { width: 200, margin: 2 }, (_: any, dataURL: string) => {
+        (window as any).QRCode.toDataURL(url, { width: 180, margin: 2 }, (_: any, dataURL: string) => {
           setQrDataUrl(dataURL);
         });
       }
-
-      window.electronAPI.onDownloadUpdate((s) => {
-        if (s === 'started') setStatus('downloading');
-        if (s === 'completed') setStatus('done');
-      });
     } catch (err: any) {
       alert('Error: ' + err.message);
     }
@@ -61,8 +160,9 @@ const QuickShare: React.FC<Props> = ({ onBack }) => {
     await window.electronAPI.stopFileServer();
     setShareUrl('');
     setQrDataUrl('');
-    setStatus('idle');
+    setIsSharing(false);
     setCopied(false);
+    setFiles(prev => prev.map(f => ({ ...f, downloadStatus: 'idle' })));
   };
 
   const copyLink = () => {
@@ -72,67 +172,77 @@ const QuickShare: React.FC<Props> = ({ onBack }) => {
     });
   };
 
-  const formatBytes = (b: number) => {
-    if (b === 0) return '0 B';
-    const k = 1024, sizes = ['B', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(b) / Math.log(k));
-    return parseFloat((b / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
-  };
-
   return (
     <div className={styles.container}>
       <button className={styles.backBtn} onClick={() => { stopSharing(); onBack(); }}>
         <FaArrowLeft style={{ marginRight: 6 }} /> Back
       </button>
       <h2 className={styles.title}>Quick Share</h2>
-      <p className={styles.subtitle}>Share a file — receiver opens the link in any browser.</p>
+      <p className={styles.subtitle}>
+        {isSharing ? 'Share the link or QR code — receiver opens it in any browser.' : 'Add files, then start sharing.'}
+      </p>
 
-      {status === 'idle' && (
-        <div className={styles.selectArea}>
-          <button className={styles.btn} onClick={selectFile}>Select File</button>
-          {selectedFile && (
-            <div className={styles.fileInfo}>
-              <span className={styles.fileName}>{fileName}</span>
-              <span className={styles.fileSize}>{formatBytes(fileSize)}</span>
-              <button className={styles.shareBtn} onClick={startSharing}>Start Sharing</button>
+      {/* File list */}
+      {files.length > 0 && (
+        <div className={styles.fileList}>
+          {files.map(f => (
+            <div key={f.id} className={styles.fileRow}>
+              <span className={styles.fileRowName}>{f.name}</span>
+              <span className={styles.fileRowSize}>{formatBytes(f.size)}</span>
+              <span className={styles.fileRowStatus}>
+                {f.downloadStatus === 'idle' && ''}
+                {f.downloadStatus === 'downloading' && <div className={styles.miniSpinner} />}
+                {f.downloadStatus === 'done' && <FaCheckCircle color="#4CAF50" size={16} />}
+              </span>
+              {!isSharing && (
+                <button className={styles.removeBtn} onClick={() => removeFile(f.id)} title="Remove file">
+                  <FaTimes size={14} />
+                </button>
+              )}
             </div>
+          ))}
+        </div>
+      )}
+
+      {/* Action buttons — before sharing */}
+      {!isSharing && (
+        <div className={styles.actionRow}>
+          <button className={styles.btn} onClick={addFiles}>Add Files</button>
+          <button className={styles.ghostBtn} onClick={addFolder}>Add Folder</button>
+          {files.length > 0 && (
+            <button className={styles.shareBtn} onClick={startSharing}>
+              Start Sharing ({files.length} file{files.length > 1 ? 's' : ''})
+            </button>
           )}
         </div>
       )}
 
-      {(status === 'sharing' || status === 'downloading' || status === 'done') && (
+      {/* Sharing panel */}
+      {isSharing && (
         <div className={styles.sharingPanel}>
-          <div className={styles.fileChip}>{fileName} — {formatBytes(fileSize)}</div>
-
           {qrDataUrl && <img src={qrDataUrl} alt="QR Code" className={styles.qr} />}
-
           <div className={styles.urlRow}>
             <span className={styles.url}>{shareUrl}</span>
             <button className={styles.copyBtn} onClick={copyLink}>
               {copied ? (
-                <><FaCheckCircle style={{ marginRight: 4 }} /> Copied</>
+                <><FaCheckCircle style={{ marginRight: 4 }} color="#4CAF50" size={14} /> Copied</>
               ) : (
                 'Copy Link'
               )}
             </button>
           </div>
-
-          <div className={styles.statusRow}>
-            {status === 'sharing' && <><div className={styles.spinner} /> <span>Waiting for receiver...</span></>}
-            {status === 'downloading' && <><div className={styles.spinner} /> <span style={{ color: '#0066FF' }}>Sending file...</span></>}
-            {status === 'done' && (
-              <span className={styles.doneMsg}>
-                <FaCheckCircle style={{ marginRight: 6 }} /> Download complete!
-              </span>
-            )}
-          </div>
-
+          <p className={styles.hint}>Tell the receiver to connect to your hotspot and open this link.</p>
           <button className={styles.stopBtn} onClick={stopSharing}>Stop Sharing</button>
         </div>
       )}
 
-      {/* QR library loaded from CDN */}
-      <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.1/build/qrcode.min.js" />
+      {files.length === 0 && !isSharing && (
+        <div className={styles.emptyState}>
+          <FaFolderOpen size={48} color="#555" />
+          <p>No files added yet.</p>
+          <p className={styles.emptyHint}>Click "Add Files", "Add Folder", or press Ctrl+V to paste.</p>
+        </div>
+      )}
     </div>
   );
 };

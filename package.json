@@ -4,11 +4,11 @@
   "description": "",
   "main": "dist/backend/index.js",
   "scripts": {
-  "build": "tsc",
-  "build:frontend": "vite build",
-  "dev:frontend": "vite",
-  "start": "npm run build && npm run build:frontend && electron ."
-},
+    "build": "tsc",
+    "build:frontend": "vite build",
+    "dev:frontend": "vite",
+    "start": "npm run build && npm run build:frontend && electron ."
+  },
   "devDependencies": {
     "@types/node": "^20.0.0",
     "@types/react": "^19.2.14",
@@ -20,6 +20,7 @@
   },
   "dependencies": {
     "react": "^19.2.6",
-    "react-dom": "^19.2.6"
+    "react-dom": "^19.2.6",
+    "react-icons": "^5.6.0"
   }
 }

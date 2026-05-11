@@ -3,11 +3,12 @@ import { contextBridge, ipcRenderer } from 'electron';
 contextBridge.exposeInMainWorld('electronAPI', {
   startHotspot: () => ipcRenderer.invoke('start-hotspot'),
   selectFile: () => ipcRenderer.invoke('select-file'),
-  startFileServer: (filePath: string) => ipcRenderer.invoke('start-file-server', filePath),
+  selectFolder: () => ipcRenderer.invoke('select-folder'),
+  startFileServer: (filePaths: string[]) => ipcRenderer.invoke('start-file-server', filePaths),
   stopFileServer: () => ipcRenderer.invoke('stop-file-server'),
   getFileSize: (filePath: string) => ipcRenderer.invoke('get-file-size', filePath),
-  onDownloadUpdate: (callback: (status: string) => void) => {
-    ipcRenderer.on('download-update', (_event, status: string) => callback(status));
+  onDownloadUpdate: (callback: (data: { event: string; fileName: string }) => void) => {
+    ipcRenderer.on('download-update', (_event, data) => callback(data));
   },
   compressSDP: (sdp: string) => ipcRenderer.invoke('compress-sdp', sdp),
   decompressSDP: (compact: string) => ipcRenderer.invoke('decompress-sdp', compact),
@@ -18,4 +19,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   saveResumeState: (transferId: string, offset: number, filePath: string) => ipcRenderer.invoke('save-resume-state', transferId, offset, filePath),
   getResumeState: (transferId: string) => ipcRenderer.invoke('get-resume-state', transferId),
   clearResumeState: (transferId: string) => ipcRenderer.invoke('clear-resume-state', transferId),
+  getClipboardFiles: () => ipcRenderer.invoke('get-clipboard-files'),
+  saveTempFile: (fileName: string, base64Data: string) => ipcRenderer.invoke('save-temp-file', fileName, base64Data),
 });
