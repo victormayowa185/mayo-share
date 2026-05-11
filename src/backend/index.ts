@@ -118,6 +118,11 @@ function createWindow(): void {
     },
   });
   mainWindow.loadFile(path.join(__dirname, '..', '..', 'dist', 'renderer', 'index.html'));
+
+   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    require('electron').shell.openExternal(url);
+    return { action: 'deny' };
+  });
 }
 
 // ---------- Hotspot ----------

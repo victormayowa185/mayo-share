@@ -1,5 +1,5 @@
-import React, { useState, useRef } from 'react';
-import { FaArrowLeft, FaCircle, FaTimes } from 'react-icons/fa';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { FaArrowLeft, FaCircle, FaTimes, FaFolderOpen } from 'react-icons/fa';
 import styles from '../../styles/screens/P2PSession.module.css';
 
 interface Props {
@@ -46,6 +46,9 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
   const localPC = useRef<RTCPeerConnection | null>(null);
   const localDC = useRef<RTCDataChannel | null>(null);
 
+  // ---------- Reliable path storage for incoming files ----------
+  const receivePathsRef = useRef<Record<string, string>>({});
+
   const showFileArea = () => setConnected(true);
 
   const handleDCMessage = async (raw: string) => {
@@ -55,6 +58,7 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
     if (msg.type === 'file-start') {
       const { id, name, size, resumable, fromOffset } = msg;
       const savePath = `C:\\mayo-received\\${name}`;
+      receivePathsRef.current[id] = savePath;                       // store path in ref
       if (resumable && fromOffset > 0) {
         setReceiveMap(prev => ({ ...prev, [id]: { name, size, path: savePath, received: fromOffset } }));
       } else {
@@ -65,24 +69,39 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
     }
 
     if (msg.type === 'file-chunk') {
-      const { id, data, offset, totalSize } = msg;
+      const { id, data, offset } = msg;
+      const path = receivePathsRef.current[id];
+      if (!path) return;
+
+      // Append chunk to disk
+      await window.electronAPI.appendReceiveChunk(path, data);
+      const decodedLen = atob(data).length;
+      const newReceived = offset + decodedLen;
+
+      // Update progress – using functional update to avoid stale state
       setReceiveMap(prev => {
         const entry = prev[id];
         if (!entry) return prev;
-        const decodedLen = atob(data).length;
-        return { ...prev, [id]: { ...entry, received: offset + decodedLen } };
+        return { ...prev, [id]: { ...entry, received: newReceived } };
       });
-      await window.electronAPI.appendReceiveChunk(`C:\\mayo-received\\${receiveMap[msg.id]?.name || ''}`, data);
-      await window.electronAPI.saveResumeState(msg.id, msg.offset + atob(data).length, `C:\\mayo-received\\${receiveMap[msg.id]?.name || ''}`);
+
+      await window.electronAPI.saveResumeState(id, newReceived, path);
     }
 
     if (msg.type === 'file-end') {
       const { id } = msg;
       setSessionStatus(`File received: ${receiveMap[id]?.name || ''}`);
       await window.electronAPI.clearResumeState(id);
-      setReceiveMap(prev => { const n = { ...prev }; delete n[id]; return n; });
+      delete receivePathsRef.current[id];
+      setReceiveMap(prev => {
+        const n = { ...prev };
+        delete n[id];
+        return n;
+      });
     }
   };
+
+  // ... waitForICE, createSession, submitAnswer, processOffer, addFiles, removeFile, sendAll unchanged
 
   const waitForICE = (pc: RTCPeerConnection) =>
     Promise.race([
@@ -170,23 +189,90 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
     setFileQueue(prev => [...prev, ...newFiles]);
   };
 
-  const pasteText = async () => {
-    const text = await navigator.clipboard.readText().catch(() => '');
-    if (!text.trim()) { setSessionStatus('Clipboard is empty.'); return; }
-    const name = `pasted-${new Date().toISOString().replace(/[:.]/g, '-')}.txt`;
-    const encoded = btoa(unescape(encodeURIComponent(text)));
-    setFileQueue(prev => [...prev, {
-      id: Date.now().toString() + Math.random(),
-      name, path: null,
-      size: new Blob([text]).size,
-      status: 'queued', progress: 0,
-      source: 'text', textData: encoded,
-    }]);
-  };
+  const removeFile = (id: string) => setFileQueue(prev => prev.filter(f => f.id !== id));
 
-  const removeFile = (id: string) => {
-    setFileQueue(prev => prev.filter(f => f.id !== id));
-  };
+  // ========== NEW: Ctrl+V paste handler (same logic as Quick Share) ==========
+  const handlePaste = useCallback(async (e: ClipboardEvent) => {
+    if (isSending) return;
+    e.preventDefault();
+
+    const clipboard = e.clipboardData;
+    if (!clipboard) return;
+
+    // 1. Files copied from Explorer
+    if (clipboard.files && clipboard.files.length > 0) {
+      const newFiles: QueueFile[] = [];
+      for (let i = 0; i < clipboard.files.length; i++) {
+        const f = clipboard.files[i];
+        const filePath = (f as any).path;
+        if (filePath) {
+          newFiles.push({
+            id: Date.now().toString() + Math.random(),
+            name: f.name,
+            path: filePath,
+            size: f.size,
+            status: 'queued',
+            progress: 0,
+            source: 'file',
+          });
+        }
+      }
+      if (newFiles.length > 0) {
+        setFileQueue(prev => [...prev, ...newFiles]);
+        return;
+      }
+    }
+
+    // 2. Image (from clipboard)
+    const imageItem = Array.from(clipboard.items).find(item => item.type.startsWith('image/'));
+    if (imageItem) {
+      const blob = imageItem.getAsFile();
+      if (blob) {
+        const reader = new FileReader();
+        reader.onload = async () => {
+          const base64 = (reader.result as string).split(',')[1];
+          const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+          const fileName = `screenshot-${timestamp}.png`;
+          const savedPath = await window.electronAPI.saveTempFile(fileName, base64);
+          setFileQueue(prev => [...prev, {
+            id: Date.now().toString() + Math.random(),
+            name: fileName,
+            path: savedPath,
+            size: blob.size,
+            status: 'queued',
+            progress: 0,
+            source: 'file',
+          }]);
+        };
+        reader.readAsDataURL(blob);
+        return;
+      }
+    }
+
+    // 3. Plain text
+    const text = clipboard.getData('text/plain');
+    if (text && text.trim()) {
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const fileName = `pasted-${timestamp}.txt`;
+      const base64 = btoa(unescape(encodeURIComponent(text)));
+      const savedPath = await window.electronAPI.saveTempFile(fileName, base64);
+      setFileQueue(prev => [...prev, {
+        id: Date.now().toString() + Math.random(),
+        name: fileName,
+        path: savedPath,
+        size: new Blob([text]).size,
+        status: 'queued',
+        progress: 0,
+        source: 'file',
+        textData: base64,            // keep base64 for direct sending
+      }]);
+    }
+  }, [isSending]);
+
+  useEffect(() => {
+    document.addEventListener('paste', handlePaste as any);
+    return () => document.removeEventListener('paste', handlePaste as any);
+  }, [handlePaste]);
 
   const sendAll = async () => {
     if (!localDC.current || localDC.current.readyState !== 'open') {
@@ -199,11 +285,11 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
 
       setFileQueue(prev => prev.map(f => f.id === file.id ? { ...f, status: 'transferring' } : f));
 
-      if (file.source === 'text') {
+      if (file.textData) {
         localDC.current.send(JSON.stringify({ type: 'file-start', id: file.id, name: file.name, size: file.size, resumable: false }));
         localDC.current.send(JSON.stringify({ type: 'file-chunk', id: file.id, data: file.textData, offset: 0, totalSize: file.size }));
         localDC.current.send(JSON.stringify({ type: 'file-end', id: file.id }));
-      } else {
+      } else if (file.path) {
         const resumeState = await window.electronAPI.getResumeState(file.id);
         const startOffset = resumeState ? resumeState.offset : 0;
         localDC.current.send(JSON.stringify({ type: 'file-start', id: file.id, name: file.name, size: file.size, resumable: true, fromOffset: startOffset }));
@@ -212,7 +298,7 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
         let offset = startOffset;
         while (offset < file.size) {
           const chunkSize = Math.min(CHUNK, file.size - offset);
-          const base64 = await window.electronAPI.readFileChunk(file.path!, offset, chunkSize);
+          const base64 = await window.electronAPI.readFileChunk(file.path, offset, chunkSize);
           localDC.current.send(JSON.stringify({ type: 'file-chunk', id: file.id, data: base64, offset, totalSize: file.size }));
           offset += chunkSize;
           const progress = Math.round((offset / file.size) * 100);
@@ -296,7 +382,9 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
 
           <div className={styles.actionRow}>
             <button className={styles.btn} onClick={addFiles} disabled={isSending}>Add Files</button>
-            <button className={styles.btn} onClick={pasteText} disabled={isSending} style={{ background: '#333' }}>Paste Text</button>
+            <button className={styles.ghostBtn} onClick={() => document.execCommand('paste')} disabled={isSending}>
+              Paste (Ctrl+V)
+            </button>
             <button className={styles.sendBtn} onClick={sendAll} disabled={fileQueue.length === 0 || isSending}>
               {isSending ? 'Sending...' : 'Send All'}
             </button>
@@ -337,6 +425,13 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
               ))}
             </div>
           )}
+        </div>
+      )}
+
+      {!connected && mode === 'choose' && (
+        <div className={styles.emptyState}>
+          <FaFolderOpen size={48} color="#555" />
+          <p>Create or join a session to start.</p>
         </div>
       )}
     </div>
