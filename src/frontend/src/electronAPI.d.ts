@@ -1,12 +1,17 @@
 export {};
 
+interface FolderFile {
+  absolute: string;
+  relative: string;
+}
+
 declare global {
   interface Window {
     electronAPI: {
       startHotspot: () => Promise<string>;
       selectFile: () => Promise<string[] | null>;
-      selectFolder: () => Promise<string[] | null>;
-      startFileServer: (filePaths: string[]) => Promise<string>;
+      selectFolder: () => Promise<FolderFile[] | null>;
+      startFileServer: (files: (string | FolderFile)[]) => Promise<string>;
       stopFileServer: () => Promise<void>;
       getFileSize: (filePath: string) => Promise<number>;
       onDownloadUpdate: (callback: (data: { event: string; fileName: string }) => void) => void;
@@ -21,6 +26,7 @@ declare global {
       clearResumeState: (transferId: string) => Promise<void>;
       getClipboardFiles: () => Promise<{ paths: string[]; type: 'files' | 'none' }>;
       saveTempFile: (fileName: string, base64Data: string) => Promise<string>;
+      getHostname: () => Promise<string>;
     };
   }
 }

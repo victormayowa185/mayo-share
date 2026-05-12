@@ -1,11 +1,17 @@
 import { contextBridge, ipcRenderer } from 'electron';
 
+interface FolderFile {
+  absolute: string;
+  relative: string;
+}
+
 contextBridge.exposeInMainWorld('electronAPI', {
   startHotspot: () => ipcRenderer.invoke('start-hotspot'),
   selectFile: () => ipcRenderer.invoke('select-file'),
   getHostname: () => ipcRenderer.invoke('get-hostname'),
-  selectFolder: () => ipcRenderer.invoke('select-folder'),
-  startFileServer: (filePaths: string[]) => ipcRenderer.invoke('start-file-server', filePaths),
+  selectFolder: (): Promise<FolderFile[] | null> => ipcRenderer.invoke('select-folder'),
+  startFileServer: (files: (string | FolderFile)[]): Promise<string> =>
+    ipcRenderer.invoke('start-file-server', files),
   stopFileServer: () => ipcRenderer.invoke('stop-file-server'),
   getFileSize: (filePath: string) => ipcRenderer.invoke('get-file-size', filePath),
   onDownloadUpdate: (callback: (data: { event: string; fileName: string }) => void) => {
