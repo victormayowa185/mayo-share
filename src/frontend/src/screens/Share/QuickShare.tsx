@@ -8,7 +8,8 @@ interface Props {
 
 interface FileEntry {
   id: string;
-  path: string;
+  path: string;              // absolute path for reading
+  relativePath: string;       // relative path for URL and display
   name: string;
   size: number;
   downloadStatus: 'idle' | 'downloading' | 'done';
@@ -58,10 +59,12 @@ const QuickShare: React.FC<Props> = ({ onBack }) => {
         const f = clipboard.files[i];
         const filePath = (f as any).path;
         if (filePath) {
+          const name = f.name;
           newFiles.push({
             id: Date.now().toString() + Math.random(),
             path: filePath,
-            name: f.name,
+            relativePath: name,           // individual file → its name is the relative path
+            name,
             size: f.size,
             downloadStatus: 'idle',
           });
@@ -84,7 +87,11 @@ const QuickShare: React.FC<Props> = ({ onBack }) => {
           const size = blob.size;
           setFiles(prev => [...prev, {
             id: Date.now().toString() + Math.random(),
-            path: savedPath, name: fileName, size, downloadStatus: 'idle',
+            path: savedPath,
+            relativePath: fileName,
+            name: fileName,
+            size,
+            downloadStatus: 'idle',
           }]);
         };
         reader.readAsDataURL(blob);
@@ -102,7 +109,11 @@ const QuickShare: React.FC<Props> = ({ onBack }) => {
       const size = new Blob([text]).size;
       setFiles(prev => [...prev, {
         id: Date.now().toString() + Math.random(),
-        path: savedPath, name: fileName, size, downloadStatus: 'idle',
+        path: savedPath,
+        relativePath: fileName,
+        name: fileName,
+        size,
+        downloadStatus: 'idle',
       }]);
     }
   }, [isSharing]);
@@ -115,26 +126,34 @@ const QuickShare: React.FC<Props> = ({ onBack }) => {
   const addFiles = async () => {
     const paths = await window.electronAPI.selectFile();
     if (!paths) return;
-    const newFiles: FileEntry[] = await Promise.all(paths.map(async p => ({
-      id: Date.now().toString() + Math.random(),
-      path: p,
-      name: p.split('\\').pop() || p,
-      size: await window.electronAPI.getFileSize(p),
-      downloadStatus: 'idle' as const,
-    })));
+    const newFiles: FileEntry[] = await Promise.all(paths.map(async p => {
+      const name = p.split('\\').pop() || p;
+      return {
+        id: Date.now().toString() + Math.random(),
+        path: p,
+        relativePath: name,   // individual files use their name as relative path
+        name,
+        size: await window.electronAPI.getFileSize(p),
+        downloadStatus: 'idle' as const,
+      };
+    }));
     setFiles(prev => [...prev, ...newFiles]);
   };
 
   const addFolder = async () => {
-    const paths = await window.electronAPI.selectFolder();
-    if (!paths) return;
-    const newFiles: FileEntry[] = await Promise.all(paths.map(async p => ({
-      id: Date.now().toString() + Math.random(),
-      path: p,
-      name: p.split('\\').pop() || p,
-      size: await window.electronAPI.getFileSize(p),
-      downloadStatus: 'idle' as const,
-    })));
+    const folderFiles = await window.electronAPI.selectFolder();
+    if (!folderFiles) return;
+    const newFiles: FileEntry[] = await Promise.all(folderFiles.map(async f => {
+      const name = f.absolute.split('\\').pop() || f.relative;
+      return {
+        id: Date.now().toString() + Math.random(),
+        path: f.absolute,
+        relativePath: f.relative,   // preserve folder structure: "Brave/brave.exe"
+        name,
+        size: await window.electronAPI.getFileSize(f.absolute),
+        downloadStatus: 'idle' as const,
+      };
+    }));
     setFiles(prev => [...prev, ...newFiles]);
   };
 
@@ -143,7 +162,12 @@ const QuickShare: React.FC<Props> = ({ onBack }) => {
   const startSharing = async () => {
     if (files.length === 0) return;
     try {
-      const url = await window.electronAPI.startFileServer(files.map(f => f.path));
+      // Send objects with absolute and relative for folder files, plain strings for individual files
+      const payload = files.map(f => f.relativePath !== f.name
+        ? { absolute: f.path, relative: f.relativePath }
+        : f.path
+      );
+      const url = await window.electronAPI.startFileServer(payload);
       setShareUrl(url);
       setIsSharing(true);
       if ((window as any).QRCode) {
@@ -187,7 +211,7 @@ const QuickShare: React.FC<Props> = ({ onBack }) => {
         <div className={styles.fileList}>
           {files.map(f => (
             <div key={f.id} className={styles.fileRow}>
-              <span className={styles.fileRowName}>{f.name}</span>
+              <span className={styles.fileRowName}>{f.relativePath || f.name}</span>
               <span className={styles.fileRowSize}>{formatBytes(f.size)}</span>
               <span className={styles.fileRowStatus}>
                 {f.downloadStatus === 'idle' && ''}

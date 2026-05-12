@@ -59,7 +59,7 @@ export class FileServer extends EventEmitter {
         // Serve individual files: /file/ followed by the relative path
         if (url.startsWith('/file/')) {
           const relative = decodeURIComponent(url.slice(6)); // everything after /file/
-          const fileEntry = this.fileMap.get(relative);
+          let fileEntry = this.fileMap.get(relative);
           if (!fileEntry) {
             // fallback: try matching just the filename (for backwards compatibility)
             const byName = this.files.find(f => f.relativePath === relative || f.fileName === relative);
