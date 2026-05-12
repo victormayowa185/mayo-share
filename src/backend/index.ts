@@ -172,9 +172,13 @@ ipcMain.handle('select-file', async (): Promise<string[] | null> => {
 });
 
 // ---------- File server ----------
-ipcMain.handle('start-file-server', async (_event, filePaths: string[]): Promise<string> => {
+// Accepts either plain paths (from file picks) or objects with relativePath (from folder picks)
+ipcMain.handle('start-file-server', async (_event, files: (string | { absolute: string; relative: string })[]): Promise<string> => {
   try {
-    const url = await fileServer.start(filePaths, undefined, currentHotspotIP);
+    const filePaths = files.map(f => (typeof f === 'string' ? f : f.absolute));
+    // relativePaths will be passed through later when we update fileServer
+    const relativePaths = files.map(f => (typeof f === 'string' ? undefined : f.relative));
+    const url = await fileServer.start(filePaths, relativePaths, undefined, currentHotspotIP);
     return url;
   } catch (err) {
     throw new Error(`Could not start server: ${err}`);
@@ -191,14 +195,18 @@ ipcMain.handle('get-file-size', async (_event, filePath: string): Promise<number
 });
 
 
-
 // HOST NAME 
 ipcMain.handle('get-hostname', async () => {
   return os.hostname();
 });
 
-// for selecting folder 
-ipcMain.handle('select-folder', async (): Promise<string[] | null> => {
+// ---------- Folder selection ----------
+interface FolderFile {
+  absolute: string;
+  relative: string;
+}
+
+ipcMain.handle('select-folder', async (): Promise<FolderFile[] | null> => {
   if (!mainWindow) return null;
   const result = await dialog.showOpenDialog(mainWindow, {
     properties: ['openDirectory'],
@@ -206,23 +214,25 @@ ipcMain.handle('select-folder', async (): Promise<string[] | null> => {
   });
   if (result.canceled || result.filePaths.length === 0) return null;
 
-  // Recursively collect all files in the folder
-  const folderPath = result.filePaths[0];
-  const allFiles: string[] = [];
+  const folderRoot = result.filePaths[0];
+  const allFiles: FolderFile[] = [];
 
-  const walk = async (dir: string) => {
+  const walk = async (dir: string, relativeDir: string) => {
     const entries = await fs.promises.readdir(dir, { withFileTypes: true });
     for (const entry of entries) {
       const fullPath = path.join(dir, entry.name);
+      const relPath = relativeDir ? `${relativeDir}/${entry.name}` : entry.name;
       if (entry.isDirectory()) {
-        await walk(fullPath);
+        await walk(fullPath, relPath);
       } else {
-        allFiles.push(fullPath);
+        allFiles.push({ absolute: fullPath, relative: relPath });
       }
     }
   };
 
-  await walk(folderPath);
+  // Get just the folder name, not the full path, to use as root for relative paths
+  const folderName = path.basename(folderRoot);
+  await walk(folderRoot, folderName);
   return allFiles.length > 0 ? allFiles : null;
 });
 
