@@ -111,6 +111,8 @@ export class UploadServer extends EventEmitter {
   }
 }
 
+
+
 function getUploadHTML(): string {
   return `<!DOCTYPE html>
 <html lang="en">
@@ -128,7 +130,11 @@ function getUploadHTML(): string {
     .file-section { margin-bottom: 20px; }
     label { display: block; color: #888; font-size: 0.85rem; margin-bottom: 8px; text-align: left; }
     input[type="file"] { display: block; width: 100%; color: #ccc; margin-bottom: 8px; }
-    textarea { width: 100%; height: 80px; background: #1a1a1a; border: 1px solid #333; border-radius: 8px; color: #ccc; padding: 12px; font-size: 0.9rem; resize: vertical; }
+    .paste-toggle { display: flex; align-items: center; justify-content: space-between; color: #888; font-size: 0.85rem; margin-bottom: 8px; cursor: pointer; }
+    .paste-toggle svg { width: 14px; height: 14px; transition: transform 0.2s; }
+    .paste-toggle.open svg { transform: rotate(90deg); }
+    .paste-area { width: 100%; min-height: 80px; background: #1a1a1a; border: 1px solid #333; border-radius: 8px; color: #ccc; padding: 12px; font-size: 0.9rem; text-align: left; outline: none; display: none; }
+    .paste-area.open { display: block; }
     .btn { width: 100%; padding: 14px; background: #b169e0; color: white; border: none; border-radius: 8px; font-size: 1rem; cursor: pointer; margin-top: 16px; }
     .btn:hover { opacity: 0.9; }
     .btn:disabled { opacity: 0.5; cursor: not-allowed; }
@@ -140,22 +146,25 @@ function getUploadHTML(): string {
 </head>
 <body>
   <div class="logo">
-    <!-- Inline SVG logo (same shape as your app logo, simplified) -->
     <svg viewBox="0 0 400 354.74" xmlns="http://www.w3.org/2000/svg">
       <path d="M245.923 1.004 C 237.733 2.226,230.924 4.777,224.887 8.884 ..." fill="currentColor"/>
-      <!-- Use your actual logo path if preferred; here we keep it brief -->
     </svg>
     MAYO Share
   </div>
   <div class="subtitle">Send files to this laptop</div>
   <div class="card">
     <div class="file-section">
-      <label>Select files:</label>
-      <input type="file" id="fileInput" multiple />
+      <label>Select files or folder:</label>
+      <input type="file" id="fileInput" multiple webkitdirectory />
     </div>
     <div class="file-section">
-      <label>Paste text or image:</label>
-      <textarea id="pasteArea" placeholder="Paste text here, or paste an image (Ctrl+V)"></textarea>
+      <div class="paste-toggle" id="pasteToggle">
+        <span>Paste text or image</span>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M9 18l6-6-6-6"/>
+        </svg>
+      </div>
+      <div class="paste-area" id="pasteArea" contenteditable="true" placeholder="Paste text here, or paste an image (Ctrl+V)"></div>
       <div id="thumbs"></div>
     </div>
     <button class="btn" id="sendBtn">Send</button>
@@ -163,12 +172,20 @@ function getUploadHTML(): string {
   </div>
   <script>
     const fileInput = document.getElementById('fileInput');
+    const pasteToggle = document.getElementById('pasteToggle');
     const pasteArea = document.getElementById('pasteArea');
     const sendBtn = document.getElementById('sendBtn');
     const status = document.getElementById('status');
     const thumbs = document.getElementById('thumbs');
     let pastedImageData = null;
 
+    // Toggle paste area
+    pasteToggle.addEventListener('click', () => {
+      pasteArea.classList.toggle('open');
+      pasteToggle.classList.toggle('open');
+    });
+
+    // Handle paste into the editable div
     pasteArea.addEventListener('paste', (e) => {
       const items = e.clipboardData?.items;
       if (!items) return;
@@ -188,6 +205,7 @@ function getUploadHTML(): string {
           return;
         }
       }
+      // For text, the contenteditable div automatically inserts it
     });
 
     sendBtn.addEventListener('click', async () => {
@@ -204,7 +222,7 @@ function getUploadHTML(): string {
         hasContent = true;
       }
 
-      const text = pasteArea.value.trim();
+      const text = pasteArea.innerText.trim();
       if (text) {
         formData.append('text', text);
         hasContent = true;
@@ -223,7 +241,7 @@ function getUploadHTML(): string {
         if (resp.ok) {
           status.innerHTML = '<svg class="success-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg> Sent successfully!';
           fileInput.value = '';
-          pasteArea.value = '';
+          pasteArea.innerHTML = '';
           thumbs.innerHTML = '';
           pastedImageData = null;
         } else {

@@ -107,9 +107,12 @@ const ReceiveScreen: React.FC<Props> = ({ onBack }) => {
 
   return (
     <div className={styles.container}>
-      <button className={styles.backBtn} onClick={onBack}>
-        <FaArrowLeft style={{ marginRight: 6 }} /> Back
-      </button>
+      {/* Outer back arrow – hidden when browser mode is active */}
+      {mode !== 'browser' && (
+        <button className={styles.backBtn} onClick={onBack}>
+          <FaArrowLeft style={{ marginRight: 6 }} /> Back
+        </button>
+      )}
       <h2 className={styles.title}>Receive Files</h2>
 
       {/* ── Mode chooser ── */}
