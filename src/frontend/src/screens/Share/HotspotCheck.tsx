@@ -21,7 +21,6 @@ const HotspotCheck: React.FC<Props> = ({ onReady, onBack, onHotspotStarted }) =>
       setStatus(result);
       if (result.includes('SUCCESS')) {
         setSuccess(true);
-        // Extract hotspot IP from the script output
         const ipMatch = result.match(/Hotspot IP \(for sharing\):\s*([\d.]+)/);
         if (ipMatch && ipMatch[1]) {
           onHotspotStarted(ipMatch[1]);
@@ -48,9 +47,7 @@ const HotspotCheck: React.FC<Props> = ({ onReady, onBack, onHotspotStarted }) =>
         </button>
       )}
 
-      {status && (
-        <pre className={styles.log}>{status}</pre>
-      )}
+      {status && <pre className={styles.log}>{status}</pre>}
 
       {success && (
         <div className={styles.successRow}>

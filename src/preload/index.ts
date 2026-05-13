@@ -6,6 +6,7 @@ interface FolderFile {
 }
 
 contextBridge.exposeInMainWorld('electronAPI', {
+  checkHotspotStatus: () => ipcRenderer.invoke('check-hotspot-status'),
   startHotspot: () => ipcRenderer.invoke('start-hotspot'),
   selectFile: () => ipcRenderer.invoke('select-file'),
   getHostname: () => ipcRenderer.invoke('get-hostname'),

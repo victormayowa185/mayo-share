@@ -1,4 +1,4 @@
-export {};
+export { };
 
 interface FolderFile {
   absolute: string;
@@ -20,7 +20,7 @@ declare global {
       startUploadServer: () => Promise<string>;
       stopUploadServer: () => Promise<void>;
       onUploadUpdate: (callback: (data: { event: string; fileName: string }) => void) => void;
-
+      checkHotspotStatus: () => Promise<{ active: boolean; ip: string }>;
       compressSDP: (sdp: string) => Promise<string>;
       decompressSDP: (compact: string) => Promise<string>;
       ping: () => Promise<string>;

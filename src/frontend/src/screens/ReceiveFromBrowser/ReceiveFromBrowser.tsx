@@ -1,6 +1,12 @@
-import React, { useState } from 'react';
-import { FaArrowLeft, FaCheckCircle, FaCopy } from 'react-icons/fa';
+import React, { useState, useEffect } from 'react';
+import { FaArrowLeft, FaCheckCircle, FaCopy, FaSpinner } from 'react-icons/fa';
 import styles from '../../styles/screens/ReceiveFromBrowser.module.css';
+
+interface ReceivedFile {
+  id: string;
+  name: string;
+  time: string;
+}
 
 interface Props {
   onBack: () => void;
@@ -11,12 +17,50 @@ const ReceiveFromBrowser: React.FC<Props> = ({ onBack }) => {
   const [qrDataUrl, setQrDataUrl] = useState('');
   const [isReceiving, setIsReceiving] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [startingHotspot, setStartingHotspot] = useState(false);
+  const [hotspotStatus, setHotspotStatus] = useState('');
+  const [receivedFiles, setReceivedFiles] = useState<ReceivedFile[]>([]);
+
+  // Listen for incoming files
+  useEffect(() => {
+    window.electronAPI.onUploadUpdate((data) => {
+      if (data.event === 'received') {
+        const newFile: ReceivedFile = {
+          id: Date.now().toString() + Math.random(),
+          name: data.fileName,
+          time: new Date().toLocaleTimeString(),
+        };
+        setReceivedFiles(prev => [...prev, newFile]);
+      }
+    });
+  }, []);
 
   const startReceiving = async () => {
     try {
+      setStartingHotspot(true);
+      setHotspotStatus('Checking hotspot...');
+      const status = await window.electronAPI.checkHotspotStatus();
+      let ip = status.ip;
+
+      if (!status.active) {
+        setHotspotStatus('Starting hotspot...');
+        const result = await window.electronAPI.startHotspot();
+        if (result.includes('SUCCESS')) {
+          const ipMatch = result.match(/Hotspot IP \(for sharing\):\s*([\d.]+)/);
+          if (ipMatch && ipMatch[1]) {
+            ip = ipMatch[1];
+          }
+        } else {
+          throw new Error('Hotspot could not be started. ' + result);
+        }
+      }
+
+      setHotspotStatus('Hotspot active. Starting upload server...');
       const url = await window.electronAPI.startUploadServer();
       setShareUrl(url);
       setIsReceiving(true);
+      setStartingHotspot(false);
+      setHotspotStatus('');
 
       if ((window as any).QRCode) {
         (window as any).QRCode.toDataURL(url, { width: 200, margin: 2 }, (_: any, dataURL: string) => {
@@ -24,7 +68,9 @@ const ReceiveFromBrowser: React.FC<Props> = ({ onBack }) => {
         });
       }
     } catch (err: any) {
-      alert('Error: ' + err.message);
+      alert('Error: ' + (err.message || err));
+      setStartingHotspot(false);
+      setHotspotStatus('');
     }
   };
 
@@ -34,6 +80,7 @@ const ReceiveFromBrowser: React.FC<Props> = ({ onBack }) => {
     setQrDataUrl('');
     setIsReceiving(false);
     setCopied(false);
+    // Leave receivedFiles so the user can still see them after stopping
   };
 
   const copyLink = () => {
@@ -61,7 +108,15 @@ const ReceiveFromBrowser: React.FC<Props> = ({ onBack }) => {
           : 'Start a receiving session so others can send files to you.'}
       </p>
 
-      {!isReceiving && (
+      {/* Show hotspot progress */}
+      {startingHotspot && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, color: '#aaa' }}>
+          <FaSpinner className={styles.spinner} />
+          <span>{hotspotStatus}</span>
+        </div>
+      )}
+
+      {!isReceiving && !startingHotspot && (
         <button className={styles.btn} onClick={startReceiving}>
           Start Receiving
         </button>
@@ -84,6 +139,22 @@ const ReceiveFromBrowser: React.FC<Props> = ({ onBack }) => {
           <button className={styles.stopBtn} onClick={stopReceiving}>
             Stop Receiving
           </button>
+
+          {/* Received files list */}
+          {receivedFiles.length > 0 && (
+            <div className={styles.receivedSection}>
+              <h3 className={styles.receivedTitle}>Received Files</h3>
+              <ul className={styles.fileList}>
+                {receivedFiles.map(f => (
+                  <li key={f.id} className={styles.fileItem}>
+                    <FaCheckCircle size={14} color="#4CAF50" style={{ marginRight: 8 }} />
+                    <span className={styles.fileName}>{f.name}</span>
+                    <span className={styles.fileTime}>{f.time}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
       )}
     </div>

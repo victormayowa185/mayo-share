@@ -2,6 +2,8 @@ import React, { useState, useRef } from 'react';
 import { FaArrowLeft, FaCheckCircle, FaCircle } from 'react-icons/fa';
 import { FaLink } from 'react-icons/fa6';
 import { VscGlobe } from 'react-icons/vsc';
+import { MdGetApp } from 'react-icons/md';
+import ReceiveFromBrowser from '../ReceiveFromBrowser/ReceiveFromBrowser.tsx';
 import styles from '../../styles/screens/ReceiveScreen.module.css';
 
 interface Props {
@@ -15,15 +17,8 @@ interface ReceiveEntry {
   received: number;
 }
 
-const formatBytes = (b: number) => {
-  if (b === 0) return '0 B';
-  const k = 1024, s = ['B', 'KB', 'MB', 'GB'];
-  const i = Math.floor(Math.log(b) / Math.log(k));
-  return parseFloat((b / Math.pow(k, i)).toFixed(1)) + ' ' + s[i];
-};
-
 const ReceiveScreen: React.FC<Props> = ({ onBack }) => {
-  const [mode, setMode] = useState<'choose' | 'p2p' | 'quick'>('choose');
+  const [mode, setMode] = useState<'choose' | 'p2p' | 'quick' | 'browser'>('choose');
   const [offerInput, setOfferInput] = useState('');
   const [answerCode, setAnswerCode] = useState('');
   const [quickUrl, setQuickUrl] = useState('');
@@ -117,6 +112,7 @@ const ReceiveScreen: React.FC<Props> = ({ onBack }) => {
       </button>
       <h2 className={styles.title}>Receive Files</h2>
 
+      {/* ── Mode chooser ── */}
       {mode === 'choose' && (
         <div className={styles.modeCards}>
           <div className={styles.modeCard} onClick={() => setMode('p2p')}>
@@ -124,44 +120,76 @@ const ReceiveScreen: React.FC<Props> = ({ onBack }) => {
               <FaLink size={36} />
             </div>
             <div className={styles.cardTitle}>Join Device Connect</div>
-            <div className={styles.cardDesc}>Accept files from a MAYO Share session. Paste the offer code from the sender.</div>
+            <div className={styles.cardDesc}>
+              Accept files from a MAYO Share session. Paste the offer code from the sender.
+            </div>
           </div>
+
           <div className={styles.modeCard} onClick={() => setMode('quick')}>
             <div className={styles.cardEmoji}>
               <VscGlobe size={36} />
             </div>
             <div className={styles.cardTitle}>Open Quick Share Link</div>
-            <div className={styles.cardDesc}>Download a file shared via Quick Share. Enter the URL or scan the QR code.</div>
+            <div className={styles.cardDesc}>
+              Download a file shared via Quick Share. Enter the URL or scan the QR code.
+            </div>
+          </div>
+
+          <div className={styles.modeCard} onClick={() => setMode('browser')}>
+            <div className={styles.cardEmoji}>
+              <MdGetApp size={36} />
+            </div>
+            <div className={styles.cardTitle}>Receive from Browser</div>
+            <div className={styles.cardDesc}>
+              Let a phone or any device send files TO this laptop. No app needed on their side.
+            </div>
           </div>
         </div>
       )}
 
+      {/* ── P2P join ── */}
       {mode === 'p2p' && (
         <div className={styles.panel}>
           {!connected ? (
             <>
               <p className={styles.label}>Paste the offer code from the sender:</p>
-              <textarea className={styles.codeBox} value={offerInput} onChange={e => setOfferInput(e.target.value)} placeholder="Paste offer code here" rows={4} />
+              <textarea
+                className={styles.codeBox}
+                value={offerInput}
+                onChange={e => setOfferInput(e.target.value)}
+                placeholder="Paste offer code here"
+                rows={4}
+              />
               <button className={styles.btn} onClick={processOffer}>Process Offer</button>
 
               {answerCode && (
                 <>
-                  <p className={styles.label} style={{ marginTop: 24 }}>Your answer code — give this back to the sender:</p>
+                  <p className={styles.label} style={{ marginTop: 24 }}>
+                    Your answer code — give this back to the sender:
+                  </p>
                   <textarea className={styles.codeBox} readOnly value={answerCode} rows={4} />
-                  <button className={styles.copyBtn} onClick={() => navigator.clipboard.writeText(answerCode)}>Copy Code</button>
+                  <button
+                    className={styles.copyBtn}
+                    onClick={() => navigator.clipboard.writeText(answerCode)}
+                  >
+                    Copy Code
+                  </button>
                 </>
               )}
             </>
           ) : (
             <>
               <div className={styles.connectedBadge}>
-                <FaCircle size={12} color="#4CAF50" style={{ marginRight: 6 }} /> Connected — waiting for files
+                <FaCircle size={12} color="#4CAF50" style={{ marginRight: 6 }} />
+                Connected — waiting for files
               </div>
               {Object.entries(receiveMap).map(([id, entry]) => (
                 <div key={id} className={styles.fileRow}>
                   <span className={styles.fileName}>{entry.name}</span>
                   <progress value={entry.received} max={entry.size} className={styles.progress} />
-                  <span className={styles.pct}>{Math.round((entry.received / entry.size) * 100)}%</span>
+                  <span className={styles.pct}>
+                    {Math.round((entry.received / entry.size) * 100)}%
+                  </span>
                 </div>
               ))}
             </>
@@ -169,6 +197,7 @@ const ReceiveScreen: React.FC<Props> = ({ onBack }) => {
         </div>
       )}
 
+      {/* ── Quick Share link ── */}
       {mode === 'quick' && (
         <div className={styles.panel}>
           <p className={styles.label}>Enter the Quick Share URL:</p>
@@ -181,9 +210,18 @@ const ReceiveScreen: React.FC<Props> = ({ onBack }) => {
           />
           <button className={styles.btn} onClick={openQuickLink}>Open Link</button>
           <p className={styles.hint}>Or scan the QR code on the sender's screen with your browser.</p>
+          <button className={styles.backBtn} style={{ marginTop: 24 }} onClick={() => setMode('choose')}>
+            ← Back
+          </button>
         </div>
       )}
 
+      {/* ── Receive from Browser ── */}
+      {mode === 'browser' && (
+        <ReceiveFromBrowser onBack={() => setMode('choose')} />
+      )}
+
+      {/* ── Status ── */}
       {sessionStatus && (
         <div className={`${styles.status} ${sessionStatus.includes('Error') ? styles.error : ''}`}>
           {sessionStatus.includes('File received') ? (

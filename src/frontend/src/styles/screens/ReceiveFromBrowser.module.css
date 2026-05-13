@@ -96,3 +96,48 @@
   font-size: 0.9rem;
 }
 .stopBtn:hover { background: #1a0000; }
+
+
+
+
+.receivedSection {
+  margin-top: 24px;
+  width: 100%;
+  max-width: 440px;
+}
+
+.receivedTitle {
+  font-size: 1rem;
+  color: #ccc;
+  margin-bottom: 12px;
+}
+
+.fileList {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.fileItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #111;
+  border: 1px solid #222;
+  border-radius: 8px;
+  padding: 10px 14px;
+  margin-bottom: 6px;
+}
+
+.fileName {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #ddd;
+}
+
+.fileTime {
+  color: #666;
+  font-size: 0.8rem;
+}

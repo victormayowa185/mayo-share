@@ -215,6 +215,46 @@ uploadServer.on('file-received', (fileName: string) => {
 });
 
 
+// ---------- Hotspot status check (for real-time status bar) ----------
+ipcMain.handle('check-hotspot-status', async (): Promise<{ active: boolean; ip: string }> => {
+  return new Promise((resolve) => {
+    const script = `
+      try {
+        $adapter = Get-NetAdapter | Where-Object { $_.InterfaceDescription -like "*KM-TEST*" -or $_.InterfaceDescription -like "*Loopback*" } | Select-Object -First 1
+        if (-not $adapter) { Write-Output "OFF"; exit 0 }
+        $profile = [Windows.Networking.Connectivity.NetworkInformation,Windows.Networking.Connectivity,ContentType=WindowsRuntime]::GetConnectionProfiles() | Where-Object { $_.ProfileName -eq $adapter.Name }
+        if (-not $profile) { Write-Output "OFF"; exit 0 }
+        $tm = [Windows.Networking.NetworkOperators.NetworkOperatorTetheringManager,Windows.Networking.NetworkOperators,ContentType=WindowsRuntime]::CreateFromConnectionProfile($profile)
+        $state = $tm.TetheringOperationalState
+        if ($state -eq [Windows.Networking.NetworkOperators.TetheringOperationalState]::On) {
+          Write-Output "ON:${currentHotspotIP}"
+        } else {
+          Write-Output "OFF"
+        }
+      } catch {
+        Write-Output "OFF"
+      }
+    `;
+
+    const tempPath = path.join(os.tmpdir(), `mayo-check-${Date.now()}.ps1`);
+    try { fs.writeFileSync(tempPath, script, 'utf8'); } catch { resolve({ active: false, ip: '' }); return; }
+
+    execFile('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', tempPath],
+      { timeout: 8000 },
+      (error, stdout) => {
+        try { fs.unlinkSync(tempPath); } catch { }
+        const out = (stdout || '').trim();
+        if (out.startsWith('ON')) {
+          resolve({ active: true, ip: currentHotspotIP });
+        } else {
+          resolve({ active: false, ip: '' });
+        }
+      }
+    );
+  });
+});
+
+
 // HOST NAME 
 ipcMain.handle('get-hostname', async () => {
   return os.hostname();
