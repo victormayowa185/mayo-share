@@ -9,6 +9,7 @@ import ReceiveScreen from './screens/Receive/ReceiveScreen';
 import ActivityScreen from './screens/Activity/ActivityScreen';
 import SupportScreen from './screens/Support/SupportScreen';
 import RateUsScreen from './screens/RateUs/RateUsScreen';
+import ReceiveFromBrowser from './screens/ReceiveFromBrowser/ReceiveFromBrowser';
 import StatusBar from './components/StatusBar';
 
 export type Screen =
@@ -18,6 +19,7 @@ export type Screen =
   | 'share-p2p'
   | 'share-quick'
   | 'receive'
+  | 'receive-browser'
   | 'settings'
   | 'activity'
   | 'support'
@@ -91,6 +93,9 @@ const App: React.FC = () => {
         )}
         {screen === 'rate' && (
           <RateUsScreen onBack={() => setScreen('home')} />
+        )}
+        {screen === 'receive-browser' && (
+          <ReceiveFromBrowser onBack={() => setScreen('home')} />
         )}
         {(screen === 'home' || screen === undefined) && (
           <HomeScreen currentScreen={screen} setScreen={setScreen} />

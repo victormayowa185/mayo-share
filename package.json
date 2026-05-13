@@ -10,6 +10,7 @@
     "start": "npm run build && npm run build:frontend && electron ."
   },
   "devDependencies": {
+    "@types/formidable": "^3.5.1",
     "@types/node": "^20.0.0",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
@@ -19,6 +20,7 @@
     "vite": "^8.0.11"
   },
   "dependencies": {
+    "formidable": "^3.5.4",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "react-icons": "^5.6.0"

@@ -15,6 +15,12 @@ declare global {
       stopFileServer: () => Promise<void>;
       getFileSize: (filePath: string) => Promise<number>;
       onDownloadUpdate: (callback: (data: { event: string; fileName: string }) => void) => void;
+
+      // Upload server (Receive from Browser)
+      startUploadServer: () => Promise<string>;
+      stopUploadServer: () => Promise<void>;
+      onUploadUpdate: (callback: (data: { event: string; fileName: string }) => void) => void;
+
       compressSDP: (sdp: string) => Promise<string>;
       decompressSDP: (compact: string) => Promise<string>;
       ping: () => Promise<string>;

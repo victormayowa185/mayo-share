@@ -3,6 +3,7 @@ import path from 'path';
 import { execFile } from 'child_process';
 import { FileServer } from './fileServer';
 import { open, close, read, writeFile, appendFileSync } from 'fs';
+import { UploadServer } from './uploadServer'; 
 import { statSync } from 'fs';
 import fs from 'fs';
 import os from 'os';
@@ -105,6 +106,7 @@ const HOTSPOT_SCRIPT = `
 
 
 const fileServer = new FileServer();
+const uploadServer = new UploadServer(); 
 
 // ---------- Window ----------
 function createWindow(): void {
@@ -189,9 +191,27 @@ ipcMain.handle('stop-file-server', async (): Promise<void> => {
   fileServer.stop();
 });
 
+// ---------- Upload server (Receive from Browser) ----------
+ipcMain.handle('start-upload-server', async (): Promise<string> => {
+  try {
+    const url = await uploadServer.start(currentHotspotIP);
+    return url;
+  } catch (err) {
+    throw new Error(`Could not start upload server: ${err}`);
+  }
+});
+
+ipcMain.handle('stop-upload-server', async (): Promise<void> => {
+  uploadServer.stop();
+});
+
 ipcMain.handle('get-file-size', async (_event, filePath: string): Promise<number> => {
   const stats = statSync(filePath);
   return stats.size;
+});
+
+uploadServer.on('file-received', (fileName: string) => {
+  mainWindow?.webContents.send('upload-update', { event: 'received', fileName });
 });
 
 

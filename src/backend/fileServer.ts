@@ -87,7 +87,7 @@ export class FileServer extends EventEmitter {
             console.error('Stream error:', err);
           });
           res.on('finish', () => {
-            this.emit('download-completed', this.files.indexOf(fileEntry), fileEntry.fileName);
+            this.emit('download-completed', this.files.indexOf(fileEntry!), fileEntry!.fileName);
           });
           return;
         }
@@ -133,18 +133,18 @@ function escapeHtml(str: string): string {
 
 function getFileIcon(name: string): string {
   const ext = name.split('.').pop()?.toLowerCase() || '';
-  if (['jpg','jpeg','png','gif','webp','bmp','svg'].includes(ext)) return '🖼️';
-  if (['mp4','mkv','avi','mov','webm'].includes(ext)) return '🎬';
-  if (['mp3','wav','aac','flac','ogg'].includes(ext)) return '🎵';
+  if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg'].includes(ext)) return '🖼️';
+  if (['mp4', 'mkv', 'avi', 'mov', 'webm'].includes(ext)) return '🎬';
+  if (['mp3', 'wav', 'aac', 'flac', 'ogg'].includes(ext)) return '🎵';
   if (['pdf'].includes(ext)) return '📕';
-  if (['doc','docx'].includes(ext)) return '📝';
-  if (['xls','xlsx'].includes(ext)) return '📊';
-  if (['ppt','pptx'].includes(ext)) return '📋';
-  if (['zip','rar','7z','tar','gz'].includes(ext)) return '🗜️';
-  if (['exe','msi'].includes(ext)) return '⚙️';
+  if (['doc', 'docx'].includes(ext)) return '📝';
+  if (['xls', 'xlsx'].includes(ext)) return '📊';
+  if (['ppt', 'pptx'].includes(ext)) return '📋';
+  if (['zip', 'rar', '7z', 'tar', 'gz'].includes(ext)) return '🗜️';
+  if (['exe', 'msi'].includes(ext)) return '⚙️';
   if (['apk'].includes(ext)) return '📱';
-  if (['txt','md'].includes(ext)) return '📄';
-  if (['js','ts','py','java','cpp','c','cs'].includes(ext)) return '💻';
+  if (['txt', 'md'].includes(ext)) return '📄';
+  if (['js', 'ts', 'py', 'java', 'cpp', 'c', 'cs'].includes(ext)) return '💻';
   return '📁';
 }
 

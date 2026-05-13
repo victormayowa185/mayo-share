@@ -17,6 +17,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onDownloadUpdate: (callback: (data: { event: string; fileName: string }) => void) => {
     ipcRenderer.on('download-update', (_event, data) => callback(data));
   },
+
+  // ---------- Upload server (Receive from Browser) ----------
+  startUploadServer: (): Promise<string> => ipcRenderer.invoke('start-upload-server'),
+  stopUploadServer: () => ipcRenderer.invoke('stop-upload-server'),
+  onUploadUpdate: (callback: (data: { event: string; fileName: string }) => void) => {
+    ipcRenderer.on('upload-update', (_event, data) => callback(data));
+  },
+
   compressSDP: (sdp: string) => ipcRenderer.invoke('compress-sdp', sdp),
   decompressSDP: (compact: string) => ipcRenderer.invoke('decompress-sdp', compact),
   ping: () => ipcRenderer.invoke('ping'),
