@@ -126,10 +126,18 @@ function getUploadHTML(): string {
     .logo { font-size: 2rem; font-weight: bold; color: #b169e0; margin-bottom: 8px; display: flex; align-items: center; justify-content: center; gap: 10px; }
     .logo svg { width: 32px; height: 32px; fill: #b169e0; }
     .subtitle { color: #888; margin-bottom: 30px; }
-    .card { background: #111; border: 1px solid #222; border-radius: 16px; max-width: 500px; margin: 0 auto; padding: 32px 24px; }
+    .card { background: #111; border: 1px solid #222; border-radius: 16px; max-width: 520px; margin: 0 auto; padding: 32px 24px; }
     .file-section { margin-bottom: 20px; }
     label { display: block; color: #888; font-size: 0.85rem; margin-bottom: 8px; text-align: left; }
-    input[type="file"] { display: block; width: 100%; color: #ccc; margin-bottom: 8px; }
+    .file-row { display: flex; gap: 10px; align-items: center; margin-bottom: 12px; }
+    .file-btn { padding: 10px 20px; background: #b169e0; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 0.9rem; }
+    .file-btn:hover { opacity: 0.9; }
+    .file-list { list-style: none; padding: 0; margin: 0 0 16px 0; }
+    .file-item { display: flex; align-items: center; gap: 8px; background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 6px; padding: 8px 12px; margin-bottom: 6px; font-size: 0.85rem; }
+    .file-item .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #ccc; text-align: left; }
+    .file-item .size { color: #888; white-space: nowrap; }
+    .file-item .remove-btn { background: transparent; border: none; color: #888; cursor: pointer; font-size: 1rem; padding: 0 4px; }
+    .file-item .remove-btn:hover { color: #f44336; }
     .paste-toggle { display: flex; align-items: center; justify-content: space-between; color: #888; font-size: 0.85rem; margin-bottom: 8px; cursor: pointer; }
     .paste-toggle svg { width: 14px; height: 14px; transition: transform 0.2s; }
     .paste-toggle.open svg { transform: rotate(90deg); }
@@ -147,16 +155,23 @@ function getUploadHTML(): string {
 <body>
   <div class="logo">
     <svg viewBox="0 0 400 354.74" xmlns="http://www.w3.org/2000/svg">
-      <path d="M245.923 1.004 C 237.733 2.226,230.924 4.777,224.887 8.884 ..." fill="currentColor"/>
+      <circle cx="200" cy="177" r="150" fill="currentColor"/>
     </svg>
     MAYO Share
   </div>
   <div class="subtitle">Send files to this laptop</div>
   <div class="card">
+    <!-- File selection -->
     <div class="file-section">
-      <label>Select files or folder:</label>
-      <input type="file" id="fileInput" multiple webkitdirectory />
+      <label>Add files or folders:</label>
+      <div class="file-row">
+        <button class="file-btn" id="addFilesBtn">Add Files</button>
+        <button class="file-btn" id="addFolderBtn">Add Folder</button>
+      </div>
+      <ul class="file-list" id="fileList"></ul>
     </div>
+
+    <!-- Paste section -->
     <div class="file-section">
       <div class="paste-toggle" id="pasteToggle">
         <span>Paste text or image</span>
@@ -167,19 +182,81 @@ function getUploadHTML(): string {
       <div class="paste-area" id="pasteArea" contenteditable="true" placeholder="Paste text here, or paste an image (Ctrl+V)"></div>
       <div id="thumbs"></div>
     </div>
+
     <button class="btn" id="sendBtn">Send</button>
     <div id="status"></div>
   </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
   <script>
-    const fileInput = document.getElementById('fileInput');
+    const addFilesBtn = document.getElementById('addFilesBtn');
+    const addFolderBtn = document.getElementById('addFolderBtn');
+    const fileListEl = document.getElementById('fileList');
     const pasteToggle = document.getElementById('pasteToggle');
     const pasteArea = document.getElementById('pasteArea');
     const sendBtn = document.getElementById('sendBtn');
     const status = document.getElementById('status');
     const thumbs = document.getElementById('thumbs');
+
+    // Hidden file inputs
+    const fileInput = document.createElement('input');
+    fileInput.type = 'file';
+    fileInput.multiple = true;
+
+    const folderInput = document.createElement('input');
+    folderInput.type = 'file';
+    folderInput.multiple = true;
+    folderInput.webkitdirectory = true;
+
+    // Internal storage: { name, file, relativePath }
+    let fileEntries = [];
     let pastedImageData = null;
 
-    // Toggle paste area
+    function renderFileList() {
+      fileListEl.innerHTML = '';
+      fileEntries.forEach((entry, idx) => {
+        const li = document.createElement('li');
+        li.className = 'file-item';
+        li.innerHTML = `
+    < span class="name" > ${ entry.name } </span>
+      < span class="size" > ${ formatBytes(entry.file.size) } </span>
+        < button class="remove-btn" data - index="${idx}" >✕</button>
+          `;
+        fileListEl.appendChild(li);
+      });
+
+      document.querySelectorAll('.remove-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          const index = parseInt(e.target.dataset.index);
+          fileEntries.splice(index, 1);
+          renderFileList();
+        });
+      });
+    }
+
+    function formatBytes(bytes) {
+      if (bytes === 0) return '0 B';
+      const k = 1024, sizes = ['B', 'KB', 'MB', 'GB'];
+      const i = Math.floor(Math.log(bytes) / Math.log(k));
+      return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+    }
+
+    function addFilesFromInput(input) {
+      for (const file of input.files) {
+        const relativePath = file.webkitRelativePath || file.name;
+        fileEntries.push({ name: relativePath, file, relativePath });
+      }
+      renderFileList();
+      input.value = '';
+    }
+
+    addFilesBtn.addEventListener('click', () => fileInput.click());
+    addFolderBtn.addEventListener('click', () => folderInput.click());
+
+    fileInput.addEventListener('change', () => addFilesFromInput(fileInput));
+    folderInput.addEventListener('change', () => addFilesFromInput(folderInput));
+
+    // Paste toggle
     pasteToggle.addEventListener('click', () => {
       pasteArea.classList.toggle('open');
       pasteToggle.classList.toggle('open');
@@ -205,31 +282,58 @@ function getUploadHTML(): string {
           return;
         }
       }
-      // For text, the contenteditable div automatically inserts it
+      // text is automatically inserted into contenteditable
     });
 
     sendBtn.addEventListener('click', async () => {
       const formData = new FormData();
       let hasContent = false;
 
-      for (const file of fileInput.files) {
-        formData.append('fileupload', file);
-        hasContent = true;
-      }
+      // Add selected files to ZIP
+      if (fileEntries.length > 0) {
+        const zip = new JSZip();
+        fileEntries.forEach(entry => {
+          zip.file(entry.relativePath, entry.file);
+        });
 
-      if (pastedImageData) {
-        formData.append('image', pastedImageData);
-        hasContent = true;
-      }
+        // Add pasted image
+        if (pastedImageData) {
+          const base64 = pastedImageData.split(',')[1];
+          const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+          zip.file(`screenshot - ${ timestamp }.png`, base64, { base64: true });
+        }
 
-      const text = pasteArea.innerText.trim();
-      if (text) {
-        formData.append('text', text);
+        // Add pasted text
+        const text = pasteArea.innerText.trim();
+        if (text) {
+          const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+          zip.file(`pasted - ${ timestamp }.txt`, text);
+        }
+
+        const blob = await zip.generateAsync({ type: 'blob' });
+        const zipName = `mayo - share - ${ new Date().toISOString().replace(/[:.]/g, '-') }.zip`;
+        formData.append('fileupload', blob, zipName);
         hasContent = true;
+      } else {
+        // Fallback: only pasted image/text, no files selected
+        if (pastedImageData) {
+          const base64 = pastedImageData.split(',')[1];
+          const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+          const blob = new Blob([atob(base64)], { type: 'image/png' });
+          formData.append('fileupload', blob, `screenshot - ${ timestamp }.png`);
+          hasContent = true;
+        }
+        const text = pasteArea.innerText.trim();
+        if (text) {
+          const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+          const blob = new Blob([text], { type: 'text/plain' });
+          formData.append('fileupload', blob, `pasted - ${ timestamp }.txt`);
+          hasContent = true;
+        }
       }
 
       if (!hasContent) {
-        status.textContent = 'Please select files or paste something first.';
+        status.textContent = 'Please add files or paste something first.';
         return;
       }
 
@@ -240,7 +344,8 @@ function getUploadHTML(): string {
         const resp = await fetch('/upload', { method: 'POST', body: formData });
         if (resp.ok) {
           status.innerHTML = '<svg class="success-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg> Sent successfully!';
-          fileInput.value = '';
+          fileEntries = [];
+          renderFileList();
           pasteArea.innerHTML = '';
           thumbs.innerHTML = '';
           pastedImageData = null;
