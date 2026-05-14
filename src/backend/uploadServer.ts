@@ -1,14 +1,54 @@
-import { createServer, Server, IncomingMessage, ServerResponse } from 'http';
-import { promises as fs } from 'fs';
-import path from 'path';
-import { EventEmitter } from 'events';
-import { formidable } from 'formidable';
+import { createServer, Server, IncomingMessage, ServerResponse } from "http";
+import { promises as fs } from "fs";
+import path from "path";
+import { EventEmitter } from "events";
+import { formidable } from "formidable";
 
-const RECEIVE_DIR = 'C:\\mayo-received';
+interface Session {
+  id: string;
+  status: "pending" | "approved" | "declined";
+  senderName: string;
+  saveDir: string;
+}
+
+interface SSEClient {
+  id: string;
+  res: ServerResponse;
+}
+
+const RECEIVE_DIR = "C:\\mayo-received";
 const PORT = 3001;
 
 export class UploadServer extends EventEmitter {
   private server: Server | null = null;
+  private sessions = new Map<string, Session>();
+  private sseClients = new Map<string, SSEClient>();
+
+  approveSender(sessionId: string) {
+    const session = this.sessions.get(sessionId);
+    if (session && session.status === "pending") {
+      session.status = "approved";
+      const client = this.sseClients.get(sessionId);
+      if (client) {
+        client.res.write("event: approved\ndata: {}\n\n");
+        client.res.end();
+        this.sseClients.delete(sessionId);
+      }
+    }
+  }
+
+  declineSender(sessionId: string) {
+    const session = this.sessions.get(sessionId);
+    if (session && session.status === "pending") {
+      session.status = "declined";
+      const client = this.sseClients.get(sessionId);
+      if (client) {
+        client.res.write("event: declined\ndata: {}\n\n");
+        client.res.end();
+        this.sseClients.delete(sessionId);
+      }
+    }
+  }
 
   async start(ip?: string): Promise<string> {
     await fs.mkdir(RECEIVE_DIR, { recursive: true });
@@ -16,91 +56,223 @@ export class UploadServer extends EventEmitter {
     // 1. Kill any previous server still holding the port
     this.stop();
     // 2. Give the OS a moment to release the port
-    await new Promise(r => setTimeout(r, 100));
+    await new Promise((r) => setTimeout(r, 100));
 
     return new Promise((resolve, reject) => {
-      this.server = createServer(async (req: IncomingMessage, res: ServerResponse) => {
-        const url = req.url || '/';
-        const method = req.method || 'GET';
+      this.server = createServer(
+        async (req: IncomingMessage, res: ServerResponse) => {
+          const url = req.url || "/";
+          const method = req.method || "GET";
 
-        if (method === 'GET' && url === '/favicon.ico') {
-          res.writeHead(204);
-          res.end();
-          return;
-        }
-
-        if (method === 'GET' && (url === '/' || url === '')) {
-          res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-          res.end(getUploadHTML());
-          return;
-        }
-
-        if (method === 'POST' && url === '/upload') {
-          try {
-            const form = formidable({
-              uploadDir: RECEIVE_DIR,
-              keepExtensions: true,
-              maxFileSize: 500 * 1024 * 1024,
-              multiples: true,
-            });
-
-            const [fields, files] = await form.parse(req);
-
-            // Handle pasted text
-            const textField = fields.text;
-            if (textField) {
-              const textContent = Array.isArray(textField) ? textField[0] : textField;
-              const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-              const fileName = `pasted-${timestamp}.txt`;
-              await fs.writeFile(path.join(RECEIVE_DIR, fileName), textContent, 'utf8');
-              this.emit('file-received', fileName);
-            }
-
-            // Handle pasted image
-            const imageField = fields.image;
-            if (imageField) {
-              const rawImage = Array.isArray(imageField) ? imageField[0] : imageField;
-              const base64Data = rawImage.replace(/^data:image\/\w+;base64,/, '');
-              const buffer = Buffer.from(base64Data, 'base64');
-              const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-              const fileName = `screenshot-${timestamp}.png`;
-              await fs.writeFile(path.join(RECEIVE_DIR, fileName), buffer);
-              this.emit('file-received', fileName);
-            }
-
-            // Handle regular file uploads
-            const uploadedFiles = files.fileupload;
-            if (uploadedFiles) {
-              const fileList = Array.isArray(uploadedFiles) ? uploadedFiles : [uploadedFiles];
-              for (const f of fileList) {
-                const originalName = f.originalFilename || f.newFilename || 'unknown';
-                const destPath = path.join(RECEIVE_DIR, originalName);
-                await fs.mkdir(path.dirname(destPath), { recursive: true });
-                await fs.rename(f.filepath, destPath);
-                this.emit('file-received', originalName);
-              }
-            }
-
-            res.writeHead(200, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ status: 'ok' }));
-          } catch (e: any) {
-            console.error('Upload error:', e);
-            res.writeHead(500);
-            res.end('Upload failed: ' + (e.message || 'unknown error'));
+          if (method === "GET" && url === "/favicon.ico") {
+            res.writeHead(204);
+            res.end();
+            return;
           }
-          return;
-        }
 
-        res.writeHead(404);
-        res.end('Not found');
-      });
+          // ─── Session‑aware GET / ───
+          if (
+            method === "GET" &&
+            (url === "/" || url === "" || url?.startsWith("/?sessionId="))
+          ) {
+            const parsedUrl = new URL(url!, `http://localhost:${PORT}`);
+            let sessionId = parsedUrl.searchParams.get("sessionId");
 
-      this.server.listen(PORT, '0.0.0.0', () => {
-        const usedIP = ip || '192.168.137.1';
+            if (!sessionId) {
+              sessionId =
+                Date.now().toString(36) +
+                Math.random().toString(36).slice(2, 6);
+              res.writeHead(302, { Location: `/?sessionId=${sessionId}` });
+              res.end();
+              return;
+            }
+
+            let session = this.sessions.get(sessionId);
+            if (!session) {
+              const saveDir = path.join(RECEIVE_DIR, `Sender-${sessionId}`);
+              session = {
+                id: sessionId,
+                status: "pending",
+                senderName: "",
+                saveDir,
+              };
+              this.sessions.set(sessionId, session);
+              this.emit("sender-connected", sessionId, session.senderName);
+            }
+
+            if (session.status === "pending") {
+              res.writeHead(200, {
+                "Content-Type": "text/html; charset=utf-8",
+              });
+              res.end(getWaitingHTML(session.senderName || "Unknown"));
+              return;
+            }
+
+            if (session.status === "approved") {
+              res.writeHead(200, {
+                "Content-Type": "text/html; charset=utf-8",
+              });
+              res.end(getUploadHTML());
+              return;
+            }
+
+            if (session.status === "declined") {
+              res.writeHead(200, {
+                "Content-Type": "text/html; charset=utf-8",
+              });
+              res.end(getDeclinedHTML());
+              return;
+            }
+          }
+
+          // ─── SSE endpoint for approval / decline ───
+          if (method === "GET" && url?.startsWith("/events")) {
+            const parsedUrl = new URL(url!, `http://localhost:${PORT}`);
+            const sessionId = parsedUrl.searchParams.get("sessionId");
+            if (!sessionId || !this.sessions.has(sessionId)) {
+              res.writeHead(404);
+              res.end();
+              return;
+            }
+            res.writeHead(200, {
+              "Content-Type": "text/event-stream",
+              "Cache-Control": "no-cache",
+              Connection: "keep-alive",
+              "Access-Control-Allow-Origin": "*",
+            });
+            res.write(":ok\n\n");
+            this.sseClients.set(sessionId, { id: sessionId, res });
+            req.on("close", () => {
+              this.sseClients.delete(sessionId);
+            });
+            return;
+          }
+
+          // ─── Set sender name ───
+          if (method === "POST" && url?.startsWith("/set-name")) {
+            const parsedUrl = new URL(url!, `http://localhost:${PORT}`);
+            const sessionId = parsedUrl.searchParams.get("sessionId");
+            let body = "";
+            req.on("data", (chunk) => (body += chunk));
+            req.on("end", () => {
+              try {
+                const { name } = JSON.parse(body);
+                const session = this.sessions.get(sessionId!);
+                if (session) {
+                  session.senderName = name;
+                  this.emit("sender-connected", sessionId, name);
+                  res.writeHead(200, { "Content-Type": "application/json" });
+                  res.end(JSON.stringify({ ok: true }));
+                } else {
+                  res.writeHead(404);
+                  res.end();
+                }
+              } catch {
+                res.writeHead(400);
+                res.end();
+              }
+            });
+            return;
+          }
+
+          // ─── Upload handler (modified to use session save dir) ───
+          if (method === "POST" && url === "/upload") {
+            try {
+              const parsedUrl = new URL(req.url!, `http://localhost:${PORT}`);
+              const sessionId = parsedUrl.searchParams.get("sessionId") || "";
+              const session = this.sessions.get(sessionId);
+              if (!session || session.status !== "approved") {
+                res.writeHead(403);
+                res.end("Not approved");
+                return;
+              }
+
+              const form = formidable({
+                uploadDir: session.saveDir,
+                keepExtensions: true,
+                maxFileSize: 500 * 1024 * 1024,
+                multiples: true,
+              });
+
+              const [fields, files] = await form.parse(req);
+
+              // Handle pasted text
+              const textField = fields.text;
+              if (textField) {
+                const textContent = Array.isArray(textField)
+                  ? textField[0]
+                  : textField;
+                const timestamp = new Date()
+                  .toISOString()
+                  .replace(/[:.]/g, "-");
+                const fileName = `pasted-${timestamp}.txt`;
+                await fs.writeFile(
+                  path.join(session.saveDir, fileName),
+                  textContent,
+                  "utf8",
+                );
+                this.emit("file-received", fileName);
+              }
+
+              // Handle pasted image
+              const imageField = fields.image;
+              if (imageField) {
+                const rawImage = Array.isArray(imageField)
+                  ? imageField[0]
+                  : imageField;
+                const base64Data = rawImage.replace(
+                  /^data:image\/\w+;base64,/,
+                  "",
+                );
+                const buffer = Buffer.from(base64Data, "base64");
+                const timestamp = new Date()
+                  .toISOString()
+                  .replace(/[:.]/g, "-");
+                const fileName = `screenshot-${timestamp}.png`;
+                await fs.writeFile(
+                  path.join(session.saveDir, fileName),
+                  buffer,
+                );
+                this.emit("file-received", fileName);
+              }
+
+              // Handle regular file uploads
+              const uploadedFiles = files.fileupload;
+              if (uploadedFiles) {
+                const fileList = Array.isArray(uploadedFiles)
+                  ? uploadedFiles
+                  : [uploadedFiles];
+                for (const f of fileList) {
+                  const originalName =
+                    f.originalFilename || f.newFilename || "unknown";
+                  const destPath = path.join(session.saveDir, originalName);
+                  await fs.mkdir(path.dirname(destPath), { recursive: true });
+                  await fs.rename(f.filepath, destPath);
+                  this.emit("file-received", originalName);
+                }
+              }
+
+              res.writeHead(200, { "Content-Type": "application/json" });
+              res.end(JSON.stringify({ status: "ok" }));
+            } catch (e: any) {
+              console.error("Upload error:", e);
+              res.writeHead(500);
+              res.end("Upload failed: " + (e.message || "unknown error"));
+            }
+            return;
+          }
+
+          res.writeHead(404);
+          res.end("Not found");
+        },
+      );
+
+      this.server.listen(PORT, "0.0.0.0", () => {
+        const usedIP = ip || "192.168.137.1";
         resolve(`http://${usedIP}:${PORT}`);
       });
 
-      this.server.on('error', (err) => {
+      this.server.on("error", (err) => {
         this.server = null;
         reject(err);
       });
@@ -114,8 +286,6 @@ export class UploadServer extends EventEmitter {
     }
   }
 }
-
-
 
 function getUploadHTML(): string {
   return `<!DOCTYPE html>
@@ -357,6 +527,63 @@ function getUploadHTML(): string {
       }
     });
   </script>
+</body>
+</html>`;
+}
+
+function getWaitingHTML(name: string): string {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Waiting for Approval – MAYO Share</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #0A0A0A; color: white; font-family: Arial, sans-serif; padding: 40px 20px; text-align: center; }
+    .logo { font-size: 2rem; font-weight: bold; color: #b169e0; margin-bottom: 8px; }
+    .subtitle { color: #888; margin-bottom: 30px; }
+    .spinner { border: 3px solid #333; border-top: 3px solid #b169e0; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 20px auto; }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <div class="logo">MAYO Share</div>
+  <div class="subtitle">Hi ${name}</div>
+  <p style="color:#aaa;">Waiting for the receiver to approve your connection…</p>
+  <div class="spinner"></div>
+  <script>
+    const sessionId = new URLSearchParams(location.search).get('sessionId');
+    const evtSource = new EventSource('/events?sessionId=' + sessionId);
+    evtSource.addEventListener('approved', () => {
+      location.reload();
+    });
+    evtSource.addEventListener('declined', () => {
+      document.body.innerHTML = '<h1>Declined</h1><p style="color:#aaa;">The receiver declined your request.</p>';
+      evtSource.close();
+    });
+  </script>
+</body>
+</html>`;
+}
+
+function getDeclinedHTML(): string {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Declined – MAYO Share</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #0A0A0A; color: white; font-family: Arial, sans-serif; padding: 40px 20px; text-align: center; }
+    .logo { font-size: 2rem; font-weight: bold; color: #b169e0; margin-bottom: 8px; }
+  </style>
+</head>
+<body>
+  <div class="logo">MAYO Share</div>
+  <h1>Declined</h1>
+  <p style="color:#aaa; margin-top:10px;">The receiver declined your request.</p>
 </body>
 </html>`;
 }

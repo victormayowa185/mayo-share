@@ -44,6 +44,14 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
   const [fileQueue, setFileQueue] = useState<QueueFile[]>([]);
   const [offerQrDataUrl, setOfferQrDataUrl] = useState("");
   const [answerQrDataUrl, setAnswerQrDataUrl] = useState("");
+  const [discoveredDevices, setDiscoveredDevices] = useState<
+    Array<{ name: string; host: string; port: number }>
+  >([]);
+  const [browsing, setBrowsing] = useState(false);
+  const [advertising, setAdvertising] = useState(false);
+  const [signalingPort, setSignalingPort] = useState<number | null>(null);
+  const [showOfferCode, setShowOfferCode] = useState(false);
+  const [showAnswerCode, setShowAnswerCode] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [receiveMap, setReceiveMap] = useState<Record<string, ReceiveEntry>>(
     {},
@@ -154,9 +162,14 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
       );
       setOfferCode(compact);
 
-      // ✅ Moved inside try block
+      // Generate QR code
       const qrData = await QRCode.toDataURL(compact, { width: 200, margin: 2 });
       setOfferQrDataUrl(qrData);
+
+      // Start auto‑discovery advertising
+      const port = await window.electronAPI.startAdvertising(compact);
+      setSignalingPort(port);
+      setAdvertising(true);
     } catch (err: any) {
       setSessionStatus("Error: " + err.message);
     }
@@ -209,7 +222,7 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
       const qrData = await QRCode.toDataURL(compact, { width: 200, margin: 2 });
       setAnswerQrDataUrl(qrData);
     } catch (err: any) {
-      setSessionStatus("Error: " + err.message);
+      setSessionStatus("Er ror: " + err.message);
     }
   };
 
@@ -333,6 +346,33 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
     return () => document.removeEventListener("paste", handlePaste as any);
   }, [handlePaste]);
 
+  // Listen for auto‑discovery events
+  useEffect(() => {
+    window.electronAPI.onDeviceFound(
+      (device: { name: string; host: string; port: number }) => {
+        setDiscoveredDevices((prev) => [...prev, device]);
+      },
+    );
+
+    window.electronAPI.onAnswerReceived(async (answerSDP: string) => {
+      if (localPC.current) {
+        try {
+          await localPC.current.setRemoteDescription(
+            new RTCSessionDescription({ type: "answer", sdp: answerSDP }),
+          );
+          setSessionStatus("Connected! Data channel open.");
+          showFileArea();
+        } catch (err: any) {
+          setSessionStatus("Invalid answer: " + err.message);
+        }
+      }
+    });
+
+    return () => {
+      // cleanup if needed
+    };
+  }, []);
+
   const sendAll = async () => {
     if (!localDC.current || localDC.current.readyState !== "open") {
       setSessionStatus("Data channel not open.");
@@ -434,7 +474,15 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
           <button className={styles.btn} onClick={createSession}>
             Create Session
           </button>
-          <button className={styles.ghostBtn} onClick={() => setMode("join")}>
+          <button
+            className={styles.ghostBtn}
+            onClick={() => {
+              setMode("join");
+              setDiscoveredDevices([]);
+              setBrowsing(true);
+              window.electronAPI.startBrowsing();
+            }}
+          >
             Join Session
           </button>
         </div>
@@ -444,47 +492,51 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
       {mode === "create" && !connected && (
         <div className={styles.codePanel}>
           <p className={styles.label}>
-            Your session code — share with the other device:
+            {advertising
+              ? "Your device is visible to others."
+              : "Generating session..."}
           </p>
-          {offerCode ? (
-            <>
-              <textarea
-                className={styles.codeBox}
-                readOnly
-                value={offerCode}
-                rows={4}
-              />
-              <button
-                className={styles.copyBtn}
-                onClick={() => navigator.clipboard.writeText(offerCode)}
-              >
-                Copy Code
-              </button>
 
-              {offerQrDataUrl && (
-                <img
-                  src={offerQrDataUrl}
-                  alt="Offer QR"
-                  className={styles.qr}
-                />
-              )}
-              <p className={styles.label} style={{ marginTop: 24 }}>
-                Paste the answer code from the other device:
-              </p>
-              <textarea
-                className={styles.codeBox}
-                value={answerInput}
-                onChange={(e) => setAnswerInput(e.target.value)}
-                placeholder="Paste answer code here"
-                rows={4}
-              />
-              <button className={styles.btn} onClick={submitAnswer}>
-                Submit Answer
-              </button>
-            </>
-          ) : (
-            <div className={styles.spinner} />
+          {offerQrDataUrl && (
+            <img src={offerQrDataUrl} alt="Offer QR" className={styles.qr} />
           )}
+
+          <button
+            className={styles.copyBtn}
+            onClick={() => navigator.clipboard.writeText(offerCode)}
+          >
+            Copy Code
+          </button>
+
+          <button
+            className={styles.toggleBtn}
+            onClick={() => setShowOfferCode(!showOfferCode)}
+          >
+            {showOfferCode ? "Hide Code" : "Show Code"}
+          </button>
+
+          {showOfferCode && (
+            <textarea
+              className={styles.codeBox}
+              readOnly
+              value={offerCode}
+              rows={4}
+            />
+          )}
+
+          <p className={styles.label} style={{ marginTop: 24 }}>
+            Paste the answer code from the other device:
+          </p>
+          <textarea
+            className={styles.codeBox}
+            value={answerInput}
+            onChange={(e) => setAnswerInput(e.target.value)}
+            placeholder="Paste answer code here"
+            rows={4}
+          />
+          <button className={styles.btn} onClick={submitAnswer}>
+            Submit Answer
+          </button>
         </div>
       )}
 
@@ -492,19 +544,97 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
       {mode === "join" && !connected && (
         <div className={styles.codePanel}>
           <p className={styles.label}>
-            Paste the offer code from the other device:
+            {browsing
+              ? "Nearby devices:"
+              : "Paste the offer code from the other device:"}
           </p>
-          <textarea
-            className={styles.codeBox}
-            value={offerInput}
-            onChange={(e) => setOfferInput(e.target.value)}
-            placeholder="Paste offer code here"
-            rows={4}
-          />
-          <button className={styles.btn} onClick={processOffer}>
-            Process Offer
-          </button>
-          {answerCode && (
+
+          {browsing && (
+            <div className={styles.deviceList}>
+              {discoveredDevices.length === 0 && (
+                <p className={styles.hint}>Searching for devices...</p>
+              )}
+              {discoveredDevices.map((dev, idx) => (
+                <div
+                  key={idx}
+                  className={styles.deviceItem}
+                  onClick={async () => {
+                    setBrowsing(false);
+                    try {
+                      // Fetch SDP from the signaling server of the discovered device
+                      const response = await fetch(
+                        `http://${dev.host}:${dev.port}/sdp`,
+                      );
+                      const offerSDP = await response.text();
+                      setOfferInput(offerSDP);
+                      // Process the offer
+                      const pc = new RTCPeerConnection({ iceServers: [] });
+                      localPC.current = pc;
+
+                      pc.ondatachannel = (event) => {
+                        const dc = event.channel;
+                        localDC.current = dc;
+                        dc.onopen = () => {
+                          setSessionStatus("Connected! Data channel open.");
+                          showFileArea();
+                        };
+                        dc.onmessage = (e) => handleDCMessage(e.data);
+                      };
+
+                      const offer =
+                        await window.electronAPI.decompressSDP(offerSDP);
+                      await pc.setRemoteDescription(
+                        new RTCSessionDescription({
+                          type: "offer",
+                          sdp: offer,
+                        }),
+                      );
+                      const answer = await pc.createAnswer();
+                      await pc.setLocalDescription(answer);
+                      await waitForICE(pc);
+                      const compactAnswer =
+                        await window.electronAPI.compressSDP(
+                          pc.localDescription!.sdp,
+                        );
+                      setAnswerCode(compactAnswer);
+                      const qrData = await QRCode.toDataURL(compactAnswer, {
+                        width: 200,
+                        margin: 2,
+                      });
+                      setAnswerQrDataUrl(qrData);
+
+                      // Send answer back to offerer via POST
+                      await fetch(`http://${dev.host}:${dev.port}/answer`, {
+                        method: "POST",
+                        body: compactAnswer,
+                      });
+                    } catch (err: any) {
+                      setSessionStatus("Error: " + err.message);
+                    }
+                  }}
+                >
+                  <span>{dev.name}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {!browsing && (
+            <>
+              <textarea
+                className={styles.codeBox}
+                value={offerInput}
+                onChange={(e) => setOfferInput(e.target.value)}
+                placeholder="Paste offer code here"
+                rows={4}
+              />
+              <button className={styles.btn} onClick={processOffer}>
+                Process Offer
+              </button>
+            </>
+          )}
+
+          {answerCode && !browsing && (
             <>
               <p className={styles.label} style={{ marginTop: 24 }}>
                 Your answer code — give this back:

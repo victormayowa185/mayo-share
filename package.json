@@ -22,6 +22,7 @@
   },
   "dependencies": {
     "formidable": "^3.5.4",
+    "multicast-dns": "^7.2.5",
     "qrcode": "^1.5.4",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",

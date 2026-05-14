@@ -1,15 +1,17 @@
-import { app, BrowserWindow, ipcMain, dialog } from 'electron';
-import path from 'path';
-import { execFile } from 'child_process';
-import { FileServer } from './fileServer';
-import { open, close, read, writeFile, appendFileSync } from 'fs';
-import { UploadServer } from './uploadServer'; 
-import { statSync } from 'fs';
-import fs from 'fs';
-import os from 'os';
+import { app, BrowserWindow, ipcMain, dialog } from "electron";
+import path from "path";
+import { execFile } from "child_process";
+import { FileServer } from "./fileServer";
+import http from "http";
+import { open, close, read, writeFile, appendFileSync } from "fs";
+import { UploadServer } from "./uploadServer";
+import { DiscoveryManager } from "./discovery";
+import { statSync } from "fs";
+import fs from "fs";
+import os from "os";
 
 let mainWindow: BrowserWindow | null = null;
-let currentHotspotIP = '192.168.137.1';
+let currentHotspotIP = "192.168.137.1";
 
 const STOP_HOTSPOT_SCRIPT = `
   $adapter = Get-NetAdapter | Where-Object { $_.InterfaceDescription -like "*KM-TEST*" -or $_.InterfaceDescription -like "*Loopback*" } | Select-Object -First 1
@@ -114,31 +116,32 @@ const HOTSPOT_SCRIPT = `
   exit 0
   `;
 
-
 const fileServer = new FileServer();
-const uploadServer = new UploadServer(); 
-
+const uploadServer = new UploadServer();
+const discoveryManager = new DiscoveryManager();
 
 function stopWindowsHotspot() {
-  const tempScriptPath = path.join(os.tmpdir(), `mayo-stop-hotspot-${Date.now()}.ps1`);
-  fs.writeFileSync(tempScriptPath, STOP_HOTSPOT_SCRIPT, 'utf8');
+  const tempScriptPath = path.join(
+    os.tmpdir(),
+    `mayo-stop-hotspot-${Date.now()}.ps1`,
+  );
+  fs.writeFileSync(tempScriptPath, STOP_HOTSPOT_SCRIPT, "utf8");
   execFile(
-    'powershell.exe',
-    ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', tempScriptPath],
+    "powershell.exe",
+    ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", tempScriptPath],
     { timeout: 10000 },
     (error, stdout, stderr) => {
-      try { fs.unlinkSync(tempScriptPath); } catch {}
+      try {
+        fs.unlinkSync(tempScriptPath);
+      } catch {}
       if (error) {
-        console.error('Failed to stop hotspot:', stderr || error.message);
+        console.error("Failed to stop hotspot:", stderr || error.message);
       } else {
-        console.log('Hotspot stopped:', stdout);
+        console.log("Hotspot stopped:", stdout);
       }
-    }
+    },
   );
 }
-
-
-
 
 // ---------- Window ----------
 function createWindow(): void {
@@ -146,41 +149,48 @@ function createWindow(): void {
     width: 800,
     height: 600,
     webPreferences: {
-      preload: path.join(__dirname, '..', 'preload', 'index.js'),
+      preload: path.join(__dirname, "..", "preload", "index.js"),
       contextIsolation: true,
       nodeIntegration: false,
     },
   });
-  mainWindow.loadFile(path.join(__dirname, '..', '..', 'dist', 'renderer', 'index.html'));
+  mainWindow.loadFile(
+    path.join(__dirname, "..", "..", "dist", "renderer", "index.html"),
+  );
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    require('electron').shell.openExternal(url);
-    return { action: 'deny' };
+    require("electron").shell.openExternal(url);
+    return { action: "deny" };
   });
 }
 
 // ---------- Hotspot ----------
-ipcMain.handle('start-hotspot', async (): Promise<string> => {
+ipcMain.handle("start-hotspot", async (): Promise<string> => {
   return new Promise((resolve) => {
-    const tempScriptPath = path.join(os.tmpdir(), `mayo-hotspot-${Date.now()}.ps1`);
+    const tempScriptPath = path.join(
+      os.tmpdir(),
+      `mayo-hotspot-${Date.now()}.ps1`,
+    );
 
     try {
-      fs.writeFileSync(tempScriptPath, HOTSPOT_SCRIPT, 'utf8');
+      fs.writeFileSync(tempScriptPath, HOTSPOT_SCRIPT, "utf8");
     } catch (err) {
       resolve(`ERROR: Could not write temp script: ${err}`);
       return;
     }
 
     execFile(
-      'powershell.exe',
-      ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', tempScriptPath],
+      "powershell.exe",
+      ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", tempScriptPath],
       { timeout: 60000 },
       (error, stdout, stderr) => {
-        try { fs.unlinkSync(tempScriptPath); } catch { }
+        try {
+          fs.unlinkSync(tempScriptPath);
+        } catch {}
 
-        let output = stdout || '';
+        let output = stdout || "";
         if (stderr && !stdout) output += stderr;
-        if (error) output += '\n[EXIT CODE]: ' + error.message;
+        if (error) output += "\n[EXIT CODE]: " + error.message;
 
         // Extract the hotspot IP from the script's output
         const ipMatch = output.match(/Hotspot IP \(for sharing\):\s*([\d.]+)/);
@@ -188,18 +198,18 @@ ipcMain.handle('start-hotspot', async (): Promise<string> => {
           currentHotspotIP = ipMatch[1];
         }
 
-        resolve(output || 'Script produced no output');
-      }
+        resolve(output || "Script produced no output");
+      },
     );
   });
 });
 
 // ---------- File selection ----------
-ipcMain.handle('select-file', async (): Promise<string[] | null> => {
+ipcMain.handle("select-file", async (): Promise<string[] | null> => {
   if (!mainWindow) return null;
   const result = await dialog.showOpenDialog(mainWindow, {
-    properties: ['openFile', 'multiSelections'],
-    title: 'Select files to share',
+    properties: ["openFile", "multiSelections"],
+    title: "Select files to share",
   });
   if (result.canceled || result.filePaths.length === 0) return null;
   return result.filePaths;
@@ -207,24 +217,39 @@ ipcMain.handle('select-file', async (): Promise<string[] | null> => {
 
 // ---------- File server ----------
 // Accepts either plain paths (from file picks) or objects with relativePath (from folder picks)
-ipcMain.handle('start-file-server', async (_event, files: (string | { absolute: string; relative: string })[]): Promise<string> => {
-  try {
-    const filePaths = files.map(f => (typeof f === 'string' ? f : f.absolute));
-    // relativePaths will be passed through later when we update fileServer
-    const relativePaths = files.map(f => (typeof f === 'string' ? undefined : f.relative));
-    const url = await fileServer.start(filePaths, relativePaths, undefined, currentHotspotIP);
-    return url;
-  } catch (err) {
-    throw new Error(`Could not start server: ${err}`);
-  }
-});
+ipcMain.handle(
+  "start-file-server",
+  async (
+    _event,
+    files: (string | { absolute: string; relative: string })[],
+  ): Promise<string> => {
+    try {
+      const filePaths = files.map((f) =>
+        typeof f === "string" ? f : f.absolute,
+      );
+      // relativePaths will be passed through later when we update fileServer
+      const relativePaths = files.map((f) =>
+        typeof f === "string" ? undefined : f.relative,
+      );
+      const url = await fileServer.start(
+        filePaths,
+        relativePaths,
+        undefined,
+        currentHotspotIP,
+      );
+      return url;
+    } catch (err) {
+      throw new Error(`Could not start server: ${err}`);
+    }
+  },
+);
 
-ipcMain.handle('stop-file-server', async (): Promise<void> => {
+ipcMain.handle("stop-file-server", async (): Promise<void> => {
   fileServer.stop();
 });
 
 // ---------- Upload server (Receive from Browser) ----------
-ipcMain.handle('start-upload-server', async (): Promise<string> => {
+ipcMain.handle("start-upload-server", async (): Promise<string> => {
   try {
     const url = await uploadServer.start(currentHotspotIP);
     return url;
@@ -233,24 +258,46 @@ ipcMain.handle('start-upload-server', async (): Promise<string> => {
   }
 });
 
-ipcMain.handle('stop-upload-server', async (): Promise<void> => {
+ipcMain.handle("stop-upload-server", async (): Promise<void> => {
   uploadServer.stop();
 });
 
-ipcMain.handle('get-file-size', async (_event, filePath: string): Promise<number> => {
-  const stats = statSync(filePath);
-  return stats.size;
+ipcMain.handle("approve-sender", async (_event, sessionId: string) => {
+  uploadServer.approveSender(sessionId);
 });
 
-uploadServer.on('file-received', (fileName: string) => {
-  mainWindow?.webContents.send('upload-update', { event: 'received', fileName });
+ipcMain.handle("decline-sender", async (_event, sessionId: string) => {
+  uploadServer.declineSender(sessionId);
+});
+
+ipcMain.handle(
+  "get-file-size",
+  async (_event, filePath: string): Promise<number> => {
+    const stats = statSync(filePath);
+    return stats.size;
+  },
+);
+
+uploadServer.on("file-received", (fileName: string) => {
+  mainWindow?.webContents.send("upload-update", {
+    event: "received",
+    fileName,
+  });
+});
+
+
+// Forward sender-connected events to renderer
+uploadServer.on("sender-connected", (sessionId: string, senderName: string) => {
+  mainWindow?.webContents.send("sender-connected", { sessionId, senderName });
 });
 
 
 // ---------- Hotspot status check (for real-time status bar) ----------
-ipcMain.handle('check-hotspot-status', async (): Promise<{ active: boolean; ip: string }> => {
-  return new Promise((resolve) => {
-    const script = `
+ipcMain.handle(
+  "check-hotspot-status",
+  async (): Promise<{ active: boolean; ip: string }> => {
+    return new Promise((resolve) => {
+      const script = `
       try {
         $adapter = Get-NetAdapter | Where-Object { $_.InterfaceDescription -like "*KM-TEST*" -or $_.InterfaceDescription -like "*Loopback*" } | Select-Object -First 1
         if (-not $adapter) { Write-Output "OFF"; exit 0 }
@@ -268,27 +315,36 @@ ipcMain.handle('check-hotspot-status', async (): Promise<{ active: boolean; ip: 
       }
     `;
 
-    const tempPath = path.join(os.tmpdir(), `mayo-check-${Date.now()}.ps1`);
-    try { fs.writeFileSync(tempPath, script, 'utf8'); } catch { resolve({ active: false, ip: '' }); return; }
-
-    execFile('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', tempPath],
-      { timeout: 8000 },
-      (error, stdout) => {
-        try { fs.unlinkSync(tempPath); } catch { }
-        const out = (stdout || '').trim();
-        if (out.startsWith('ON')) {
-          resolve({ active: true, ip: currentHotspotIP });
-        } else {
-          resolve({ active: false, ip: '' });
-        }
+      const tempPath = path.join(os.tmpdir(), `mayo-check-${Date.now()}.ps1`);
+      try {
+        fs.writeFileSync(tempPath, script, "utf8");
+      } catch {
+        resolve({ active: false, ip: "" });
+        return;
       }
-    );
-  });
-});
 
+      execFile(
+        "powershell.exe",
+        ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", tempPath],
+        { timeout: 8000 },
+        (error, stdout) => {
+          try {
+            fs.unlinkSync(tempPath);
+          } catch {}
+          const out = (stdout || "").trim();
+          if (out.startsWith("ON")) {
+            resolve({ active: true, ip: currentHotspotIP });
+          } else {
+            resolve({ active: false, ip: "" });
+          }
+        },
+      );
+    });
+  },
+);
 
-// HOST NAME 
-ipcMain.handle('get-hostname', async () => {
+// HOST NAME
+ipcMain.handle("get-hostname", async () => {
   return os.hostname();
 });
 
@@ -298,11 +354,11 @@ interface FolderFile {
   relative: string;
 }
 
-ipcMain.handle('select-folder', async (): Promise<FolderFile[] | null> => {
+ipcMain.handle("select-folder", async (): Promise<FolderFile[] | null> => {
   if (!mainWindow) return null;
   const result = await dialog.showOpenDialog(mainWindow, {
-    properties: ['openDirectory'],
-    title: 'Select a folder to share',
+    properties: ["openDirectory"],
+    title: "Select a folder to share",
   });
   if (result.canceled || result.filePaths.length === 0) return null;
 
@@ -328,118 +384,240 @@ ipcMain.handle('select-folder', async (): Promise<FolderFile[] | null> => {
   return allFiles.length > 0 ? allFiles : null;
 });
 
-
 // ---------- File chunking (for P2P) ----------
 
-ipcMain.handle('read-file-chunk', async (_event, filePath: string, start: number, size: number): Promise<string> => {
-  return new Promise((resolve, reject) => {
-    // Open file, read chunk, return as base64
-    open(filePath, 'r', (err, fd) => {
-      if (err) return reject(err);
-      const buf = Buffer.alloc(size);
-      read(fd, buf, 0, size, start, (err, bytesRead) => {
-        close(fd, () => { });
+ipcMain.handle(
+  "read-file-chunk",
+  async (
+    _event,
+    filePath: string,
+    start: number,
+    size: number,
+  ): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      // Open file, read chunk, return as base64
+      open(filePath, "r", (err, fd) => {
         if (err) return reject(err);
-        resolve(buf.slice(0, bytesRead).toString('base64'));
+        const buf = Buffer.alloc(size);
+        read(fd, buf, 0, size, start, (err, bytesRead) => {
+          close(fd, () => {});
+          if (err) return reject(err);
+          resolve(buf.slice(0, bytesRead).toString("base64"));
+        });
       });
     });
-  });
-});
+  },
+);
 
 // for file resume
 
-ipcMain.handle('save-resume-state', async (_event, transferId: string, offset: number, filePath: string): Promise<void> => {
-  const resumePath = path.join(os.tmpdir(), `mayo-resume-${transferId}.json`);
-  await fs.promises.writeFile(resumePath, JSON.stringify({ offset, filePath }), 'utf8');
+ipcMain.handle(
+  "save-resume-state",
+  async (
+    _event,
+    transferId: string,
+    offset: number,
+    filePath: string,
+  ): Promise<void> => {
+    const resumePath = path.join(os.tmpdir(), `mayo-resume-${transferId}.json`);
+    await fs.promises.writeFile(
+      resumePath,
+      JSON.stringify({ offset, filePath }),
+      "utf8",
+    );
+  },
+);
+
+ipcMain.handle(
+  "get-resume-state",
+  async (
+    _event,
+    transferId: string,
+  ): Promise<{ offset: number; filePath: string } | null> => {
+    const resumePath = path.join(os.tmpdir(), `mayo-resume-${transferId}.json`);
+    try {
+      const raw = await fs.promises.readFile(resumePath, "utf8");
+      return JSON.parse(raw);
+    } catch {
+      return null;
+    }
+  },
+);
+
+ipcMain.handle(
+  "clear-resume-state",
+  async (_event, transferId: string): Promise<void> => {
+    const resumePath = path.join(os.tmpdir(), `mayo-resume-${transferId}.json`);
+    try {
+      await fs.promises.unlink(resumePath);
+    } catch {}
+  },
+);
+
+ipcMain.handle(
+  "create-receive-file",
+  async (_event, filePath: string): Promise<void> => {
+    await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
+    await fs.promises.writeFile(filePath, "");
+  },
+);
+
+ipcMain.handle(
+  "append-receive-chunk",
+  async (_event, filePath: string, base64Data: string): Promise<void> => {
+    const buf = Buffer.from(base64Data, "base64");
+    appendFileSync(filePath, buf);
+  },
+);
+
+fileServer.on("download-started", (_index: number, fileName: string) => {
+  mainWindow?.webContents.send("download-update", {
+    event: "started",
+    fileName,
+  });
+});
+fileServer.on("download-completed", (_index: number, fileName: string) => {
+  mainWindow?.webContents.send("download-update", {
+    event: "completed",
+    fileName,
+  });
 });
 
-ipcMain.handle('get-resume-state', async (_event, transferId: string): Promise<{ offset: number; filePath: string } | null> => {
-  const resumePath = path.join(os.tmpdir(), `mayo-resume-${transferId}.json`);
-  try {
-    const raw = await fs.promises.readFile(resumePath, 'utf8');
-    return JSON.parse(raw);
-  } catch {
-    return null;
+// ---------- Clipboard file paths ----------
+ipcMain.handle(
+  "get-clipboard-files",
+  async (): Promise<{ paths: string[]; type: "files" | "none" }> => {
+    const { clipboard } = await import("electron");
+    // On Windows, copied files are available via nativeImage or file list
+    // electron clipboard doesn't expose file paths directly, so we read from the raw formats
+    try {
+      const rawFilenames = clipboard.read("FileNameW"); // Windows-specific
+      if (rawFilenames && rawFilenames.length > 0) {
+        // Parse null-terminated wide string list
+        const paths: string[] = rawFilenames
+          .split("\0")
+          .map((p) => p.trim())
+          .filter((p) => p.length > 0 && fs.existsSync(p));
+        if (paths.length > 0) return { paths, type: "files" };
+      }
+    } catch {
+      /* not available */
+    }
+    return { paths: [], type: "none" };
+  },
+);
+
+ipcMain.handle(
+  "save-temp-file",
+  async (_event, fileName: string, base64Data: string): Promise<string> => {
+    const tempDir = path.join(os.tmpdir(), "mayo-share-temp");
+    await fs.promises.mkdir(tempDir, { recursive: true });
+    const filePath = path.join(tempDir, fileName);
+    const buf = Buffer.from(base64Data, "base64");
+    await fs.promises.writeFile(filePath, buf);
+    return filePath;
+  },
+);
+
+ipcMain.handle("compress-sdp", async (_event, sdp: string): Promise<string> => {
+  return Buffer.from(sdp, "utf-8").toString("base64");
+});
+
+ipcMain.handle(
+  "decompress-sdp",
+  async (_event, compact: string): Promise<string> => {
+    return Buffer.from(compact, "base64").toString("utf-8");
+  },
+);
+
+ipcMain.handle("ping", async () => "pong");
+// ---------- Discovery (mDNS + signaling server) ----------
+let signalingServer: http.Server | null = null;
+let storedOfferSDP = "";
+
+ipcMain.handle(
+  "start-advertising",
+  async (_event, sdpOffer: string): Promise<number> => {
+    storedOfferSDP = sdpOffer;
+
+    // Spin up a tiny HTTP server that serves the SDP
+    const PORT = 3004;
+    if (signalingServer) signalingServer.close();
+
+    signalingServer = require("http").createServer(
+      (req: http.IncomingMessage, res: http.ServerResponse) => {
+        res.setHeader("Access-Control-Allow-Origin", "*");
+        if (req.method === "GET" && req.url === "/sdp") {
+          res.writeHead(200, { "Content-Type": "text/plain" });
+          res.end(storedOfferSDP);
+        } else if (req.method === "POST" && req.url === "/answer") {
+          let body = "";
+          req.on("data", (chunk: string) => (body += chunk));
+          req.on("end", () => {
+            discoveryManager.emit("answer-received", body);
+            res.writeHead(200);
+            res.end("OK");
+          });
+        } else {
+          res.writeHead(404);
+          res.end();
+        }
+      },
+    );
+
+    await new Promise<void>((resolve) =>
+      signalingServer!.listen(PORT, resolve),
+    );
+    discoveryManager.startAdvertising(currentHotspotIP, PORT);
+    return PORT;
+  },
+);
+
+ipcMain.handle("start-browsing", async (): Promise<void> => {
+  discoveryManager.startBrowsing();
+});
+
+ipcMain.handle("stop-discovery", async (): Promise<void> => {
+  discoveryManager.stop();
+  if (signalingServer) {
+    signalingServer.close();
+    signalingServer = null;
   }
 });
 
-ipcMain.handle('clear-resume-state', async (_event, transferId: string): Promise<void> => {
-  const resumePath = path.join(os.tmpdir(), `mayo-resume-${transferId}.json`);
-  try { await fs.promises.unlink(resumePath); } catch { }
+ipcMain.handle(
+  "connect-to-device",
+  async (_event, sdpOffer: string): Promise<string> => {
+    // Create answer using existing logic
+    const pc = new (require("electron").BrowserWindow?.webContents?.session
+      ?.webRTC?.RTCPeerConnection)();
+    // Actually we need to create the answer in the renderer side, but we can handle it differently.
+    // This should be done in the renderer. We'll just return a placeholder.
+    // We'll implement the real connection logic in the frontend.
+    return "connected";
+  },
+);
+
+// Forward events to renderer
+discoveryManager.on("device-found", (device) => {
+  mainWindow?.webContents.send("device-found", device);
 });
 
-
-
-ipcMain.handle('create-receive-file', async (_event, filePath: string): Promise<void> => {
-  await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
-  await fs.promises.writeFile(filePath, '');
+discoveryManager.on("answer-received", (answerSDP: string) => {
+  mainWindow?.webContents.send("answer-received", answerSDP);
 });
-
-ipcMain.handle('append-receive-chunk', async (_event, filePath: string, base64Data: string): Promise<void> => {
-  const buf = Buffer.from(base64Data, 'base64');
-  appendFileSync(filePath, buf);
-});
-
-
-fileServer.on('download-started', (_index: number, fileName: string) => {
-  mainWindow?.webContents.send('download-update', { event: 'started', fileName });
-});
-fileServer.on('download-completed', (_index: number, fileName: string) => {
-  mainWindow?.webContents.send('download-update', { event: 'completed', fileName });
-});
-
-
-
-// ---------- Clipboard file paths ----------
-ipcMain.handle('get-clipboard-files', async (): Promise<{ paths: string[]; type: 'files' | 'none' }> => {
-  const { clipboard } = await import('electron');
-  // On Windows, copied files are available via nativeImage or file list
-  // electron clipboard doesn't expose file paths directly, so we read from the raw formats
-  try {
-    const rawFilenames = clipboard.read('FileNameW'); // Windows-specific
-    if (rawFilenames && rawFilenames.length > 0) {
-      // Parse null-terminated wide string list
-      const paths: string[] = rawFilenames
-        .split('\0')
-        .map(p => p.trim())
-        .filter(p => p.length > 0 && (fs.existsSync(p)));
-      if (paths.length > 0) return { paths, type: 'files' };
-    }
-  } catch { /* not available */ }
-  return { paths: [], type: 'none' };
-});
-
-
-
-ipcMain.handle('save-temp-file', async (_event, fileName: string, base64Data: string): Promise<string> => {
-  const tempDir = path.join(os.tmpdir(), 'mayo-share-temp');
-  await fs.promises.mkdir(tempDir, { recursive: true });
-  const filePath = path.join(tempDir, fileName);
-  const buf = Buffer.from(base64Data, 'base64');
-  await fs.promises.writeFile(filePath, buf);
-  return filePath;
-});
-
-
-ipcMain.handle('compress-sdp', async (_event, sdp: string): Promise<string> => {
-  return Buffer.from(sdp, 'utf-8').toString('base64');
-});
-
-ipcMain.handle('decompress-sdp', async (_event, compact: string): Promise<string> => {
-  return Buffer.from(compact, 'base64').toString('utf-8');
-});
-
-ipcMain.handle('ping', async () => 'pong');
 
 // ---------- App startup ----------
 app.whenReady().then(createWindow);
 
-app.on('before-quit', () => {
+app.on("before-quit", () => {
+  discoveryManager.stop();
+  if (signalingServer) signalingServer.close();
   uploadServer.stop();
   fileServer.stop();
-  stopWindowsHotspot();  
+  stopWindowsHotspot();
 });
 
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit();
+app.on("window-all-closed", () => {
+  if (process.platform !== "darwin") app.quit();
 });

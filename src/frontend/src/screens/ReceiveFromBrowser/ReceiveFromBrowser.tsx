@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
-import { FaArrowLeft, FaCheckCircle, FaCopy, FaSpinner } from 'react-icons/fa';
-import QRCode from 'qrcode';                                          // ← new import
-import styles from '../../styles/screens/ReceiveFromBrowser.module.css';
+import React, { useState, useEffect } from "react";
+import { FaArrowLeft, FaCheckCircle, FaCopy, FaSpinner } from "react-icons/fa";
+import QRCode from "qrcode"; // ← new import
+import styles from "../../styles/screens/ReceiveFromBrowser.module.css";
 
 interface ReceivedFile {
   id: string;
@@ -14,69 +14,92 @@ interface Props {
 }
 
 const ReceiveFromBrowser: React.FC<Props> = ({ onBack }) => {
-  const [shareUrl, setShareUrl] = useState('');
-  const [qrDataUrl, setQrDataUrl] = useState('');
+  const [shareUrl, setShareUrl] = useState("");
+  const [qrDataUrl, setQrDataUrl] = useState("");
   const [isReceiving, setIsReceiving] = useState(false);
   const [copied, setCopied] = useState(false);
   const [startingHotspot, setStartingHotspot] = useState(false);
-  const [hotspotStatus, setHotspotStatus] = useState('');
+  const [hotspotStatus, setHotspotStatus] = useState("");
   const [receivedFiles, setReceivedFiles] = useState<ReceivedFile[]>([]);
+  const [pendingSenders, setPendingSenders] = useState<
+    { sessionId: string; senderName: string }[]
+  >([]);
 
   // Listen for incoming files
   useEffect(() => {
     window.electronAPI.onUploadUpdate((data) => {
-      if (data.event === 'received') {
+      if (data.event === "received") {
         const newFile: ReceivedFile = {
           id: Date.now().toString() + Math.random(),
           name: data.fileName,
           time: new Date().toLocaleTimeString(),
         };
-        setReceivedFiles(prev => [...prev, newFile]);
+        setReceivedFiles((prev) => [...prev, newFile]);
       }
     });
   }, []);
 
+  useEffect(() => {
+    window.electronAPI.onSenderConnected(
+      (data: { sessionId: string; senderName: string }) => {
+        setPendingSenders((prev) => {
+          // Update if session already exists (e.g., name updated)
+          const existingIdx = prev.findIndex(
+            (s) => s.sessionId === data.sessionId,
+          );
+          if (existingIdx !== -1) {
+            const updated = [...prev];
+            updated[existingIdx] = data;
+            return updated;
+          }
+          return [...prev, data];
+        });
+      },
+    );
+  }, []);
   const startReceiving = async () => {
     try {
       setStartingHotspot(true);
-      setHotspotStatus('Checking hotspot...');
+      setHotspotStatus("Checking hotspot...");
       const status = await window.electronAPI.checkHotspotStatus();
       let ip = status.ip;
 
       if (!status.active) {
-        setHotspotStatus('Starting hotspot...');
+        setHotspotStatus("Starting hotspot...");
         const result = await window.electronAPI.startHotspot();
-        if (result.includes('SUCCESS')) {
-          const ipMatch = result.match(/Hotspot IP \(for sharing\):\s*([\d.]+)/);
+        if (result.includes("SUCCESS")) {
+          const ipMatch = result.match(
+            /Hotspot IP \(for sharing\):\s*([\d.]+)/,
+          );
           if (ipMatch && ipMatch[1]) {
             ip = ipMatch[1];
           }
         } else {
-          throw new Error('Hotspot could not be started. ' + result);
+          throw new Error("Hotspot could not be started. " + result);
         }
       }
 
-      setHotspotStatus('Hotspot active. Starting upload server...');
+      setHotspotStatus("Hotspot active. Starting upload server...");
       const url = await window.electronAPI.startUploadServer();
       setShareUrl(url);
       setIsReceiving(true);
       setStartingHotspot(false);
-      setHotspotStatus('');
+      setHotspotStatus("");
 
       // Generate QR code using the locally installed qrcode package
       const qrData = await QRCode.toDataURL(url, { width: 200, margin: 2 });
       setQrDataUrl(qrData);
     } catch (err: any) {
-      alert('Error: ' + (err.message || err));
+      alert("Error: " + (err.message || err));
       setStartingHotspot(false);
-      setHotspotStatus('');
+      setHotspotStatus("");
     }
   };
 
   const stopReceiving = async () => {
     await window.electronAPI.stopUploadServer();
-    setShareUrl('');
-    setQrDataUrl('');
+    setShareUrl("");
+    setQrDataUrl("");
     setIsReceiving(false);
     setCopied(false);
     // Leave receivedFiles so the user can still see them after stopping
@@ -103,13 +126,21 @@ const ReceiveFromBrowser: React.FC<Props> = ({ onBack }) => {
       <h2 className={styles.title}>Receive from Browser</h2>
       <p className={styles.subtitle}>
         {isReceiving
-          ? 'Ask the sender to open this link and send files.'
-          : 'Start a receiving session so others can send files to you.'}
+          ? "Ask the sender to open this link and send files."
+          : "Start a receiving session so others can send files to you."}
       </p>
 
       {/* Show hotspot progress */}
       {startingHotspot && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, color: '#aaa' }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            marginBottom: 16,
+            color: "#aaa",
+          }}
+        >
           <FaSpinner className={styles.spinner} />
           <span>{hotspotStatus}</span>
         </div>
@@ -130,25 +161,80 @@ const ReceiveFromBrowser: React.FC<Props> = ({ onBack }) => {
             <span className={styles.url}>{shareUrl}</span>
             <button className={styles.copyBtn} onClick={copyLink}>
               {copied ? (
-                <><FaCheckCircle style={{ marginRight: 4 }} color="#4CAF50" size={14} /> Copied</>
+                <>
+                  <FaCheckCircle
+                    style={{ marginRight: 4 }}
+                    color="#4CAF50"
+                    size={14}
+                  />{" "}
+                  Copied
+                </>
               ) : (
-                <><FaCopy style={{ marginRight: 4 }} size={14} /> Copy</>
+                <>
+                  <FaCopy style={{ marginRight: 4 }} size={14} /> Copy
+                </>
               )}
             </button>
           </div>
-          <p className={styles.hint}>Tell the sender to connect to your hotspot and open this link.</p>
+          <p className={styles.hint}>
+            Tell the sender to connect to your hotspot and open this link.
+          </p>
           <button className={styles.stopBtn} onClick={stopReceiving}>
             Stop Receiving
           </button>
+
+          {/* Pending Senders */}
+          {pendingSenders.length > 0 && (
+            <div className={styles.receivedSection}>
+              <h3 className={styles.receivedTitle}>Pending Senders</h3>
+              <ul className={styles.fileList}>
+                {pendingSenders.map((s) => (
+                  <li key={s.sessionId} className={styles.fileItem}>
+                    <span className={styles.fileName}>
+                      {s.senderName || "Unnamed"}
+                    </span>
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <button
+                        className={styles.acceptBtn}
+                        onClick={async () => {
+                          await window.electronAPI.approveSender(s.sessionId);
+                          setPendingSenders((prev) =>
+                            prev.filter((x) => x.sessionId !== s.sessionId),
+                          );
+                        }}
+                      >
+                        Accept
+                      </button>
+                      <button
+                        className={styles.declineBtn}
+                        onClick={async () => {
+                          await window.electronAPI.declineSender(s.sessionId);
+                          setPendingSenders((prev) =>
+                            prev.filter((x) => x.sessionId !== s.sessionId),
+                          );
+                        }}
+                      >
+                        Decline
+                      </button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
 
           {/* Received files list */}
           {receivedFiles.length > 0 && (
             <div className={styles.receivedSection}>
               <h3 className={styles.receivedTitle}>Received Files</h3>
               <ul className={styles.fileList}>
-                {receivedFiles.map(f => (
+                {receivedFiles.map((f) => (
                   <li key={f.id} className={styles.fileItem}>
-                    <FaCheckCircle size={14} color="#4CAF50" style={{ marginRight: 8 }} />
+                    <FaCheckCircle
+                      size={14}
+                      color="#4CAF50"
+                      style={{ marginRight: 8 }}
+                    />
                     <span className={styles.fileName}>{f.name}</span>
                     <span className={styles.fileTime}>{f.time}</span>
                   </li>
