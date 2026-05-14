@@ -13,6 +13,11 @@ export class UploadServer extends EventEmitter {
   async start(ip?: string): Promise<string> {
     await fs.mkdir(RECEIVE_DIR, { recursive: true });
 
+    // 1. Kill any previous server still holding the port
+    this.stop();
+    // 2. Give the OS a moment to release the port
+    await new Promise(r => setTimeout(r, 100));
+
     return new Promise((resolve, reject) => {
       this.server = createServer(async (req: IncomingMessage, res: ServerResponse) => {
         const url = req.url || '/';
@@ -39,7 +44,6 @@ export class UploadServer extends EventEmitter {
               multiples: true,
             });
 
-            // v3 API: parse returns [fields, files] — both come from the same call
             const [fields, files] = await form.parse(req);
 
             // Handle pasted text
@@ -52,7 +56,7 @@ export class UploadServer extends EventEmitter {
               this.emit('file-received', fileName);
             }
 
-            // Handle pasted image (base64 data URL sent as a field)
+            // Handle pasted image
             const imageField = fields.image;
             if (imageField) {
               const rawImage = Array.isArray(imageField) ? imageField[0] : imageField;
@@ -217,11 +221,9 @@ function getUploadHTML(): string {
       fileEntries.forEach((entry, idx) => {
         const li = document.createElement('li');
         li.className = 'file-item';
-        li.innerHTML = `
-    < span class="name" > ${ entry.name } </span>
-      < span class="size" > ${ formatBytes(entry.file.size) } </span>
-        < button class="remove-btn" data - index="${idx}" >✕</button>
-          `;
+        li.innerHTML = '<span class="name">' + entry.name + '</span>' +
+          '<span class="size">' + formatBytes(entry.file.size) + '</span>' +
+          '<button class="remove-btn" data-index="' + idx + '">\u2715</button>';
         fileListEl.appendChild(li);
       });
 
@@ -282,52 +284,47 @@ function getUploadHTML(): string {
           return;
         }
       }
-      // text is automatically inserted into contenteditable
     });
 
     sendBtn.addEventListener('click', async () => {
       const formData = new FormData();
       let hasContent = false;
 
-      // Add selected files to ZIP
       if (fileEntries.length > 0) {
         const zip = new JSZip();
         fileEntries.forEach(entry => {
           zip.file(entry.relativePath, entry.file);
         });
 
-        // Add pasted image
         if (pastedImageData) {
           const base64 = pastedImageData.split(',')[1];
           const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-          zip.file(`screenshot - ${ timestamp }.png`, base64, { base64: true });
+          zip.file('screenshot-' + timestamp + '.png', base64, { base64: true });
         }
 
-        // Add pasted text
         const text = pasteArea.innerText.trim();
         if (text) {
           const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-          zip.file(`pasted - ${ timestamp }.txt`, text);
+          zip.file('pasted-' + timestamp + '.txt', text);
         }
 
         const blob = await zip.generateAsync({ type: 'blob' });
-        const zipName = `mayo - share - ${ new Date().toISOString().replace(/[:.]/g, '-') }.zip`;
+        const zipName = 'mayo-share-' + new Date().toISOString().replace(/[:.]/g, '-') + '.zip';
         formData.append('fileupload', blob, zipName);
         hasContent = true;
       } else {
-        // Fallback: only pasted image/text, no files selected
         if (pastedImageData) {
           const base64 = pastedImageData.split(',')[1];
           const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
           const blob = new Blob([atob(base64)], { type: 'image/png' });
-          formData.append('fileupload', blob, `screenshot - ${ timestamp }.png`);
+          formData.append('fileupload', blob, 'screenshot-' + timestamp + '.png');
           hasContent = true;
         }
         const text = pasteArea.innerText.trim();
         if (text) {
           const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
           const blob = new Blob([text], { type: 'text/plain' });
-          formData.append('fileupload', blob, `pasted - ${ timestamp }.txt`);
+          formData.append('fileupload', blob, 'pasted-' + timestamp + '.txt');
           hasContent = true;
         }
       }

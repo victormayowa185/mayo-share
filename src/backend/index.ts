@@ -401,6 +401,11 @@ ipcMain.handle('ping', async () => 'pong');
 
 // ---------- App startup ----------
 app.whenReady().then(createWindow);
+
+app.on('before-quit', () => {
+  uploadServer.stop();   // kills the upload server when the app exits
+});
+
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });
