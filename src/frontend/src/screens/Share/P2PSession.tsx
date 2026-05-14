@@ -1,6 +1,7 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { FaArrowLeft, FaCircle, FaTimes, FaFolderOpen } from 'react-icons/fa';
-import styles from '../../styles/screens/P2PSession.module.css';
+import React, { useState, useRef, useEffect, useCallback } from "react";
+import { FaArrowLeft, FaCircle, FaTimes, FaFolderOpen } from "react-icons/fa";
+import QRCode from "qrcode";
+import styles from "../../styles/screens/P2PSession.module.css";
 
 interface Props {
   onBack: () => void;
@@ -11,9 +12,9 @@ interface QueueFile {
   name: string;
   path: string | null;
   size: number;
-  status: 'queued' | 'transferring' | 'done' | 'cancelled';
+  status: "queued" | "transferring" | "done" | "cancelled";
   progress: number;
-  source: 'file' | 'text';
+  source: "file" | "text";
   textData?: string;
 }
 
@@ -25,23 +26,28 @@ interface ReceiveEntry {
 }
 
 const formatBytes = (b: number) => {
-  if (b === 0) return '0 B';
-  const k = 1024, s = ['B', 'KB', 'MB', 'GB'];
+  if (b === 0) return "0 B";
+  const k = 1024,
+    s = ["B", "KB", "MB", "GB"];
   const i = Math.floor(Math.log(b) / Math.log(k));
-  return parseFloat((b / Math.pow(k, i)).toFixed(1)) + ' ' + s[i];
+  return parseFloat((b / Math.pow(k, i)).toFixed(1)) + " " + s[i];
 };
 
 const P2PSession: React.FC<Props> = ({ onBack }) => {
-  const [mode, setMode] = useState<'choose' | 'create' | 'join'>('choose');
-  const [sessionStatus, setSessionStatus] = useState('');
+  const [mode, setMode] = useState<"choose" | "create" | "join">("choose");
+  const [sessionStatus, setSessionStatus] = useState("");
   const [connected, setConnected] = useState(false);
-  const [offerCode, setOfferCode] = useState('');
-  const [answerCode, setAnswerCode] = useState('');
-  const [answerInput, setAnswerInput] = useState('');
-  const [offerInput, setOfferInput] = useState('');
+  const [offerCode, setOfferCode] = useState("");
+  const [answerCode, setAnswerCode] = useState("");
+  const [answerInput, setAnswerInput] = useState("");
+  const [offerInput, setOfferInput] = useState("");
   const [fileQueue, setFileQueue] = useState<QueueFile[]>([]);
+  const [offerQrDataUrl, setOfferQrDataUrl] = useState("");
+  const [answerQrDataUrl, setAnswerQrDataUrl] = useState("");
   const [isSending, setIsSending] = useState(false);
-  const [receiveMap, setReceiveMap] = useState<Record<string, ReceiveEntry>>({});
+  const [receiveMap, setReceiveMap] = useState<Record<string, ReceiveEntry>>(
+    {},
+  );
 
   const localPC = useRef<RTCPeerConnection | null>(null);
   const localDC = useRef<RTCDataChannel | null>(null);
@@ -53,22 +59,32 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
 
   const handleDCMessage = async (raw: string) => {
     let msg: any;
-    try { msg = JSON.parse(raw); } catch { return; }
+    try {
+      msg = JSON.parse(raw);
+    } catch {
+      return;
+    }
 
-    if (msg.type === 'file-start') {
+    if (msg.type === "file-start") {
       const { id, name, size, resumable, fromOffset } = msg;
       const savePath = `C:\\mayo-received\\${name}`;
-      receivePathsRef.current[id] = savePath;                       // store path in ref
+      receivePathsRef.current[id] = savePath; // store path in ref
       if (resumable && fromOffset > 0) {
-        setReceiveMap(prev => ({ ...prev, [id]: { name, size, path: savePath, received: fromOffset } }));
+        setReceiveMap((prev) => ({
+          ...prev,
+          [id]: { name, size, path: savePath, received: fromOffset },
+        }));
       } else {
         await window.electronAPI.createReceiveFile(savePath);
-        setReceiveMap(prev => ({ ...prev, [id]: { name, size, path: savePath, received: 0 } }));
+        setReceiveMap((prev) => ({
+          ...prev,
+          [id]: { name, size, path: savePath, received: 0 },
+        }));
       }
       await window.electronAPI.saveResumeState(id, fromOffset || 0, savePath);
     }
 
-    if (msg.type === 'file-chunk') {
+    if (msg.type === "file-chunk") {
       const { id, data, offset } = msg;
       const path = receivePathsRef.current[id];
       if (!path) return;
@@ -79,7 +95,7 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
       const newReceived = offset + decodedLen;
 
       // Update progress – using functional update to avoid stale state
-      setReceiveMap(prev => {
+      setReceiveMap((prev) => {
         const entry = prev[id];
         if (!entry) return prev;
         return { ...prev, [id]: { ...entry, received: newReceived } };
@@ -88,12 +104,12 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
       await window.electronAPI.saveResumeState(id, newReceived, path);
     }
 
-    if (msg.type === 'file-end') {
+    if (msg.type === "file-end") {
       const { id } = msg;
-      setSessionStatus(`File received: ${receiveMap[id]?.name || ''}`);
+      setSessionStatus(`File received: ${receiveMap[id]?.name || ""}`);
       await window.electronAPI.clearResumeState(id);
       delete receivePathsRef.current[id];
-      setReceiveMap(prev => {
+      setReceiveMap((prev) => {
         const n = { ...prev };
         delete n[id];
         return n;
@@ -105,34 +121,44 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
 
   const waitForICE = (pc: RTCPeerConnection) =>
     Promise.race([
-      new Promise<void>(resolve => {
-        if (pc.iceGatheringState === 'complete') resolve();
-        else pc.addEventListener('icegatheringstatechange', () => {
-          if (pc.iceGatheringState === 'complete') resolve();
-        });
+      new Promise<void>((resolve) => {
+        if (pc.iceGatheringState === "complete") resolve();
+        else
+          pc.addEventListener("icegatheringstatechange", () => {
+            if (pc.iceGatheringState === "complete") resolve();
+          });
       }),
-      new Promise<void>(resolve => setTimeout(resolve, 10000)),
+      new Promise<void>((resolve) => setTimeout(resolve, 10000)),
     ]);
 
   const createSession = async () => {
-    setMode('create');
+    setMode("create");
     try {
       const pc = new RTCPeerConnection({ iceServers: [] });
       localPC.current = pc;
 
-      const dc = pc.createDataChannel('mayo-share', { ordered: true });
+      const dc = pc.createDataChannel("mayo-share", { ordered: true });
       localDC.current = dc;
-      dc.onopen = () => { setSessionStatus('Connected! Data channel open.'); showFileArea(); };
-      dc.onmessage = e => handleDCMessage(e.data);
+      dc.onopen = () => {
+        setSessionStatus("Connected! Data channel open.");
+        showFileArea();
+      };
+      dc.onmessage = (e) => handleDCMessage(e.data);
 
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
       await waitForICE(pc);
 
-      const compact = await window.electronAPI.compressSDP(pc.localDescription!.sdp);
+      const compact = await window.electronAPI.compressSDP(
+        pc.localDescription!.sdp,
+      );
       setOfferCode(compact);
+
+      // ✅ Moved inside try block
+      const qrData = await QRCode.toDataURL(compact, { width: 200, margin: 2 });
+      setOfferQrDataUrl(qrData);
     } catch (err: any) {
-      setSessionStatus('Error: ' + err.message);
+      setSessionStatus("Error: " + err.message);
     }
   };
 
@@ -140,180 +166,259 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
     if (!answerInput.trim() || !localPC.current) return;
     try {
       const sdp = await window.electronAPI.decompressSDP(answerInput.trim());
-      await localPC.current.setRemoteDescription(new RTCSessionDescription({ type: 'answer', sdp }));
-      setSessionStatus('Answer accepted – connecting...');
+      await localPC.current.setRemoteDescription(
+        new RTCSessionDescription({ type: "answer", sdp }),
+      );
+      setSessionStatus("Answer accepted – connecting...");
     } catch (err: any) {
-      setSessionStatus('Invalid answer: ' + err.message);
+      setSessionStatus("Invalid answer: " + err.message);
     }
   };
 
   const processOffer = async () => {
     if (!offerInput.trim()) return;
-    setMode('join');
+    setMode("join");
     try {
       const sdp = await window.electronAPI.decompressSDP(offerInput.trim());
       const pc = new RTCPeerConnection({ iceServers: [] });
       localPC.current = pc;
 
-      pc.ondatachannel = event => {
+      pc.ondatachannel = (event) => {
         const dc = event.channel;
         localDC.current = dc;
-        dc.onopen = () => { setSessionStatus('Connected! Data channel open.'); showFileArea(); };
-        dc.onmessage = e => handleDCMessage(e.data);
+        dc.onopen = () => {
+          setSessionStatus("Connected! Data channel open.");
+          showFileArea();
+        };
+        dc.onmessage = (e) => handleDCMessage(e.data);
       };
 
-      await pc.setRemoteDescription(new RTCSessionDescription({ type: 'offer', sdp }));
+      await pc.setRemoteDescription(
+        new RTCSessionDescription({ type: "offer", sdp }),
+      );
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
       await waitForICE(pc);
 
-      const compact = await window.electronAPI.compressSDP(pc.localDescription!.sdp);
+      const compact = await window.electronAPI.compressSDP(
+        pc.localDescription!.sdp,
+      );
       setAnswerCode(compact);
+
+      // ✅ Moved inside try block
+      const qrData = await QRCode.toDataURL(compact, { width: 200, margin: 2 });
+      setAnswerQrDataUrl(qrData);
     } catch (err: any) {
-      setSessionStatus('Error: ' + err.message);
+      setSessionStatus("Error: " + err.message);
     }
   };
 
   const addFiles = async () => {
     const paths = await window.electronAPI.selectFile();
     if (!paths) return;
-    const newFiles: QueueFile[] = await Promise.all(paths.map(async p => ({
-      id: Date.now().toString() + Math.random(),
-      name: p.split('\\').pop() || p,
-      path: p,
-      size: await window.electronAPI.getFileSize(p),
-      status: 'queued' as const,
-      progress: 0,
-      source: 'file' as const,
-    })));
-    setFileQueue(prev => [...prev, ...newFiles]);
+    const newFiles: QueueFile[] = await Promise.all(
+      paths.map(async (p) => ({
+        id: Date.now().toString() + Math.random(),
+        name: p.split("\\").pop() || p,
+        path: p,
+        size: await window.electronAPI.getFileSize(p),
+        status: "queued" as const,
+        progress: 0,
+        source: "file" as const,
+      })),
+    );
+    setFileQueue((prev) => [...prev, ...newFiles]);
   };
 
-  const removeFile = (id: string) => setFileQueue(prev => prev.filter(f => f.id !== id));
+  const removeFile = (id: string) =>
+    setFileQueue((prev) => prev.filter((f) => f.id !== id));
 
   // ========== NEW: Ctrl+V paste handler (same logic as Quick Share) ==========
-  const handlePaste = useCallback(async (e: ClipboardEvent) => {
-    if (isSending) return;
-    e.preventDefault();
+  const handlePaste = useCallback(
+    async (e: ClipboardEvent) => {
+      if (isSending) return;
+      e.preventDefault();
 
-    const clipboard = e.clipboardData;
-    if (!clipboard) return;
+      const clipboard = e.clipboardData;
+      if (!clipboard) return;
 
-    // 1. Files copied from Explorer
-    if (clipboard.files && clipboard.files.length > 0) {
-      const newFiles: QueueFile[] = [];
-      for (let i = 0; i < clipboard.files.length; i++) {
-        const f = clipboard.files[i];
-        const filePath = (f as any).path;
-        if (filePath) {
-          newFiles.push({
-            id: Date.now().toString() + Math.random(),
-            name: f.name,
-            path: filePath,
-            size: f.size,
-            status: 'queued',
-            progress: 0,
-            source: 'file',
-          });
+      // 1. Files copied from Explorer
+      if (clipboard.files && clipboard.files.length > 0) {
+        const newFiles: QueueFile[] = [];
+        for (let i = 0; i < clipboard.files.length; i++) {
+          const f = clipboard.files[i];
+          const filePath = (f as any).path;
+          if (filePath) {
+            newFiles.push({
+              id: Date.now().toString() + Math.random(),
+              name: f.name,
+              path: filePath,
+              size: f.size,
+              status: "queued",
+              progress: 0,
+              source: "file",
+            });
+          }
+        }
+        if (newFiles.length > 0) {
+          setFileQueue((prev) => [...prev, ...newFiles]);
+          return;
         }
       }
-      if (newFiles.length > 0) {
-        setFileQueue(prev => [...prev, ...newFiles]);
-        return;
-      }
-    }
 
-    // 2. Image (from clipboard)
-    const imageItem = Array.from(clipboard.items).find(item => item.type.startsWith('image/'));
-    if (imageItem) {
-      const blob = imageItem.getAsFile();
-      if (blob) {
-        const reader = new FileReader();
-        reader.onload = async () => {
-          const base64 = (reader.result as string).split(',')[1];
-          const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-          const fileName = `screenshot-${timestamp}.png`;
-          const savedPath = await window.electronAPI.saveTempFile(fileName, base64);
-          setFileQueue(prev => [...prev, {
+      // 2. Image (from clipboard)
+      const imageItem = Array.from(clipboard.items).find((item) =>
+        item.type.startsWith("image/"),
+      );
+      if (imageItem) {
+        const blob = imageItem.getAsFile();
+        if (blob) {
+          const reader = new FileReader();
+          reader.onload = async () => {
+            const base64 = (reader.result as string).split(",")[1];
+            const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+            const fileName = `screenshot-${timestamp}.png`;
+            const savedPath = await window.electronAPI.saveTempFile(
+              fileName,
+              base64,
+            );
+            setFileQueue((prev) => [
+              ...prev,
+              {
+                id: Date.now().toString() + Math.random(),
+                name: fileName,
+                path: savedPath,
+                size: blob.size,
+                status: "queued",
+                progress: 0,
+                source: "file",
+              },
+            ]);
+          };
+          reader.readAsDataURL(blob);
+          return;
+        }
+      }
+
+      // 3. Plain text
+      const text = clipboard.getData("text/plain");
+      if (text && text.trim()) {
+        const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+        const fileName = `pasted-${timestamp}.txt`;
+        const base64 = btoa(unescape(encodeURIComponent(text)));
+        const savedPath = await window.electronAPI.saveTempFile(
+          fileName,
+          base64,
+        );
+        setFileQueue((prev) => [
+          ...prev,
+          {
             id: Date.now().toString() + Math.random(),
             name: fileName,
             path: savedPath,
-            size: blob.size,
-            status: 'queued',
+            size: new Blob([text]).size,
+            status: "queued",
             progress: 0,
-            source: 'file',
-          }]);
-        };
-        reader.readAsDataURL(blob);
-        return;
+            source: "file",
+            textData: base64, // keep base64 for direct sending
+          },
+        ]);
       }
-    }
-
-    // 3. Plain text
-    const text = clipboard.getData('text/plain');
-    if (text && text.trim()) {
-      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-      const fileName = `pasted-${timestamp}.txt`;
-      const base64 = btoa(unescape(encodeURIComponent(text)));
-      const savedPath = await window.electronAPI.saveTempFile(fileName, base64);
-      setFileQueue(prev => [...prev, {
-        id: Date.now().toString() + Math.random(),
-        name: fileName,
-        path: savedPath,
-        size: new Blob([text]).size,
-        status: 'queued',
-        progress: 0,
-        source: 'file',
-        textData: base64,            // keep base64 for direct sending
-      }]);
-    }
-  }, [isSending]);
+    },
+    [isSending],
+  );
 
   useEffect(() => {
-    document.addEventListener('paste', handlePaste as any);
-    return () => document.removeEventListener('paste', handlePaste as any);
+    document.addEventListener("paste", handlePaste as any);
+    return () => document.removeEventListener("paste", handlePaste as any);
   }, [handlePaste]);
 
   const sendAll = async () => {
-    if (!localDC.current || localDC.current.readyState !== 'open') {
-      setSessionStatus('Data channel not open.'); return;
+    if (!localDC.current || localDC.current.readyState !== "open") {
+      setSessionStatus("Data channel not open.");
+      return;
     }
     setIsSending(true);
 
     for (const file of fileQueue) {
-      if (file.status === 'done' || file.status === 'cancelled') continue;
+      if (file.status === "done" || file.status === "cancelled") continue;
 
-      setFileQueue(prev => prev.map(f => f.id === file.id ? { ...f, status: 'transferring' } : f));
+      setFileQueue((prev) =>
+        prev.map((f) =>
+          f.id === file.id ? { ...f, status: "transferring" } : f,
+        ),
+      );
 
       if (file.textData) {
-        localDC.current.send(JSON.stringify({ type: 'file-start', id: file.id, name: file.name, size: file.size, resumable: false }));
-        localDC.current.send(JSON.stringify({ type: 'file-chunk', id: file.id, data: file.textData, offset: 0, totalSize: file.size }));
-        localDC.current.send(JSON.stringify({ type: 'file-end', id: file.id }));
+        localDC.current.send(
+          JSON.stringify({
+            type: "file-start",
+            id: file.id,
+            name: file.name,
+            size: file.size,
+            resumable: false,
+          }),
+        );
+        localDC.current.send(
+          JSON.stringify({
+            type: "file-chunk",
+            id: file.id,
+            data: file.textData,
+            offset: 0,
+            totalSize: file.size,
+          }),
+        );
+        localDC.current.send(JSON.stringify({ type: "file-end", id: file.id }));
       } else if (file.path) {
         const resumeState = await window.electronAPI.getResumeState(file.id);
         const startOffset = resumeState ? resumeState.offset : 0;
-        localDC.current.send(JSON.stringify({ type: 'file-start', id: file.id, name: file.name, size: file.size, resumable: true, fromOffset: startOffset }));
+        localDC.current.send(
+          JSON.stringify({
+            type: "file-start",
+            id: file.id,
+            name: file.name,
+            size: file.size,
+            resumable: true,
+            fromOffset: startOffset,
+          }),
+        );
 
         const CHUNK = 64 * 1024;
         let offset = startOffset;
         while (offset < file.size) {
           const chunkSize = Math.min(CHUNK, file.size - offset);
-          const base64 = await window.electronAPI.readFileChunk(file.path, offset, chunkSize);
-          localDC.current.send(JSON.stringify({ type: 'file-chunk', id: file.id, data: base64, offset, totalSize: file.size }));
+          const base64 = await window.electronAPI.readFileChunk(
+            file.path,
+            offset,
+            chunkSize,
+          );
+          localDC.current.send(
+            JSON.stringify({
+              type: "file-chunk",
+              id: file.id,
+              data: base64,
+              offset,
+              totalSize: file.size,
+            }),
+          );
           offset += chunkSize;
           const progress = Math.round((offset / file.size) * 100);
-          setFileQueue(prev => prev.map(f => f.id === file.id ? { ...f, progress } : f));
-          await new Promise(r => setTimeout(r, 1));
+          setFileQueue((prev) =>
+            prev.map((f) => (f.id === file.id ? { ...f, progress } : f)),
+          );
+          await new Promise((r) => setTimeout(r, 1));
         }
-        localDC.current.send(JSON.stringify({ type: 'file-end', id: file.id }));
+        localDC.current.send(JSON.stringify({ type: "file-end", id: file.id }));
         await window.electronAPI.clearResumeState(file.id);
       }
 
-      setFileQueue(prev => prev.map(f => f.id === file.id ? { ...f, status: 'done' } : f));
+      setFileQueue((prev) =>
+        prev.map((f) => (f.id === file.id ? { ...f, status: "done" } : f)),
+      );
     }
 
     setIsSending(false);
-    setSessionStatus('All files sent!');
+    setSessionStatus("All files sent!");
   };
 
   return (
@@ -324,24 +429,58 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
       <h2 className={styles.title}>Device Connect</h2>
 
       {/* Mode selection */}
-      {mode === 'choose' && !connected && (
+      {mode === "choose" && !connected && (
         <div className={styles.modeRow}>
-          <button className={styles.btn} onClick={createSession}>Create Session</button>
-          <button className={styles.ghostBtn} onClick={() => setMode('join')}>Join Session</button>
+          <button className={styles.btn} onClick={createSession}>
+            Create Session
+          </button>
+          <button className={styles.ghostBtn} onClick={() => setMode("join")}>
+            Join Session
+          </button>
         </div>
       )}
 
       {/* Offerer — show offer code */}
-      {mode === 'create' && !connected && (
+      {mode === "create" && !connected && (
         <div className={styles.codePanel}>
-          <p className={styles.label}>Your session code — share with the other device:</p>
+          <p className={styles.label}>
+            Your session code — share with the other device:
+          </p>
           {offerCode ? (
             <>
-              <textarea className={styles.codeBox} readOnly value={offerCode} rows={4} />
-              <button className={styles.copyBtn} onClick={() => navigator.clipboard.writeText(offerCode)}>Copy Code</button>
-              <p className={styles.label} style={{ marginTop: 24 }}>Paste the answer code from the other device:</p>
-              <textarea className={styles.codeBox} value={answerInput} onChange={e => setAnswerInput(e.target.value)} placeholder="Paste answer code here" rows={4} />
-              <button className={styles.btn} onClick={submitAnswer}>Submit Answer</button>
+              <textarea
+                className={styles.codeBox}
+                readOnly
+                value={offerCode}
+                rows={4}
+              />
+              <button
+                className={styles.copyBtn}
+                onClick={() => navigator.clipboard.writeText(offerCode)}
+              >
+                Copy Code
+              </button>
+
+              {offerQrDataUrl && (
+                <img
+                  src={offerQrDataUrl}
+                  alt="Offer QR"
+                  className={styles.qr}
+                />
+              )}
+              <p className={styles.label} style={{ marginTop: 24 }}>
+                Paste the answer code from the other device:
+              </p>
+              <textarea
+                className={styles.codeBox}
+                value={answerInput}
+                onChange={(e) => setAnswerInput(e.target.value)}
+                placeholder="Paste answer code here"
+                rows={4}
+              />
+              <button className={styles.btn} onClick={submitAnswer}>
+                Submit Answer
+              </button>
             </>
           ) : (
             <div className={styles.spinner} />
@@ -350,16 +489,45 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
       )}
 
       {/* Joiner — paste offer code */}
-      {mode === 'join' && !connected && (
+      {mode === "join" && !connected && (
         <div className={styles.codePanel}>
-          <p className={styles.label}>Paste the offer code from the other device:</p>
-          <textarea className={styles.codeBox} value={offerInput} onChange={e => setOfferInput(e.target.value)} placeholder="Paste offer code here" rows={4} />
-          <button className={styles.btn} onClick={processOffer}>Process Offer</button>
+          <p className={styles.label}>
+            Paste the offer code from the other device:
+          </p>
+          <textarea
+            className={styles.codeBox}
+            value={offerInput}
+            onChange={(e) => setOfferInput(e.target.value)}
+            placeholder="Paste offer code here"
+            rows={4}
+          />
+          <button className={styles.btn} onClick={processOffer}>
+            Process Offer
+          </button>
           {answerCode && (
             <>
-              <p className={styles.label} style={{ marginTop: 24 }}>Your answer code — give this back:</p>
-              <textarea className={styles.codeBox} readOnly value={answerCode} rows={4} />
-              <button className={styles.copyBtn} onClick={() => navigator.clipboard.writeText(answerCode)}>Copy Code</button>
+              <p className={styles.label} style={{ marginTop: 24 }}>
+                Your answer code — give this back:
+              </p>
+              <textarea
+                className={styles.codeBox}
+                readOnly
+                value={answerCode}
+                rows={4}
+              />
+              <button
+                className={styles.copyBtn}
+                onClick={() => navigator.clipboard.writeText(answerCode)}
+              >
+                Copy Code
+              </button>
+              {answerQrDataUrl && (
+                <img
+                  src={answerQrDataUrl}
+                  alt="Answer QR"
+                  className={styles.qr}
+                />
+              )}
             </>
           )}
         </div>
@@ -367,7 +535,9 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
 
       {/* Status */}
       {sessionStatus && (
-        <div className={`${styles.status} ${sessionStatus.includes('Error') ? styles.error : ''}`}>
+        <div
+          className={`${styles.status} ${sessionStatus.includes("Error") ? styles.error : ""}`}
+        >
           {sessionStatus}
         </div>
       )}
@@ -381,27 +551,49 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
           </div>
 
           <div className={styles.actionRow}>
-            <button className={styles.btn} onClick={addFiles} disabled={isSending}>Add Files</button>
-            <button className={styles.ghostBtn} onClick={() => document.execCommand('paste')} disabled={isSending}>
+            <button
+              className={styles.btn}
+              onClick={addFiles}
+              disabled={isSending}
+            >
+              Add Files
+            </button>
+            <button
+              className={styles.ghostBtn}
+              onClick={() => document.execCommand("paste")}
+              disabled={isSending}
+            >
               Paste (Ctrl+V)
             </button>
-            <button className={styles.sendBtn} onClick={sendAll} disabled={fileQueue.length === 0 || isSending}>
-              {isSending ? 'Sending...' : 'Send All'}
+            <button
+              className={styles.sendBtn}
+              onClick={sendAll}
+              disabled={fileQueue.length === 0 || isSending}
+            >
+              {isSending ? "Sending..." : "Send All"}
             </button>
           </div>
 
           {/* Send queue */}
           {fileQueue.length > 0 && (
             <div className={styles.queue}>
-              {fileQueue.map(f => (
+              {fileQueue.map((f) => (
                 <div key={f.id} className={styles.queueItem}>
                   <span className={styles.queueName}>{f.name}</span>
-                  <span className={styles.queueSize}>{formatBytes(f.size)}</span>
-                  <span className={styles.queueStatus}>
-                    {f.status === 'transferring' ? `${f.progress}%` : `[${f.status}]`}
+                  <span className={styles.queueSize}>
+                    {formatBytes(f.size)}
                   </span>
-                  {f.status !== 'transferring' && f.status !== 'done' && (
-                    <button className={styles.removeBtn} onClick={() => removeFile(f.id)} title="Remove file">
+                  <span className={styles.queueStatus}>
+                    {f.status === "transferring"
+                      ? `${f.progress}%`
+                      : `[${f.status}]`}
+                  </span>
+                  {f.status !== "transferring" && f.status !== "done" && (
+                    <button
+                      className={styles.removeBtn}
+                      onClick={() => removeFile(f.id)}
+                      title="Remove file"
+                    >
                       <FaTimes size={16} />
                     </button>
                   )}
@@ -417,7 +609,11 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
               {Object.entries(receiveMap).map(([id, entry]) => (
                 <div key={id} className={styles.queueItem}>
                   <span className={styles.queueName}>{entry.name}</span>
-                  <progress value={entry.received} max={entry.size} className={styles.progress} />
+                  <progress
+                    value={entry.received}
+                    max={entry.size}
+                    className={styles.progress}
+                  />
                   <span className={styles.queueStatus}>
                     {Math.round((entry.received / entry.size) * 100)}%
                   </span>
@@ -428,7 +624,7 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
         </div>
       )}
 
-      {!connected && mode === 'choose' && (
+      {!connected && mode === "choose" && (
         <div className={styles.emptyState}>
           <FaFolderOpen size={48} color="#555" />
           <p>Create or join a session to start.</p>

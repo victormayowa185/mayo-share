@@ -9,7 +9,17 @@ import fs from 'fs';
 import os from 'os';
 
 let mainWindow: BrowserWindow | null = null;
-let currentHotspotIP = '192.168.137.1';   // default fallback
+let currentHotspotIP = '192.168.137.1';
+
+const STOP_HOTSPOT_SCRIPT = `
+  $adapter = Get-NetAdapter | Where-Object { $_.InterfaceDescription -like "*KM-TEST*" -or $_.InterfaceDescription -like "*Loopback*" } | Select-Object -First 1
+  if (-not $adapter) { exit 0 }
+  $profile = [Windows.Networking.Connectivity.NetworkInformation,Windows.Networking.Connectivity,ContentType=WindowsRuntime]::GetConnectionProfiles() | Where-Object { $_.ProfileName -eq $adapter.Name }
+  if (-not $profile) { exit 0 }
+  $tetherManager = [Windows.Networking.NetworkOperators.NetworkOperatorTetheringManager,Windows.Networking.NetworkOperators,ContentType=WindowsRuntime]::CreateFromConnectionProfile($profile)
+  $tetherManager.StopTetheringAsync() | Out-Null
+  Write-Output "Hotspot stopped"
+`;
 
 const HOTSPOT_SCRIPT = `
   \$staticIP       = "192.168.137.1"
@@ -107,6 +117,28 @@ const HOTSPOT_SCRIPT = `
 
 const fileServer = new FileServer();
 const uploadServer = new UploadServer(); 
+
+
+function stopWindowsHotspot() {
+  const tempScriptPath = path.join(os.tmpdir(), `mayo-stop-hotspot-${Date.now()}.ps1`);
+  fs.writeFileSync(tempScriptPath, STOP_HOTSPOT_SCRIPT, 'utf8');
+  execFile(
+    'powershell.exe',
+    ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', tempScriptPath],
+    { timeout: 10000 },
+    (error, stdout, stderr) => {
+      try { fs.unlinkSync(tempScriptPath); } catch {}
+      if (error) {
+        console.error('Failed to stop hotspot:', stderr || error.message);
+      } else {
+        console.log('Hotspot stopped:', stdout);
+      }
+    }
+  );
+}
+
+
+
 
 // ---------- Window ----------
 function createWindow(): void {
@@ -403,7 +435,9 @@ ipcMain.handle('ping', async () => 'pong');
 app.whenReady().then(createWindow);
 
 app.on('before-quit', () => {
-  uploadServer.stop();   // kills the upload server when the app exits
+  uploadServer.stop();
+  fileServer.stop();
+  stopWindowsHotspot();  
 });
 
 app.on('window-all-closed', () => {

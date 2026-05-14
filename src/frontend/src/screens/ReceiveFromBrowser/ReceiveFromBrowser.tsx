@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { FaArrowLeft, FaCheckCircle, FaCopy, FaSpinner } from 'react-icons/fa';
+import QRCode from 'qrcode';                                          // ← new import
 import styles from '../../styles/screens/ReceiveFromBrowser.module.css';
 
 interface ReceivedFile {
@@ -62,11 +63,9 @@ const ReceiveFromBrowser: React.FC<Props> = ({ onBack }) => {
       setStartingHotspot(false);
       setHotspotStatus('');
 
-      if ((window as any).QRCode) {
-        (window as any).QRCode.toDataURL(url, { width: 200, margin: 2 }, (_: any, dataURL: string) => {
-          setQrDataUrl(dataURL);
-        });
-      }
+      // Generate QR code using the locally installed qrcode package
+      const qrData = await QRCode.toDataURL(url, { width: 200, margin: 2 });
+      setQrDataUrl(qrData);
     } catch (err: any) {
       alert('Error: ' + (err.message || err));
       setStartingHotspot(false);
@@ -124,7 +123,9 @@ const ReceiveFromBrowser: React.FC<Props> = ({ onBack }) => {
 
       {isReceiving && (
         <div className={styles.sharingPanel}>
-          {qrDataUrl && <img src={qrDataUrl} alt="QR Code" className={styles.qr} />}
+          {qrDataUrl && (
+            <img src={qrDataUrl} alt="QR Code" className={styles.qr} />
+          )}
           <div className={styles.urlRow}>
             <span className={styles.url}>{shareUrl}</span>
             <button className={styles.copyBtn} onClick={copyLink}>

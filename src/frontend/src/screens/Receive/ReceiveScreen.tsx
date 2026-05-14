@@ -213,9 +213,6 @@ const ReceiveScreen: React.FC<Props> = ({ onBack }) => {
           />
           <button className={styles.btn} onClick={openQuickLink}>Open Link</button>
           <p className={styles.hint}>Or scan the QR code on the sender's screen with your browser.</p>
-          <button className={styles.backBtn} style={{ marginTop: 24 }} onClick={() => setMode('choose')}>
-            ← Back
-          </button>
         </div>
       )}
 
