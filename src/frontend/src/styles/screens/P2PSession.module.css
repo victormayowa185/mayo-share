@@ -153,9 +153,10 @@
   margin-bottom: 8px;
 }
 
+/* Primary button – now purple */
 .btn {
   padding: 12px 28px;
-  background: #0066ff;
+  background: #b169e0;
   color: white;
   border: none;
   border-radius: 8px;
@@ -164,11 +165,12 @@
 }
 
 .btn:hover:not(:disabled) {
-  background: #0055dd;
+  background: #9a4fd4;
 }
 
 .btn:disabled {
   background: #333;
+  color: #888;
   cursor: not-allowed;
 }
 
@@ -183,10 +185,11 @@
 }
 
 .ghostBtn:hover {
-  border-color: #555;
+  border-color: #b169e0;
+  color: #b169e0;
 }
 
-/* Code panel used by join mode (unchanged) */
+/* Code panel used by join mode */
 .codePanel {
   display: flex;
   flex-direction: column;
@@ -211,15 +214,18 @@
   padding: 10px 14px;
   cursor: pointer;
   color: #ccc;
+  transition: border-color 0.15s;
 }
 
 .deviceItem:hover {
   background: #252525;
+  border-color: #b169e0;
 }
 
 .hint {
   color: #666;
   font-size: 0.85rem;
+  text-align: center;
 }
 
 .status {
@@ -233,7 +239,7 @@
   color: #f44336;
 }
 
-/* Connected file area (unchanged) */
+/* Connected file area */
 .fileArea {
   display: flex;
   flex-direction: column;
@@ -276,6 +282,7 @@
 
 .sendBtn:disabled {
   background: #333;
+  color: #888;
   cursor: not-allowed;
 }
 
@@ -310,7 +317,7 @@
 }
 
 .queueStatus {
-  color: #0066ff;
+  color: #b169e0;
   white-space: nowrap;
   min-width: 60px;
   text-align: right;
@@ -319,14 +326,19 @@
 .removeBtn {
   background: transparent;
   border: none;
+  color: #888;
   cursor: pointer;
   font-size: 0.9rem;
+}
+
+.removeBtn:hover {
+  color: #f44336;
 }
 
 .progress {
   flex: 1;
   height: 6px;
-  accent-color: #0066ff;
+  accent-color: #b169e0;
 }
 
 .incomingSection {
@@ -342,20 +354,7 @@
   margin-top: 48px;
 }
 
-/* Responsive: stack columns on smaller screens */
-@media (max-width: 700px) {
-  .shareLayout {
-    flex-direction: column;
-    align-items: center;
-  }
-
-  .column {
-    width: 100%;
-    max-width: 400px;
-  }
-}
-
-/* ── Create session (pure discovery) ── */
+/* ── Create / Join session status ── */
 .waitingText {
   color: #ccc;
   font-size: 1rem;
@@ -363,7 +362,6 @@
   margin-top: 20px;
 }
 
-/* Ensure the existing .spinner style works for the create screen */
 .spinner {
   border: 3px solid #333;
   border-top: 3px solid #b169e0;
@@ -380,5 +378,18 @@
   }
   100% {
     transform: rotate(360deg);
+  }
+}
+
+/* Responsive */
+@media (max-width: 700px) {
+  .shareLayout {
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .column {
+    width: 100%;
+    max-width: 400px;
   }
 }

@@ -67,6 +67,7 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
   const localDC = useRef<RTCDataChannel | null>(null);
 
   const createLayoutRef = useRef<HTMLDivElement>(null);
+  const joinLayoutRef = useRef<HTMLDivElement>(null);
   const receivePathsRef = useRef<Record<string, string>>({});
 
   const showFileArea = () => setConnected(true);
@@ -142,10 +143,8 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
   // ── Create Session – start advertising ──────────────
   const startAdvertisingSession = async () => {
     try {
-      // Stop any existing timer
       if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
 
-      // Check for a valid local IP first
       const localIP = await window.electronAPI.getLocalIP();
       if (!localIP) {
         setWaitingMessage(
@@ -178,10 +177,8 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
 
       setWaitingMessage("Looking for nearby devices…");
 
-      // Set auto‑retry after 10 seconds
       retryTimerRef.current = setTimeout(() => {
         setWaitingMessage("Retrying…");
-        // Small delay so the user sees "Retrying…" before it restarts
         setTimeout(() => {
           if (!connected) startAdvertisingSession();
         }, 1500);
@@ -197,7 +194,6 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
     startAdvertisingSession();
   };
 
-  // Cleanup timer and discovery on unmount or when connected
   useEffect(() => {
     return () => {
       if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
@@ -210,7 +206,7 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
     }
   }, [connected]);
 
-  // ── Join Session – unchanged ────────────────────────
+  // ── Join Session ────────────────────────────────────
   const processOffer = async () => {
     if (!offerInput.trim()) return;
     setMode("join");
@@ -480,11 +476,25 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
     setSessionStatus("All files sent!");
   };
 
+  // GSAP animations
   useGSAP(
     () => {
       if (mode === "create" && createLayoutRef.current) {
         gsap.fromTo(
           createLayoutRef.current,
+          { opacity: 0, y: 20 },
+          { opacity: 1, y: 0, duration: 0.4, ease: "power2.out" },
+        );
+      }
+    },
+    { dependencies: [mode] },
+  );
+
+  useGSAP(
+    () => {
+      if (mode === "join" && joinLayoutRef.current) {
+        gsap.fromTo(
+          joinLayoutRef.current,
           { opacity: 0, y: 20 },
           { opacity: 1, y: 0, duration: 0.4, ease: "power2.out" },
         );
@@ -541,9 +551,9 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
         </div>
       )}
 
-      {/* ── Join Session – unchanged ── */}
+      {/* ── Join Session – purple theme, spinner, GSAP ── */}
       {mode === "join" && !connected && (
-        <div className={styles.codePanel}>
+        <div className={styles.codePanel} ref={joinLayoutRef}>
           <p className={styles.label}>
             {browsing
               ? "Nearby devices:"
@@ -552,7 +562,17 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
           {browsing && (
             <div className={styles.deviceList}>
               {discoveredDevices.length === 0 && (
-                <p className={styles.hint}>Searching for devices...</p>
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    gap: 8,
+                  }}
+                >
+                  <div className={styles.spinner} />
+                  <p className={styles.hint}>Searching for devices...</p>
+                </div>
               )}
               {discoveredDevices.map((dev, idx) => (
                 <div
