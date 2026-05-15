@@ -3,29 +3,42 @@
   flex-direction: column;
   align-items: center;
   min-height: 100vh;
-  color: white;
+  background: #0a0a0a;
+  color: #ddd;
   padding: 40px 24px;
+}
+
+.createPanel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  max-width: 400px;
+  margin: 0 auto;
 }
 
 .backBtn {
   align-self: flex-start;
   background: transparent;
   border: 1px solid #333;
-  color: #888;
+  color: #ccc;
   padding: 8px 16px;
   border-radius: 8px;
   cursor: pointer;
   margin-bottom: 32px;
   font-size: 0.9rem;
 }
+
 .backBtn:hover {
   border-color: #555;
-  color: #ccc;
+  color: #fff;
 }
 
 .title {
   font-size: 1.6rem;
   margin-bottom: 32px;
+  color: #fff;
 }
 
 .modeRow {
@@ -34,10 +47,110 @@
   margin-bottom: 24px;
 }
 
+/* Two‑column layout (used by create session) */
+.shareLayout {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 32px;
+  width: 100%;
+  max-width: 900px;
+  margin-top: 8px;
+}
+
+.column {
+  flex: 1 1 280px;
+  min-width: 250px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.columnTitle {
+  color: #aaa;
+  font-size: 0.9rem;
+  margin-bottom: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  align-self: flex-start;
+}
+
+.label {
+  color: #888;
+  font-size: 0.9rem;
+  margin-bottom: 8px;
+  text-align: center;
+}
+
 .qr {
+  width: 200px;
+  height: 200px;
   border-radius: 12px;
-  border: 2px solid #222;
-  margin-top: 12px;
+  border: 2px solid #b169e0;
+  background: #0a0a0a;
+  margin: 16px 0;
+}
+
+.qrPlaceholder {
+  width: 200px;
+  height: 200px;
+  border-radius: 12px;
+  border: 2px dashed #333;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: #555;
+  margin: 16px 0;
+}
+
+.buttonGroup {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.copyBtn {
+  background: #222;
+  border: 1px solid #333;
+  color: #ccc;
+  padding: 8px 20px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.copyBtn:hover {
+  background: #2a2a2a;
+}
+
+.toggleBtn {
+  background: none;
+  border: 1px solid #333;
+  color: #888;
+  padding: 8px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.8rem;
+}
+
+.toggleBtn:hover {
+  border-color: #555;
+  color: #ccc;
+}
+
+.codeBox {
+  width: 100%;
+  background: #111;
+  border: 1px solid #333;
+  border-radius: 8px;
+  color: #ccc;
+  padding: 12px;
+  font-size: 0.78rem;
+  font-family: monospace;
+  resize: none;
+  word-break: break-all;
+  margin-bottom: 8px;
 }
 
 .btn {
@@ -49,9 +162,11 @@
   font-size: 1rem;
   cursor: pointer;
 }
+
 .btn:hover:not(:disabled) {
   background: #0055dd;
 }
+
 .btn:disabled {
   background: #333;
   cursor: not-allowed;
@@ -66,10 +181,12 @@
   font-size: 1rem;
   cursor: pointer;
 }
+
 .ghostBtn:hover {
   border-color: #555;
 }
 
+/* Code panel used by join mode (unchanged) */
 .codePanel {
   display: flex;
   flex-direction: column;
@@ -79,36 +196,30 @@
   max-width: 480px;
 }
 
-.label {
-  color: #888;
-  font-size: 0.9rem;
-  align-self: flex-start;
-}
-
-.codeBox {
+.deviceList {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
   width: 100%;
-  background: #111;
-  border: 1px solid #333;
-  border-radius: 8px;
-  color: #ccc;
-  padding: 12px;
-  font-size: 0.78rem;
-  font-family: monospace;
-  resize: none;
-  word-break: break-all;
 }
 
-.copyBtn {
-  background: #222;
+.deviceItem {
+  background: #1a1a1a;
   border: 1px solid #333;
-  color: #ccc;
-  padding: 8px 20px;
   border-radius: 8px;
+  padding: 10px 14px;
   cursor: pointer;
-  font-size: 0.9rem;
+  color: #ccc;
 }
-.copyBtn:hover {
-  background: #2a2a2a;
+
+.deviceItem:hover {
+  background: #252525;
+}
+
+.hint {
+  color: #666;
+  font-size: 0.85rem;
 }
 
 .status {
@@ -117,27 +228,12 @@
   font-size: 0.95rem;
   text-align: center;
 }
+
 .error {
   color: #f44336;
 }
 
-.spinner {
-  border: 3px solid #333;
-  border-top: 3px solid #0066ff;
-  border-radius: 50%;
-  width: 28px;
-  height: 28px;
-  animation: spin 0.8s linear infinite;
-}
-@keyframes spin {
-  0% {
-    transform: rotate(0deg);
-  }
-  100% {
-    transform: rotate(360deg);
-  }
-}
-
+/* Connected file area (unchanged) */
 .fileArea {
   display: flex;
   flex-direction: column;
@@ -173,9 +269,11 @@
   font-size: 1rem;
   cursor: pointer;
 }
+
 .sendBtn:hover:not(:disabled) {
   background: #43a047;
 }
+
 .sendBtn:disabled {
   background: #333;
   cursor: not-allowed;
@@ -205,16 +303,19 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
 .queueSize {
   color: #888;
   white-space: nowrap;
 }
+
 .queueStatus {
   color: #0066ff;
   white-space: nowrap;
   min-width: 60px;
   text-align: right;
 }
+
 .removeBtn {
   background: transparent;
   border: none;
@@ -232,38 +333,52 @@
   width: 100%;
 }
 
-.toggleBtn {
-  margin-top: 8px;
-  background: none;
-  border: 1px solid #333;
-  color: #888;
-  padding: 4px 12px;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 0.8rem;
-}
-
-.deviceList {
-  margin-top: 12px;
+.emptyState {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  align-items: center;
+  gap: 12px;
+  color: #555;
+  margin-top: 48px;
 }
 
-.deviceItem {
-  background: #1a1a1a;
-  border: 1px solid #333;
-  border-radius: 8px;
-  padding: 10px 14px;
-  cursor: pointer;
+/* Responsive: stack columns on smaller screens */
+@media (max-width: 700px) {
+  .shareLayout {
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .column {
+    width: 100%;
+    max-width: 400px;
+  }
+}
+
+/* ── Create session (pure discovery) ── */
+.waitingText {
   color: #ccc;
+  font-size: 1rem;
+  text-align: center;
+  margin-top: 20px;
 }
 
-.deviceItem:hover {
-  background: #252525;
+/* Ensure the existing .spinner style works for the create screen */
+.spinner {
+  border: 3px solid #333;
+  border-top: 3px solid #b169e0;
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  animation: spin 0.8s linear infinite;
+  margin: 0 auto;
 }
 
-.hint {
-  color: #666;
-  font-size: 0.85rem;
+@keyframes spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
 }

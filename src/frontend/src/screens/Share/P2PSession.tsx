@@ -1,7 +1,11 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { FaArrowLeft, FaCircle, FaTimes, FaFolderOpen } from "react-icons/fa";
 import QRCode from "qrcode";
+import gsap from "gsap";
+import { useGSAP } from "@gsap/react";
 import styles from "../../styles/screens/P2PSession.module.css";
+
+gsap.registerPlugin(useGSAP);
 
 interface Props {
   onBack: () => void;
@@ -37,12 +41,9 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
   const [mode, setMode] = useState<"choose" | "create" | "join">("choose");
   const [sessionStatus, setSessionStatus] = useState("");
   const [connected, setConnected] = useState(false);
-  const [offerCode, setOfferCode] = useState("");
   const [answerCode, setAnswerCode] = useState("");
-  const [answerInput, setAnswerInput] = useState("");
   const [offerInput, setOfferInput] = useState("");
   const [fileQueue, setFileQueue] = useState<QueueFile[]>([]);
-  const [offerQrDataUrl, setOfferQrDataUrl] = useState("");
   const [answerQrDataUrl, setAnswerQrDataUrl] = useState("");
   const [discoveredDevices, setDiscoveredDevices] = useState<
     Array<{ name: string; host: string; port: number }>
@@ -50,21 +51,27 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
   const [browsing, setBrowsing] = useState(false);
   const [advertising, setAdvertising] = useState(false);
   const [signalingPort, setSignalingPort] = useState<number | null>(null);
-  const [showOfferCode, setShowOfferCode] = useState(false);
   const [showAnswerCode, setShowAnswerCode] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [receiveMap, setReceiveMap] = useState<Record<string, ReceiveEntry>>(
     {},
   );
 
+  // Auto‑retry states
+  const [waitingMessage, setWaitingMessage] = useState(
+    "Looking for nearby devices…",
+  );
+  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const localPC = useRef<RTCPeerConnection | null>(null);
   const localDC = useRef<RTCDataChannel | null>(null);
 
-  // ---------- Reliable path storage for incoming files ----------
+  const createLayoutRef = useRef<HTMLDivElement>(null);
   const receivePathsRef = useRef<Record<string, string>>({});
 
   const showFileArea = () => setConnected(true);
 
+  // ── Data channel handler ────────────────────────────
   const handleDCMessage = async (raw: string) => {
     let msg: any;
     try {
@@ -76,7 +83,7 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
     if (msg.type === "file-start") {
       const { id, name, size, resumable, fromOffset } = msg;
       const savePath = `C:\\mayo-received\\${name}`;
-      receivePathsRef.current[id] = savePath; // store path in ref
+      receivePathsRef.current[id] = savePath;
       if (resumable && fromOffset > 0) {
         setReceiveMap((prev) => ({
           ...prev,
@@ -96,19 +103,14 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
       const { id, data, offset } = msg;
       const path = receivePathsRef.current[id];
       if (!path) return;
-
-      // Append chunk to disk
       await window.electronAPI.appendReceiveChunk(path, data);
       const decodedLen = atob(data).length;
       const newReceived = offset + decodedLen;
-
-      // Update progress – using functional update to avoid stale state
       setReceiveMap((prev) => {
         const entry = prev[id];
         if (!entry) return prev;
         return { ...prev, [id]: { ...entry, received: newReceived } };
       });
-
       await window.electronAPI.saveResumeState(id, newReceived, path);
     }
 
@@ -125,8 +127,6 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
     }
   };
 
-  // ... waitForICE, createSession, submitAnswer, processOffer, addFiles, removeFile, sendAll unchanged
-
   const waitForICE = (pc: RTCPeerConnection) =>
     Promise.race([
       new Promise<void>((resolve) => {
@@ -139,9 +139,21 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
       new Promise<void>((resolve) => setTimeout(resolve, 10000)),
     ]);
 
-  const createSession = async () => {
-    setMode("create");
+  // ── Create Session – start advertising ──────────────
+  const startAdvertisingSession = async () => {
     try {
+      // Stop any existing timer
+      if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
+
+      // Check for a valid local IP first
+      const localIP = await window.electronAPI.getLocalIP();
+      if (!localIP) {
+        setWaitingMessage(
+          "No network detected. Please connect to a Wi‑Fi network or start your hotspot first.",
+        );
+        return;
+      }
+
       const pc = new RTCPeerConnection({ iceServers: [] });
       localPC.current = pc;
 
@@ -160,34 +172,45 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
       const compact = await window.electronAPI.compressSDP(
         pc.localDescription!.sdp,
       );
-      setOfferCode(compact);
-
-      // Generate QR code
-      const qrData = await QRCode.toDataURL(compact, { width: 200, margin: 2 });
-      setOfferQrDataUrl(qrData);
-
-      // Start auto‑discovery advertising
       const port = await window.electronAPI.startAdvertising(compact);
       setSignalingPort(port);
       setAdvertising(true);
+
+      setWaitingMessage("Looking for nearby devices…");
+
+      // Set auto‑retry after 10 seconds
+      retryTimerRef.current = setTimeout(() => {
+        setWaitingMessage("Retrying…");
+        // Small delay so the user sees "Retrying…" before it restarts
+        setTimeout(() => {
+          if (!connected) startAdvertisingSession();
+        }, 1500);
+      }, 10000);
     } catch (err: any) {
       setSessionStatus("Error: " + err.message);
     }
   };
 
-  const submitAnswer = async () => {
-    if (!answerInput.trim() || !localPC.current) return;
-    try {
-      const sdp = await window.electronAPI.decompressSDP(answerInput.trim());
-      await localPC.current.setRemoteDescription(
-        new RTCSessionDescription({ type: "answer", sdp }),
-      );
-      setSessionStatus("Answer accepted – connecting...");
-    } catch (err: any) {
-      setSessionStatus("Invalid answer: " + err.message);
-    }
+  const createSession = () => {
+    setMode("create");
+    setWaitingMessage("Looking for nearby devices…");
+    startAdvertisingSession();
   };
 
+  // Cleanup timer and discovery on unmount or when connected
+  useEffect(() => {
+    return () => {
+      if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (connected && retryTimerRef.current) {
+      clearTimeout(retryTimerRef.current);
+    }
+  }, [connected]);
+
+  // ── Join Session – unchanged ────────────────────────
   const processOffer = async () => {
     if (!offerInput.trim()) return;
     setMode("join");
@@ -218,14 +241,18 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
       );
       setAnswerCode(compact);
 
-      // ✅ Moved inside try block
-      const qrData = await QRCode.toDataURL(compact, { width: 200, margin: 2 });
+      const qrData = await QRCode.toDataURL(compact, {
+        width: 200,
+        margin: 2,
+        color: { dark: "#b169e0", light: "#0A0A0A" },
+      });
       setAnswerQrDataUrl(qrData);
     } catch (err: any) {
-      setSessionStatus("Er ror: " + err.message);
+      setSessionStatus("Error: " + err.message);
     }
   };
 
+  // ── File management ─────────────────────────────────
   const addFiles = async () => {
     const paths = await window.electronAPI.selectFile();
     if (!paths) return;
@@ -246,16 +273,13 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
   const removeFile = (id: string) =>
     setFileQueue((prev) => prev.filter((f) => f.id !== id));
 
-  // ========== NEW: Ctrl+V paste handler (same logic as Quick Share) ==========
   const handlePaste = useCallback(
     async (e: ClipboardEvent) => {
       if (isSending) return;
       e.preventDefault();
-
       const clipboard = e.clipboardData;
       if (!clipboard) return;
 
-      // 1. Files copied from Explorer
       if (clipboard.files && clipboard.files.length > 0) {
         const newFiles: QueueFile[] = [];
         for (let i = 0; i < clipboard.files.length; i++) {
@@ -279,7 +303,6 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
         }
       }
 
-      // 2. Image (from clipboard)
       const imageItem = Array.from(clipboard.items).find((item) =>
         item.type.startsWith("image/"),
       );
@@ -313,7 +336,6 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
         }
       }
 
-      // 3. Plain text
       const text = clipboard.getData("text/plain");
       if (text && text.trim()) {
         const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
@@ -333,7 +355,7 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
             status: "queued",
             progress: 0,
             source: "file",
-            textData: base64, // keep base64 for direct sending
+            textData: base64,
           },
         ]);
       }
@@ -346,7 +368,6 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
     return () => document.removeEventListener("paste", handlePaste as any);
   }, [handlePaste]);
 
-  // Listen for auto‑discovery events
   useEffect(() => {
     window.electronAPI.onDeviceFound(
       (device: { name: string; host: string; port: number }) => {
@@ -368,9 +389,7 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
       }
     });
 
-    return () => {
-      // cleanup if needed
-    };
+    return () => {};
   }, []);
 
   const sendAll = async () => {
@@ -461,6 +480,19 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
     setSessionStatus("All files sent!");
   };
 
+  useGSAP(
+    () => {
+      if (mode === "create" && createLayoutRef.current) {
+        gsap.fromTo(
+          createLayoutRef.current,
+          { opacity: 0, y: 20 },
+          { opacity: 1, y: 0, duration: 0.4, ease: "power2.out" },
+        );
+      }
+    },
+    { dependencies: [mode] },
+  );
+
   return (
     <div className={styles.container}>
       <button className={styles.backBtn} onClick={onBack}>
@@ -468,7 +500,6 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
       </button>
       <h2 className={styles.title}>Device Connect</h2>
 
-      {/* Mode selection */}
       {mode === "choose" && !connected && (
         <div className={styles.modeRow}>
           <button className={styles.btn} onClick={createSession}>
@@ -488,59 +519,29 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
         </div>
       )}
 
-      {/* Offerer — show offer code */}
+      {/* ── Create Session – pure discovery mode ── */}
       {mode === "create" && !connected && (
-        <div className={styles.codePanel}>
-          <p className={styles.label}>
-            {advertising
-              ? "Your device is visible to others."
-              : "Generating session..."}
-          </p>
-
-          {offerQrDataUrl && (
-            <img src={offerQrDataUrl} alt="Offer QR" className={styles.qr} />
+        <div className={styles.createPanel} ref={createLayoutRef}>
+          <div className={styles.spinner} />
+          <p className={styles.waitingText}>{waitingMessage}</p>
+          {waitingMessage.includes("No network") && (
+            <p className={styles.hint} style={{ marginTop: 12 }}>
+              Please connect to a Wi‑Fi network or start your hotspot and try
+              again.
+            </p>
           )}
-
-          <button
-            className={styles.copyBtn}
-            onClick={() => navigator.clipboard.writeText(offerCode)}
-          >
-            Copy Code
-          </button>
-
-          <button
-            className={styles.toggleBtn}
-            onClick={() => setShowOfferCode(!showOfferCode)}
-          >
-            {showOfferCode ? "Hide Code" : "Show Code"}
-          </button>
-
-          {showOfferCode && (
-            <textarea
-              className={styles.codeBox}
-              readOnly
-              value={offerCode}
-              rows={4}
-            />
+          {waitingMessage.includes("Retrying") && (
+            <p
+              className={styles.hint}
+              style={{ marginTop: 12, color: "#b169e0" }}
+            >
+              Searching again automatically…
+            </p>
           )}
-
-          <p className={styles.label} style={{ marginTop: 24 }}>
-            Paste the answer code from the other device:
-          </p>
-          <textarea
-            className={styles.codeBox}
-            value={answerInput}
-            onChange={(e) => setAnswerInput(e.target.value)}
-            placeholder="Paste answer code here"
-            rows={4}
-          />
-          <button className={styles.btn} onClick={submitAnswer}>
-            Submit Answer
-          </button>
         </div>
       )}
 
-      {/* Joiner — paste offer code */}
+      {/* ── Join Session – unchanged ── */}
       {mode === "join" && !connected && (
         <div className={styles.codePanel}>
           <p className={styles.label}>
@@ -548,7 +549,6 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
               ? "Nearby devices:"
               : "Paste the offer code from the other device:"}
           </p>
-
           {browsing && (
             <div className={styles.deviceList}>
               {discoveredDevices.length === 0 && (
@@ -561,16 +561,13 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
                   onClick={async () => {
                     setBrowsing(false);
                     try {
-                      // Fetch SDP from the signaling server of the discovered device
                       const response = await fetch(
                         `http://${dev.host}:${dev.port}/sdp`,
                       );
                       const offerSDP = await response.text();
                       setOfferInput(offerSDP);
-                      // Process the offer
                       const pc = new RTCPeerConnection({ iceServers: [] });
                       localPC.current = pc;
-
                       pc.ondatachannel = (event) => {
                         const dc = event.channel;
                         localDC.current = dc;
@@ -580,7 +577,6 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
                         };
                         dc.onmessage = (e) => handleDCMessage(e.data);
                       };
-
                       const offer =
                         await window.electronAPI.decompressSDP(offerSDP);
                       await pc.setRemoteDescription(
@@ -602,8 +598,6 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
                         margin: 2,
                       });
                       setAnswerQrDataUrl(qrData);
-
-                      // Send answer back to offerer via POST
                       await fetch(`http://${dev.host}:${dev.port}/answer`, {
                         method: "POST",
                         body: compactAnswer,
@@ -618,7 +612,6 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
               ))}
             </div>
           )}
-
           {!browsing && (
             <>
               <textarea
@@ -633,7 +626,6 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
               </button>
             </>
           )}
-
           {answerCode && !browsing && (
             <>
               <p className={styles.label} style={{ marginTop: 24 }}>
@@ -663,7 +655,6 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
         </div>
       )}
 
-      {/* Status */}
       {sessionStatus && (
         <div
           className={`${styles.status} ${sessionStatus.includes("Error") ? styles.error : ""}`}
@@ -672,14 +663,12 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
         </div>
       )}
 
-      {/* Connected file area */}
       {connected && (
         <div className={styles.fileArea}>
           <div className={styles.connectedBadge}>
-            <FaCircle size={12} color="#4CAF50" style={{ marginRight: 8 }} />
+            <FaCircle size={12} color="#4CAF50" style={{ marginRight: 8 }} />{" "}
             Connected
           </div>
-
           <div className={styles.actionRow}>
             <button
               className={styles.btn}
@@ -703,8 +692,6 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
               {isSending ? "Sending..." : "Send All"}
             </button>
           </div>
-
-          {/* Send queue */}
           {fileQueue.length > 0 && (
             <div className={styles.queue}>
               {fileQueue.map((f) => (
@@ -731,8 +718,6 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
               ))}
             </div>
           )}
-
-          {/* Incoming files */}
           {Object.keys(receiveMap).length > 0 && (
             <div className={styles.incomingSection}>
               <p className={styles.label}>Receiving files...</p>
