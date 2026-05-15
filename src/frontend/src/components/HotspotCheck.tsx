@@ -1,2 +1,0 @@
-// HotspotCheck — coming soon
-export {};

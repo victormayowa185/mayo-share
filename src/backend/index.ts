@@ -222,20 +222,21 @@ ipcMain.handle(
   async (
     _event,
     files: (string | { absolute: string; relative: string })[],
+    ip?: string,
   ): Promise<string> => {
     try {
       const filePaths = files.map((f) =>
         typeof f === "string" ? f : f.absolute,
       );
-      // relativePaths will be passed through later when we update fileServer
       const relativePaths = files.map((f) =>
         typeof f === "string" ? undefined : f.relative,
       );
+      const serverIP = ip || currentHotspotIP;
       const url = await fileServer.start(
         filePaths,
         relativePaths,
         undefined,
-        currentHotspotIP,
+        serverIP,
       );
       return url;
     } catch (err) {
@@ -248,15 +249,18 @@ ipcMain.handle("stop-file-server", async (): Promise<void> => {
   fileServer.stop();
 });
 
-ipcMain.handle("start-upload-server", async (_event, ip?: string): Promise<string> => {
-  try {
-    const serverIP = ip || currentHotspotIP;
-    const url = await uploadServer.start(serverIP);
-    return url;
-  } catch (err) {
-    throw new Error(`Could not start upload server: ${err}`);
-  }
-});
+ipcMain.handle(
+  "start-upload-server",
+  async (_event, ip?: string): Promise<string> => {
+    try {
+      const serverIP = ip || currentHotspotIP;
+      const url = await uploadServer.start(serverIP);
+      return url;
+    } catch (err) {
+      throw new Error(`Could not start upload server: ${err}`);
+    }
+  },
+);
 
 ipcMain.handle("stop-upload-server", async (): Promise<void> => {
   uploadServer.stop();
@@ -347,7 +351,6 @@ ipcMain.handle(
   },
 );
 
-
 // HOST NAME
 ipcMain.handle("get-hostname", async () => {
   return os.hostname();
@@ -370,6 +373,21 @@ ipcMain.handle("get-local-ip", async (): Promise<string | null> => {
     }
   }
   return null; // No suitable network found → need hotspot
+});
+
+ipcMain.handle("get-wifi-ssid", async (): Promise<string | null> => {
+  return new Promise((resolve) => {
+    execFile(
+      "netsh",
+      ["wlan", "show", "interfaces"],
+      { timeout: 5000 },
+      (error, stdout) => {
+        if (error) return resolve(null);
+        const match = stdout.match(/^\s*SSID\s*:\s*(.+)$/m);
+        resolve(match ? match[1].trim() : null);
+      },
+    );
+  });
 });
 
 // ---------- Folder selection ----------
@@ -612,12 +630,8 @@ ipcMain.handle("stop-discovery", async (): Promise<void> => {
 ipcMain.handle(
   "connect-to-device",
   async (_event, sdpOffer: string): Promise<string> => {
-    // Create answer using existing logic
     const pc = new (require("electron").BrowserWindow?.webContents?.session
       ?.webRTC?.RTCPeerConnection)();
-    // Actually we need to create the answer in the renderer side, but we can handle it differently.
-    // This should be done in the renderer. We'll just return a placeholder.
-    // We'll implement the real connection logic in the frontend.
     return "connected";
   },
 );

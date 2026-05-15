@@ -9,6 +9,7 @@ interface Props {
   transferProgress: number | null;
   appVersion: string;
   connectedDevices?: number;
+  connectionLabel?: string | null;
 }
 
 const StatusBar: React.FC<Props> = ({
@@ -18,11 +19,17 @@ const StatusBar: React.FC<Props> = ({
   transferProgress,
   appVersion,
   connectedDevices,
+  connectionLabel,
 }) => {
   return (
     <footer className={styles.bar}>
       <div className={styles.left}>
-        {hotspotActive ? (
+        {connectionLabel ? (
+          <span className={styles.hotspotOn}>
+            <FaCircle size={8} color="#4caf50" style={{ marginRight: 6 }} />
+            {connectionLabel}
+          </span>
+        ) : hotspotActive ? (
           <span className={styles.hotspotOn}>
             <FaCircle size={8} color="#4caf50" style={{ marginRight: 6 }} />
             Hotspot active · {hotspotIP}
@@ -30,7 +37,7 @@ const StatusBar: React.FC<Props> = ({
         ) : (
           <span className={styles.hotspotOff}>
             <FaCircle size={8} color="#555" style={{ marginRight: 6 }} />
-            Hotspot off
+            No network
           </span>
         )}
       </div>

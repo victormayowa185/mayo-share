@@ -7,6 +7,8 @@ interface FolderFile {
 
 contextBridge.exposeInMainWorld("electronAPI", {
   checkHotspotStatus: () => ipcRenderer.invoke("check-hotspot-status"),
+  getWifiSSID: (): Promise<string | null> =>
+    ipcRenderer.invoke("get-wifi-ssid"),
   startHotspot: () => ipcRenderer.invoke("start-hotspot"),
   selectFile: () => ipcRenderer.invoke("select-file"),
   getHostname: () => ipcRenderer.invoke("get-hostname"),

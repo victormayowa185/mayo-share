@@ -9,6 +9,7 @@ declare global {
   interface Window {
     electronAPI: {
       getLocalIP: () => Promise<string | null>;
+      getWifiSSID: () => Promise<string | null>;
       startHotspot: () => Promise<string>;
       selectFile: () => Promise<string[] | null>;
       selectFolder: () => Promise<FolderFile[] | null>;

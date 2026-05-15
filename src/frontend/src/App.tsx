@@ -31,6 +31,7 @@ const App: React.FC = () => {
   const [hotspotActive, setHotspotActive] = useState(false);
   const [hotspotIP, setHotspotIP] = useState("");
   const [connectedDevicesCount, setConnectedDevicesCount] = useState(0);
+  const [connectionLabel, setConnectionLabel] = useState<string | null>(null);
 
   // Check setup flag on mount
   useEffect(() => {
@@ -39,23 +40,48 @@ const App: React.FC = () => {
   }, []);
 
   // Poll hotspot status every 5 seconds
+  // Poll hotspot and local network status every 5 seconds
   useEffect(() => {
     if (setupComplete !== true) return;
 
-    const check = async () => {
+    const updateStatus = async () => {
       try {
-        const result = await window.electronAPI.checkHotspotStatus();
-        setHotspotActive(result.active);
-        if (result.active && result.ip) setHotspotIP(result.ip);
-        else if (!result.active) setHotspotIP("");
+        // 1. Check hotspot status
+        const hotspotStatus = await window.electronAPI.checkHotspotStatus();
+        setHotspotActive(hotspotStatus.active);
+        if (hotspotStatus.active && hotspotStatus.ip) {
+          setHotspotIP(hotspotStatus.ip);
+          // If hotspot is active, label is usually set by HotspotCheck.
+          // But if we're on a screen that didn't set one, show fallback.
+          setConnectionLabel(
+            (prev) => prev || `Hotspot active · ${hotspotStatus.ip}`,
+          );
+        } else {
+          setHotspotIP("");
+        }
+
+        // 2. Check local Wi‑Fi (existing network)
+        const localIP = await window.electronAPI.getLocalIP();
+        if (localIP) {
+          const ssid = await window.electronAPI.getWifiSSID();
+          const label = `Connected to ${ssid || "Wi-Fi"}`;
+          // Only overwrite if hotspot is not active
+          if (!hotspotStatus.active) {
+            setConnectionLabel(label);
+          }
+        } else if (!hotspotStatus.active) {
+          // No local network and no hotspot → show "No network"
+          setConnectionLabel("No network");
+        }
       } catch {
         setHotspotActive(false);
         setHotspotIP("");
+        setConnectionLabel("No network");
       }
     };
 
-    check();
-    const interval = setInterval(check, 5000);
+    updateStatus();
+    const interval = setInterval(updateStatus, 5000);
     return () => clearInterval(interval);
   }, [setupComplete]);
 
@@ -116,8 +142,12 @@ const App: React.FC = () => {
         {screen === "share-hotspot-check" && (
           <HotspotCheck
             onReady={() => setScreen("share-method-picker")}
-            onBack={() => setScreen("home")}
+            onBack={() => {
+              setScreen("home");
+              setConnectionLabel(null);
+            }}
             onHotspotStarted={onHotspotStarted}
+            onConnectionChange={(label: string) => setConnectionLabel(label)}
           />
         )}
 
@@ -130,7 +160,10 @@ const App: React.FC = () => {
         )}
 
         {screen === "share-quick" && (
-          <QuickShare onBack={() => setScreen("share-method-picker")} />
+          <QuickShare
+            onBack={() => setScreen("share-method-picker")}
+            shareIP={hotspotIP}
+          />
         )}
 
         {screen === "share-p2p" && (
@@ -169,6 +202,7 @@ const App: React.FC = () => {
         transferProgress={null}
         appVersion="1.0.0"
         connectedDevices={connectedDevicesCount}
+        connectionLabel={connectionLabel}
       />
     </div>
   );
