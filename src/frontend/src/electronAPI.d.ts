@@ -8,6 +8,7 @@ interface FolderFile {
 declare global {
   interface Window {
     electronAPI: {
+      getLocalIP: () => Promise<string | null>;
       startHotspot: () => Promise<string>;
       selectFile: () => Promise<string[] | null>;
       selectFolder: () => Promise<FolderFile[] | null>;
@@ -28,7 +29,11 @@ declare global {
       approveSender: (sessionId: string) => Promise<void>;
       declineSender: (sessionId: string) => Promise<void>;
       onSenderConnected: (
-        callback: (data: { sessionId: string; senderName: string }) => void,
+        callback: (data: {
+          sessionId: string;
+          senderName: string;
+          deviceType: string;
+        }) => void,
       ) => void;
 
       // ---------- Discovery (mDNS) ----------

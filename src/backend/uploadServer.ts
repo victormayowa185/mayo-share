@@ -9,13 +9,13 @@ interface Session {
   status: "pending" | "approved" | "declined";
   senderName: string;
   saveDir: string;
+  deviceType: string;
 }
 
 interface SSEClient {
   id: string;
   res: ServerResponse;
 }
-
 const RECEIVE_DIR = "C:\\mayo-received";
 const PORT = 3001;
 
@@ -95,6 +95,7 @@ export class UploadServer extends EventEmitter {
                 status: "pending",
                 senderName: "",
                 saveDir,
+                deviceType: "",
               };
               this.sessions.set(sessionId, session);
               this.emit("sender-connected", sessionId, session.senderName);
@@ -156,11 +157,17 @@ export class UploadServer extends EventEmitter {
             req.on("data", (chunk) => (body += chunk));
             req.on("end", () => {
               try {
-                const { name } = JSON.parse(body);
+                const { name, deviceType } = JSON.parse(body);
                 const session = this.sessions.get(sessionId!);
                 if (session) {
                   session.senderName = name;
-                  this.emit("sender-connected", sessionId, name);
+                  if (deviceType) session.deviceType = deviceType;
+                  this.emit(
+                    "sender-connected",
+                    sessionId,
+                    name,
+                    session.deviceType,
+                  );
                   res.writeHead(200, { "Content-Type": "application/json" });
                   res.end(JSON.stringify({ ok: true }));
                 } else {
@@ -543,24 +550,85 @@ function getWaitingHTML(name: string): string {
     body { background: #0A0A0A; color: white; font-family: Arial, sans-serif; padding: 40px 20px; text-align: center; }
     .logo { font-size: 2rem; font-weight: bold; color: #b169e0; margin-bottom: 8px; }
     .subtitle { color: #888; margin-bottom: 30px; }
-    .spinner { border: 3px solid #333; border-top: 3px solid #b169e0; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 20px auto; }
+    .spinner { border: 3px solid #333; border-top: 3px solid #b169e0; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 20px auto; display: none; }
     @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    .input-group { margin: 16px auto; max-width: 300px; }
+    .input-group input {
+      width: 100%; padding: 12px; border-radius: 8px; border: 1px solid #333;
+      background: #1a1a1a; color: white; font-size: 1rem; text-align: center;
+    }
+    .btn {
+      width: 100%; padding: 14px; background: #b169e0; color: white; border: none;
+      border-radius: 8px; font-size: 1rem; cursor: pointer; margin-top: 12px;
+    }
+    .btn:hover { opacity: 0.9; }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .waiting-text { display: none; color: #aaa; }
   </style>
 </head>
 <body>
   <div class="logo">MAYO Share</div>
-  <div class="subtitle">Hi ${name}</div>
-  <p style="color:#aaa;">Waiting for the receiver to approve your connection…</p>
-  <div class="spinner"></div>
+  <div class="subtitle">Hi ${name || "there"}!</div>
+  <div id="nameForm">
+    <p style="color:#aaa; margin-bottom:12px;">Enter your name to request approval:</p>
+    <div class="input-group">
+      <input type="text" id="senderName" placeholder="Your name" autofocus />
+    </div>
+    <button class="btn" id="requestBtn">Request Approval</button>
+  </div>
+  <div id="waitingSection" style="display:none;">
+    <p class="waiting-text">Waiting for the receiver to approve your connection…</p>
+    <div class="spinner" style="display:block;"></div>
+  </div>
   <script>
     const sessionId = new URLSearchParams(location.search).get('sessionId');
-    const evtSource = new EventSource('/events?sessionId=' + sessionId);
-    evtSource.addEventListener('approved', () => {
-      location.reload();
-    });
-    evtSource.addEventListener('declined', () => {
-      document.body.innerHTML = '<h1>Declined</h1><p style="color:#aaa;">The receiver declined your request.</p>';
-      evtSource.close();
+    const nameForm = document.getElementById('nameForm');
+    const waitingSection = document.getElementById('waitingSection');
+    const requestBtn = document.getElementById('requestBtn');
+    const senderNameInput = document.getElementById('senderName');
+
+    function detectDeviceType() {
+      const ua = navigator.userAgent;
+      if (/Mobi|Android|iPhone|iPod|webOS|BlackBerry|IEMobile|Opera Mini/i.test(ua)) {
+        if (/iPad|Tablet/i.test(ua) || (/Android/i.test(ua) && !/Mobile/i.test(ua))) {
+          return 'tablet';
+        }
+        return 'phone';
+      }
+      return 'desktop';
+    }
+
+    requestBtn.addEventListener('click', async () => {
+      const name = senderNameInput.value.trim();
+      if (!name) return alert('Please enter a name.');
+      requestBtn.disabled = true;
+      const deviceType = detectDeviceType();
+      try {
+        const resp = await fetch('/set-name?sessionId=' + sessionId, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, deviceType })
+        });
+        if (resp.ok) {
+          nameForm.style.display = 'none';
+          waitingSection.style.display = 'block';
+          // Now listen for approval via SSE
+          const evtSource = new EventSource('/events?sessionId=' + sessionId);
+          evtSource.addEventListener('approved', () => {
+            location.reload();
+          });
+          evtSource.addEventListener('declined', () => {
+            document.body.innerHTML = '<h1>Declined</h1><p style="color:#aaa;">The receiver declined your request.</p>';
+            evtSource.close();
+          });
+        } else {
+          alert('Failed to send request. Please try again.');
+          requestBtn.disabled = false;
+        }
+      } catch (err) {
+        alert('Network error: ' + err.message);
+        requestBtn.disabled = false;
+      }
     });
   </script>
 </body>

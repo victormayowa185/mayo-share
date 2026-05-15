@@ -12,6 +12,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
   getHostname: () => ipcRenderer.invoke("get-hostname"),
   selectFolder: (): Promise<FolderFile[] | null> =>
     ipcRenderer.invoke("select-folder"),
+
+  getLocalIP: (): Promise<string | null> => ipcRenderer.invoke("get-local-ip"),
   // ---------- Discovery (mDNS) ----------
   startAdvertising: (sdpOffer: string): Promise<number> =>
     ipcRenderer.invoke("start-advertising", sdpOffer),

@@ -248,10 +248,10 @@ ipcMain.handle("stop-file-server", async (): Promise<void> => {
   fileServer.stop();
 });
 
-// ---------- Upload server (Receive from Browser) ----------
-ipcMain.handle("start-upload-server", async (): Promise<string> => {
+ipcMain.handle("start-upload-server", async (_event, ip?: string): Promise<string> => {
   try {
-    const url = await uploadServer.start(currentHotspotIP);
+    const serverIP = ip || currentHotspotIP;
+    const url = await uploadServer.start(serverIP);
     return url;
   } catch (err) {
     throw new Error(`Could not start upload server: ${err}`);
@@ -285,12 +285,16 @@ uploadServer.on("file-received", (fileName: string) => {
   });
 });
 
-
-// Forward sender-connected events to renderer
-uploadServer.on("sender-connected", (sessionId: string, senderName: string) => {
-  mainWindow?.webContents.send("sender-connected", { sessionId, senderName });
-});
-
+uploadServer.on(
+  "sender-connected",
+  (sessionId: string, senderName: string, deviceType: string) => {
+    mainWindow?.webContents.send("sender-connected", {
+      sessionId,
+      senderName,
+      deviceType,
+    });
+  },
+);
 
 // ---------- Hotspot status check (for real-time status bar) ----------
 ipcMain.handle(
@@ -343,9 +347,29 @@ ipcMain.handle(
   },
 );
 
+
 // HOST NAME
 ipcMain.handle("get-hostname", async () => {
   return os.hostname();
+});
+
+// ---------- Local IP detection (for existing Wi‑Fi) ----------
+ipcMain.handle("get-local-ip", async (): Promise<string | null> => {
+  const interfaces = os.networkInterfaces();
+  for (const iface of Object.values(interfaces)) {
+    if (!iface) continue;
+    for (const addr of iface) {
+      // IPv4, not internal (loopback), not a virtual adapter like loopback/hotspot
+      if (
+        addr.family === "IPv4" &&
+        !addr.internal &&
+        !addr.address.startsWith("192.168.137.") // Our hotspot range
+      ) {
+        return addr.address;
+      }
+    }
+  }
+  return null; // No suitable network found → need hotspot
 });
 
 // ---------- Folder selection ----------

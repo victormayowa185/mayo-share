@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { FaArrowLeft, FaCheckCircle, FaCopy, FaSpinner } from "react-icons/fa";
-import QRCode from "qrcode"; // ← new import
+import { FaDesktop, FaMobileAlt, FaTabletAlt } from "react-icons/fa";
+import QRCode from "qrcode";
 import styles from "../../styles/screens/ReceiveFromBrowser.module.css";
 
 interface ReceivedFile {
@@ -11,9 +12,27 @@ interface ReceivedFile {
 
 interface Props {
   onBack: () => void;
+  onSenderApproved?: () => void;
+  onStopReceiving?: () => void;
 }
 
-const ReceiveFromBrowser: React.FC<Props> = ({ onBack }) => {
+const getDeviceIcon = (deviceType: string) => {
+  switch (deviceType) {
+    case "phone":
+      return <FaMobileAlt size={16} color="#b169e0" />;
+    case "tablet":
+      return <FaTabletAlt size={16} color="#b169e0" />;
+    case "desktop":
+    default:
+      return <FaDesktop size={16} color="#b169e0" />;
+  }
+};
+
+const ReceiveFromBrowser: React.FC<Props> = ({
+  onBack,
+  onSenderApproved,
+  onStopReceiving,
+}) => {
   const [shareUrl, setShareUrl] = useState("");
   const [qrDataUrl, setQrDataUrl] = useState("");
   const [isReceiving, setIsReceiving] = useState(false);
@@ -22,7 +41,7 @@ const ReceiveFromBrowser: React.FC<Props> = ({ onBack }) => {
   const [hotspotStatus, setHotspotStatus] = useState("");
   const [receivedFiles, setReceivedFiles] = useState<ReceivedFile[]>([]);
   const [pendingSenders, setPendingSenders] = useState<
-    { sessionId: string; senderName: string }[]
+    { sessionId: string; senderName: string; deviceType: string }[]
   >([]);
 
   // Listen for incoming files
@@ -41,9 +60,8 @@ const ReceiveFromBrowser: React.FC<Props> = ({ onBack }) => {
 
   useEffect(() => {
     window.electronAPI.onSenderConnected(
-      (data: { sessionId: string; senderName: string }) => {
+      (data: { sessionId: string; senderName: string; deviceType: string }) => {
         setPendingSenders((prev) => {
-          // Update if session already exists (e.g., name updated)
           const existingIdx = prev.findIndex(
             (s) => s.sessionId === data.sessionId,
           );
@@ -57,36 +75,51 @@ const ReceiveFromBrowser: React.FC<Props> = ({ onBack }) => {
       },
     );
   }, []);
+
   const startReceiving = async () => {
+    onStopReceiving?.();
     try {
       setStartingHotspot(true);
-      setHotspotStatus("Checking hotspot...");
+      setHotspotStatus("Checking network...");
+
+      // 1. Try to detect an existing Wi‑Fi network
+      const localIP = await window.electronAPI.getLocalIP();
+      if (localIP) {
+        setHotspotStatus("Using existing network...");
+        // No hotspot needed, just start the server on the local IP
+        const url = await window.electronAPI.startUploadServer(localIP);
+        setShareUrl(url);
+        setIsReceiving(true);
+        setStartingHotspot(false);
+        setHotspotStatus("");
+        const qrData = await QRCode.toDataURL(url, { width: 200, margin: 2 });
+        setQrDataUrl(qrData);
+        return;
+      }
+
+      // 2. No existing network found – fall back to hotspot
+      setHotspotStatus("No existing network. Starting hotspot...");
       const status = await window.electronAPI.checkHotspotStatus();
       let ip = status.ip;
 
       if (!status.active) {
-        setHotspotStatus("Starting hotspot...");
         const result = await window.electronAPI.startHotspot();
         if (result.includes("SUCCESS")) {
           const ipMatch = result.match(
             /Hotspot IP \(for sharing\):\s*([\d.]+)/,
           );
-          if (ipMatch && ipMatch[1]) {
-            ip = ipMatch[1];
-          }
+          if (ipMatch && ipMatch[1]) ip = ipMatch[1];
         } else {
           throw new Error("Hotspot could not be started. " + result);
         }
       }
 
       setHotspotStatus("Hotspot active. Starting upload server...");
-      const url = await window.electronAPI.startUploadServer();
+      const url = await window.electronAPI.startUploadServer(); // no IP → uses hotspot
       setShareUrl(url);
       setIsReceiving(true);
       setStartingHotspot(false);
       setHotspotStatus("");
-
-      // Generate QR code using the locally installed qrcode package
       const qrData = await QRCode.toDataURL(url, { width: 200, margin: 2 });
       setQrDataUrl(qrData);
     } catch (err: any) {
@@ -102,7 +135,7 @@ const ReceiveFromBrowser: React.FC<Props> = ({ onBack }) => {
     setQrDataUrl("");
     setIsReceiving(false);
     setCopied(false);
-    // Leave receivedFiles so the user can still see them after stopping
+    onStopReceiving?.();
   };
 
   const copyLink = () => {
@@ -191,6 +224,7 @@ const ReceiveFromBrowser: React.FC<Props> = ({ onBack }) => {
                 {pendingSenders.map((s) => (
                   <li key={s.sessionId} className={styles.fileItem}>
                     <span className={styles.fileName}>
+                      {getDeviceIcon(s.deviceType)}
                       {s.senderName || "Unnamed"}
                     </span>
                     <div style={{ display: "flex", gap: 8 }}>
@@ -201,6 +235,7 @@ const ReceiveFromBrowser: React.FC<Props> = ({ onBack }) => {
                           setPendingSenders((prev) =>
                             prev.filter((x) => x.sessionId !== s.sessionId),
                           );
+                          onSenderApproved?.();
                         }}
                       >
                         Accept

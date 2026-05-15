@@ -1,17 +1,14 @@
-import React from 'react';
-import {
-  FaCircle,
-  FaUpload,
-  FaDownload,
-} from 'react-icons/fa';
-import styles from '../styles/components/StatusBar.module.css';
+import React from "react";
+import { FaCircle, FaUsers } from "react-icons/fa";
+import styles from "../styles/components/StatusBar.module.css";
 
 interface Props {
   hotspotActive: boolean;
   hotspotIP: string;
-  transferLabel: string | null;       // e.g. "Sending photo.jpg"
-  transferProgress: number | null;    // 0-100 or null
+  transferLabel: string | null;
+  transferProgress: number | null;
   appVersion: string;
+  connectedDevices?: number;
 }
 
 const StatusBar: React.FC<Props> = ({
@@ -20,6 +17,7 @@ const StatusBar: React.FC<Props> = ({
   transferLabel,
   transferProgress,
   appVersion,
+  connectedDevices,
 }) => {
   return (
     <footer className={styles.bar}>
@@ -38,6 +36,12 @@ const StatusBar: React.FC<Props> = ({
       </div>
 
       <div className={styles.center}>
+        {connectedDevices !== undefined && connectedDevices > 0 && (
+          <span className={styles.transfer}>
+            <FaUsers size={14} style={{ marginRight: 4 }} />
+            {connectedDevices} connected
+          </span>
+        )}
         {transferLabel && (
           <span className={styles.transfer}>
             {transferLabel}
