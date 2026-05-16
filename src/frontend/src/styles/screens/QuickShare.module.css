@@ -4,27 +4,11 @@
   flex-direction: column;
   align-items: center;
   padding: 48px 24px;
-  min-height: 100vh;
-  background: #0A0A0A;
+  min-height: 70vh;
+  background: #0a0a0a;
   color: #ddd;
 }
 
-.backBtn {
-  align-self: flex-start;
-  background: transparent;
-  border: 1px solid #333;
-  color: #ccc;
-  padding: 8px 16px;
-  border-radius: 8px;
-  cursor: pointer;
-  margin-bottom: 32px;
-  font-size: 0.9rem;
-}
-
-.backBtn:hover {
-  border-color: #555;
-  color: #fff;
-}
 
 .title {
   font-size: 1.6rem;
@@ -50,7 +34,7 @@
 
 .btn {
   padding: 12px 32px;
-  background: #0066ff;
+  background: #b169e0;
   color: #fff;
   border: none;
   border-radius: 8px;
@@ -59,7 +43,7 @@
 }
 
 .btn:hover:not(:disabled) {
-  background: #0055dd;
+  background: #9a4fd4;
 }
 
 .btn:disabled {
@@ -79,8 +63,8 @@
 }
 
 .ghostBtn:hover {
-  border-color: #555;
-  color: #fff;
+  border-color: #b169e0;
+  color: #b169e0;
 }
 
 .shareBtn {
@@ -92,10 +76,10 @@
   background: #9a4fd4;
 }
 
-/* File list (when not yet sharing) */
+/* File list */
 .fileList {
   width: 100%;
-  max-width: 600px;
+  max-width: 700px;
   margin-bottom: 24px;
 }
 
@@ -141,6 +125,79 @@
   color: #f44336;
 }
 
+/* ── Collapsible folders ── */
+.toggleAllRow {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 12px;
+}
+
+.toggleAllBtn {
+  background: #1a1a1a;
+  border: 1px solid #333;
+  color: #ccc;
+  padding: 6px 14px;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+}
+
+.toggleAllBtn:hover {
+  border-color: #b169e0;
+  color: #b169e0;
+}
+
+.folderGroup {
+  margin-bottom: 8px;
+}
+
+.folderHeader {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #1a1a1a;
+  border: 1px solid #2a2a2a;
+  border-radius: 8px;
+  padding: 10px 14px;
+  cursor: pointer;
+  user-select: none;
+  transition: border-color 0.15s;
+}
+
+.folderHeader:hover {
+  border-color: #b169e0;
+}
+
+.folderArrow {
+  color: #b169e0;
+  width: 16px;
+  text-align: center;
+}
+
+.folderName {
+  flex: 1;
+  color: #ddd;
+  font-weight: 600;
+  font-size: 0.9rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.folderMeta {
+  color: #888;
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.folderContent {
+  overflow: hidden;
+  padding-left: 24px;
+  /* Height and opacity are controlled by JS for animation */
+}
+
 /* Two‑column sharing layout */
 .shareLayout {
   display: flex;
@@ -154,6 +211,8 @@
 .fileColumn {
   flex: 1 1 300px;
   min-width: 250px;
+  max-height: 70vh;
+  overflow-y: auto;
 }
 
 .columnTitle {
@@ -177,7 +236,7 @@
   height: 220px;
   border-radius: 12px;
   border: 2px solid #b169e0;
-  background: #0A0A0A;
+  background: #0a0a0a;
   margin-bottom: 16px;
 }
 
@@ -282,14 +341,20 @@
 }
 
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
-/* Responsive: stack on small screens */
+/* Responsive */
 @media (max-width: 700px) {
   .shareLayout {
     flex-direction: column;
     align-items: center;
+  }
+
+  .fileColumn {
+    max-height: none;
   }
 
   .qrColumn {
@@ -297,7 +362,8 @@
     max-width: 300px;
   }
 
-  .qr, .qrPlaceholder {
+  .qr,
+  .qrPlaceholder {
     width: 200px;
     height: 200px;
   }

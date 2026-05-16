@@ -1,27 +1,10 @@
 .container {
-    min-height: 100vh;
+    min-height: 70vh;
     background: #0A0A0A;
     color: white;
-    padding: 40px 24px;
+    padding: 20px 24px;
 }
 
-.backBtn {
-    display: inline-flex;
-    align-items: center;
-    background: transparent;
-    border: 1px solid #333;
-    color: #888;
-    padding: 8px 16px;
-    border-radius: 8px;
-    cursor: pointer;
-    font-size: 0.9rem;
-    margin-bottom: 48px;
-}
-
-.backBtn:hover {
-    border-color: #555;
-    color: #ccc;
-}
 
 .content {
     display: flex;

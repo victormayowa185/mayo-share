@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { FaArrowLeft, FaCheckCircle, FaCopy, FaSpinner } from "react-icons/fa";
 import { FaDesktop, FaMobileAlt, FaTabletAlt } from "react-icons/fa";
 import QRCode from "qrcode";
+import BackButton from '../../components/BackButton';
 import styles from "../../styles/screens/ReceiveFromBrowser.module.css";
 
 interface ReceivedFile {
@@ -147,15 +148,12 @@ const ReceiveFromBrowser: React.FC<Props> = ({
 
   return (
     <div className={styles.container}>
-      <button
-        className={styles.backBtn}
+      <BackButton
         onClick={() => {
           if (isReceiving) stopReceiving();
           onBack();
         }}
-      >
-        <FaArrowLeft style={{ marginRight: 6 }} /> Back
-      </button>
+      />
       <h2 className={styles.title}>Receive from Browser</h2>
       <p className={styles.subtitle}>
         {isReceiving
@@ -186,10 +184,17 @@ const ReceiveFromBrowser: React.FC<Props> = ({
       )}
 
       {isReceiving && (
-        <div className={styles.sharingPanel}>
-          {qrDataUrl && (
+        <div className={styles.receivePanel}>
+          {/* QR Code */}
+          {qrDataUrl ? (
             <img src={qrDataUrl} alt="QR Code" className={styles.qr} />
+          ) : (
+            <div className={styles.qrPlaceholder}>
+              <span>Generating QR…</span>
+            </div>
           )}
+
+          {/* URL + Copy */}
           <div className={styles.urlRow}>
             <span className={styles.url}>{shareUrl}</span>
             <button className={styles.copyBtn} onClick={copyLink}>
@@ -209,9 +214,11 @@ const ReceiveFromBrowser: React.FC<Props> = ({
               )}
             </button>
           </div>
+
           <p className={styles.hint}>
             Tell the sender to connect to your hotspot and open this link.
           </p>
+
           <button className={styles.stopBtn} onClick={stopReceiving}>
             Stop Receiving
           </button>
@@ -276,6 +283,12 @@ const ReceiveFromBrowser: React.FC<Props> = ({
                 ))}
               </ul>
             </div>
+          )}
+
+          {pendingSenders.length === 0 && receivedFiles.length === 0 && (
+            <p className={styles.waitingHint}>
+              Waiting for senders to connect…
+            </p>
           )}
         </div>
       )}

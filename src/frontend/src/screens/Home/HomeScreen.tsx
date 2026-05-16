@@ -13,7 +13,6 @@ interface Props {
 const HomeScreen: React.FC<Props> = ({ setScreen }) => {
   return (
     <div className={styles.container}>
-     <TopBar onNavigate={setScreen} />
       <div className={styles.inner}>
         <h1 className={styles.heading}>What do you want to do?</h1>
         <p className={styles.subtitle}>Choose an action to get started</p>

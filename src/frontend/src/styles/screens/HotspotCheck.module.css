@@ -2,29 +2,13 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-   justify-content: flex-start;          /* center content vertically */
-  padding: 48px 4px;
-  min-height: 100vh;                 /* cover full viewport height */
-  background: #0A0A0A;               /* match the app's main background */
+  justify-content: flex-start; /* center content vertically */
+  padding: 24px 24px;
+  min-height: 70vh; /* cover full viewport height */
+  background: #0a0a0a; /* match the app's main background */
   color: #ddd;
 }
 
-.backBtn {
-  align-self: flex-start;
-  background: transparent;
-  border: 1px solid #333;
-  color: #ccc;
-  padding: 8px 16px;
-  border-radius: 8px;
-  cursor: pointer;
-  margin-bottom: 32px;
-  font-size: 0.9rem;
-}
-
-.backBtn:hover {
-  border-color: #555;
-  color: #fff;
-}
 
 .title {
   font-size: 1.6rem;
@@ -40,7 +24,7 @@
 
 .btn {
   padding: 12px 32px;
-  background: #0066ff;
+  background: #b169e0;
   color: #fff;
   border: none;
   border-radius: 8px;
@@ -56,7 +40,7 @@
 }
 
 .btn:hover:not(:disabled) {
-  background: #0055dd;
+  background: #b169e0;
 }
 
 .log {
@@ -88,7 +72,7 @@
 }
 
 .successMsg {
-  color: #4caf50;
+  color: #b169e0;
   font-size: 1.1rem;
 }
 

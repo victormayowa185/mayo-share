@@ -1,6 +1,7 @@
-import React from 'react';
-import { FaArrowLeft, FaEnvelope, FaGlobe } from 'react-icons/fa';
-import styles from '../../styles/screens/SupportScreen.module.css';
+import React from "react";
+import { FaArrowLeft, FaEnvelope, FaGlobe } from "react-icons/fa";
+import BackButton from '../../components/BackButton';
+import styles from "../../styles/screens/SupportScreen.module.css";
 
 interface Props {
   onBack: () => void;
@@ -9,9 +10,7 @@ interface Props {
 const SupportScreen: React.FC<Props> = ({ onBack }) => {
   return (
     <div className={styles.container}>
-      <button className={styles.backBtn} onClick={onBack}>
-        <FaArrowLeft style={{ marginRight: 6 }} /> Back
-      </button>
+      <BackButton onClick={onBack} />
       <div className={styles.content}>
         <h2 className={styles.title}>Get Support</h2>
         <p className={styles.paragraph}>
@@ -29,7 +28,7 @@ const SupportScreen: React.FC<Props> = ({ onBack }) => {
         </div>
         <button
           className={styles.btn}
-          onClick={() => alert('Onboarding replay coming soon')}
+          onClick={() => alert("Onboarding replay coming soon")}
         >
           Replay Onboarding
         </button>

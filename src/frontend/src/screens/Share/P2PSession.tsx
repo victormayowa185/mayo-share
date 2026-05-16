@@ -1,8 +1,9 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
-import { FaArrowLeft, FaCircle, FaTimes, FaFolderOpen } from "react-icons/fa";
+import { FaCircle, FaTimes, FaFolderOpen } from "react-icons/fa";
 import QRCode from "qrcode";
 import gsap from "gsap";
 import { useGSAP } from "@gsap/react";
+import BackButton from "../../components/BackButton";
 import styles from "../../styles/screens/P2PSession.module.css";
 
 gsap.registerPlugin(useGSAP);
@@ -505,9 +506,7 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
 
   return (
     <div className={styles.container}>
-      <button className={styles.backBtn} onClick={onBack}>
-        <FaArrowLeft style={{ marginRight: 6 }} /> Back
-      </button>
+      <BackButton onClick={onBack} />
       <h2 className={styles.title}>Device Connect</h2>
 
       {mode === "choose" && !connected && (

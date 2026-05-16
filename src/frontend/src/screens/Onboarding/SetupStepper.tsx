@@ -1,11 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState } from "react";
 import {
   FaCheckCircle,
   FaTimesCircle,
   FaArrowLeft,
   FaArrowRight,
-} from 'react-icons/fa';
-import styles from '../../styles/screens/SetupStepper.module.css';
+} from "react-icons/fa";
+import BackButton from '../../components/BackButton';
+import styles from "../../styles/screens/SetupStepper.module.css";
 
 interface Props {
   onComplete: () => void;
@@ -13,30 +14,36 @@ interface Props {
 
 const steps = [
   {
-    title: 'Open Add Hardware Wizard',
-    instruction: 'Click the button below. A hardware wizard will open automatically.',
+    title: "Open Add Hardware Wizard",
+    instruction:
+      "Click the button below. A hardware wizard will open automatically.",
     note: 'When it opens, click "Next" to continue.',
   },
   {
-    title: 'Select Hardware Type',
-    instruction: 'In the wizard, choose "Install the hardware that I manually select from a list", then click Next.',
+    title: "Select Hardware Type",
+    instruction:
+      'In the wizard, choose "Install the hardware that I manually select from a list", then click Next.',
     note: 'Scroll down and select "Network adapters", then click Next.',
   },
   {
-    title: 'Select the Loopback Adapter',
-    instruction: 'In the Manufacturer list, select "Microsoft". In the Model list, select "Microsoft KM-TEST Loopback Adapter".',
-    note: 'Click Next, then Finish.',
+    title: "Select the Loopback Adapter",
+    instruction:
+      'In the Manufacturer list, select "Microsoft". In the Model list, select "Microsoft KM-TEST Loopback Adapter".',
+    note: "Click Next, then Finish.",
   },
   {
-    title: 'Verify Setup',
-    instruction: 'Click the button below to check if the adapter was installed correctly.',
-    note: 'You should see a green checkmark if everything is ready.',
+    title: "Verify Setup",
+    instruction:
+      "Click the button below to check if the adapter was installed correctly.",
+    note: "You should see a green checkmark if everything is ready.",
   },
 ];
 
 const SetupStepper: React.FC<Props> = ({ onComplete }) => {
   const [currentStep, setCurrentStep] = useState(0);
-  const [verifyStatus, setVerifyStatus] = useState<'idle' | 'checking' | 'ok' | 'fail'>('idle');
+  const [verifyStatus, setVerifyStatus] = useState<
+    "idle" | "checking" | "ok" | "fail"
+  >("idle");
 
   const launchWizard = async () => {
     try {
@@ -47,16 +54,20 @@ const SetupStepper: React.FC<Props> = ({ onComplete }) => {
   };
 
   const verifySetup = async () => {
-    setVerifyStatus('checking');
+    setVerifyStatus("checking");
     try {
       const result = await window.electronAPI.startHotspot();
-      if (result.includes('SUCCESS') || result.includes('Loopback') || result.includes('Using adapter')) {
-        setVerifyStatus('ok');
+      if (
+        result.includes("SUCCESS") ||
+        result.includes("Loopback") ||
+        result.includes("Using adapter")
+      ) {
+        setVerifyStatus("ok");
       } else {
-        setVerifyStatus('fail');
+        setVerifyStatus("fail");
       }
     } catch {
-      setVerifyStatus('fail');
+      setVerifyStatus("fail");
     }
   };
 
@@ -74,7 +85,7 @@ const SetupStepper: React.FC<Props> = ({ onComplete }) => {
           <div
             key={i}
             className={styles.stepDot}
-            style={{ background: i <= currentStep ? '#0066FF' : '#333' }}
+            style={{ background: i <= currentStep ? "#0066FF" : "#333" }}
           />
         ))}
       </div>
@@ -96,17 +107,23 @@ const SetupStepper: React.FC<Props> = ({ onComplete }) => {
 
         {isLastStep && (
           <div>
-            <button onClick={verifySetup} className={styles.btn} disabled={verifyStatus === 'checking'}>
-              {verifyStatus === 'checking' ? 'Checking...' : 'Verify Setup'}
+            <button
+              onClick={verifySetup}
+              className={styles.btn}
+              disabled={verifyStatus === "checking"}
+            >
+              {verifyStatus === "checking" ? "Checking..." : "Verify Setup"}
             </button>
-            {verifyStatus === 'ok' && (
+            {verifyStatus === "ok" && (
               <div className={styles.successMsg}>
-                <FaCheckCircle style={{ marginRight: 8 }} /> Setup complete! You are ready to use MAYO Share.
+                <FaCheckCircle style={{ marginRight: 8 }} /> Setup complete! You
+                are ready to use MAYO Share.
               </div>
             )}
-            {verifyStatus === 'fail' && (
+            {verifyStatus === "fail" && (
               <div className={styles.failMsg}>
-                <FaTimesCircle style={{ marginRight: 8 }} /> Adapter not found. Please go back and repeat the steps.
+                <FaTimesCircle style={{ marginRight: 8 }} /> Adapter not found.
+                Please go back and repeat the steps.
               </div>
             )}
           </div>
@@ -115,21 +132,20 @@ const SetupStepper: React.FC<Props> = ({ onComplete }) => {
 
       {/* Navigation */}
       <div className={styles.navRow}>
-        {currentStep > 0 && (
-          <button onClick={() => setCurrentStep(s => s - 1)} className={styles.ghostBtn}>
-            <FaArrowLeft style={{ marginRight: 6 }} /> Back
-          </button>
-        )}
+        {currentStep > 0 && <BackButton onClick={onBack} />}
         {!isLastStep && (
-          <button onClick={() => setCurrentStep(s => s + 1)} className={styles.btn}>
+          <button
+            onClick={() => setCurrentStep((s) => s + 1)}
+            className={styles.btn}
+          >
             Next <FaArrowRight style={{ marginLeft: 6 }} />
           </button>
         )}
-        {isLastStep && verifyStatus === 'ok' && (
+        {isLastStep && verifyStatus === "ok" && (
           <button
             onClick={onComplete}
             className={styles.btn}
-            style={{ background: '#4CAF50' }}
+            style={{ background: "#4CAF50" }}
           >
             Enter MAYO Share <FaArrowRight style={{ marginLeft: 6 }} />
           </button>

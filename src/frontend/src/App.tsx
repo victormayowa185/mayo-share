@@ -9,6 +9,7 @@ import ReceiveScreen from "./screens/Receive/ReceiveScreen";
 import ActivityScreen from "./screens/Activity/ActivityScreen";
 import SupportScreen from "./screens/Support/SupportScreen";
 import RateUsScreen from "./screens/RateUs/RateUsScreen";
+import TopBar from "./components/TopBar";
 import ReceiveFromBrowser from "./screens/ReceiveFromBrowser/ReceiveFromBrowser";
 import StatusBar from "./components/StatusBar";
 
@@ -131,6 +132,7 @@ const App: React.FC = () => {
       }}
     >
       <div style={{ flex: 1 }}>
+        <TopBar onNavigate={setScreen} />
         {screen === "home" && (
           <HomeScreen
             currentScreen={screen}

@@ -5,10 +5,14 @@ import {
   FaTimes,
   FaFolderOpen,
   FaQrcode,
+  FaChevronDown,
+  FaChevronRight,
+  FaLayerGroup,
 } from "react-icons/fa";
 import QRCode from "qrcode";
 import gsap from "gsap";
 import { useGSAP } from "@gsap/react";
+import BackButton from "../../components/BackButton";
 import styles from "../../styles/screens/QuickShare.module.css";
 
 gsap.registerPlugin(useGSAP);
@@ -20,11 +24,16 @@ interface Props {
 
 interface FileEntry {
   id: string;
-  path: string; // absolute path for reading
-  relativePath: string; // relative path for URL and display
+  path: string;
+  relativePath: string;
   name: string;
   size: number;
   downloadStatus: "idle" | "downloading" | "done";
+}
+
+interface FileGroup {
+  folderName: string; // e.g. "fate zero/1" or "" for root files
+  files: FileEntry[];
 }
 
 const formatBytes = (b: number) => {
@@ -41,8 +50,11 @@ const QuickShare: React.FC<Props> = ({ onBack, shareIP }) => {
   const [qrDataUrl, setQrDataUrl] = useState("");
   const [isSharing, setIsSharing] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(
+    new Set(),
+  );
+  const [allExpanded, setAllExpanded] = useState(false);
 
-  // Refs for GSAP animations
   const shareLayoutRef = useRef<HTMLDivElement>(null);
   const fileListRef = useRef<HTMLDivElement>(null);
   const qrPanelRef = useRef<HTMLDivElement>(null);
@@ -71,7 +83,7 @@ const QuickShare: React.FC<Props> = ({ onBack, shareIP }) => {
     });
   }, []);
 
-  // Ctrl+V paste handler (same as before, no changes)
+  // Ctrl+V paste handler
   const handlePaste = useCallback(
     async (e: ClipboardEvent) => {
       if (isSharing) return;
@@ -211,6 +223,62 @@ const QuickShare: React.FC<Props> = ({ onBack, shareIP }) => {
   const removeFile = (id: string) =>
     setFiles((prev) => prev.filter((f) => f.id !== id));
 
+  // ── Grouping logic ──────────────────────────────────
+  const groupFiles = (files: FileEntry[]): FileGroup[] => {
+    const groupsMap = new Map<string, FileEntry[]>();
+
+    for (const file of files) {
+      // Extract folder portion from relativePath (e.g. "fate zero/1/01. Fate Zero.mkv" → "fate zero/1")
+      const parts = file.relativePath.split("/");
+      const folder = parts.length > 1 ? parts.slice(0, -1).join("/") : "";
+      if (!groupsMap.has(folder)) groupsMap.set(folder, []);
+      groupsMap.get(folder)!.push(file);
+    }
+
+    const groups: FileGroup[] = [];
+    // Add named folders first, then root files
+    for (const [folder, folderFiles] of groupsMap) {
+      if (folder) {
+        groups.push({ folderName: folder, files: folderFiles });
+      }
+    }
+    // Root files (no folder)
+    const rootFiles = groupsMap.get("") || [];
+    if (rootFiles.length > 0) {
+      groups.push({ folderName: "", files: rootFiles });
+    }
+
+    return groups;
+  };
+
+  const fileGroups = groupFiles(files);
+  const hasFolders = fileGroups.some((g) => g.folderName !== "");
+
+  const toggleFolder = (folderName: string) => {
+    setExpandedFolders((prev) => {
+      const next = new Set(prev);
+      if (next.has(folderName)) {
+        next.delete(folderName);
+      } else {
+        next.add(folderName);
+      }
+      return next;
+    });
+  };
+
+  const toggleAll = () => {
+    if (allExpanded) {
+      setExpandedFolders(new Set());
+      setAllExpanded(false);
+    } else {
+      const allFolders = fileGroups
+        .filter((g) => g.folderName !== "")
+        .map((g) => g.folderName);
+      setExpandedFolders(new Set(allFolders));
+      setAllExpanded(true);
+    }
+  };
+
   const startSharing = async () => {
     if (files.length === 0) return;
     try {
@@ -223,7 +291,6 @@ const QuickShare: React.FC<Props> = ({ onBack, shareIP }) => {
       setShareUrl(url);
       setIsSharing(true);
 
-      // Generate QR code using the local qrcode package
       const qrData = await QRCode.toDataURL(url, {
         width: 220,
         margin: 2,
@@ -251,7 +318,7 @@ const QuickShare: React.FC<Props> = ({ onBack, shareIP }) => {
     });
   };
 
-  // GSAP: animate in the sharing panel (two‑column layout) when sharing starts
+  // GSAP animations
   useGSAP(
     () => {
       if (isSharing && shareLayoutRef.current) {
@@ -265,7 +332,7 @@ const QuickShare: React.FC<Props> = ({ onBack, shareIP }) => {
     { dependencies: [isSharing] },
   );
 
-  // GSAP: stagger the file rows when they appear
+  // Animate files when they appear in the sharing panel
   useGSAP(
     () => {
       if (fileListRef.current && files.length > 0 && isSharing) {
@@ -275,7 +342,7 @@ const QuickShare: React.FC<Props> = ({ onBack, shareIP }) => {
           {
             opacity: 1,
             x: 0,
-            stagger: 0.05,
+            stagger: 0.03,
             duration: 0.3,
             ease: "power2.out",
           },
@@ -285,17 +352,125 @@ const QuickShare: React.FC<Props> = ({ onBack, shareIP }) => {
     { dependencies: [files, isSharing] },
   );
 
+  // Animate folder expand/collapse
+  const folderContentRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+
+  const handleFolderToggle = (folderName: string) => {
+    const contentEl = folderContentRefs.current.get(folderName);
+    if (!contentEl) return;
+
+    if (expandedFolders.has(folderName)) {
+      // Collapse
+      gsap.to(contentEl, {
+        height: 0,
+        opacity: 0,
+        duration: 0.25,
+        ease: "power2.in",
+        onComplete: () => {
+          toggleFolder(folderName);
+        },
+      });
+    } else {
+      // Expand
+      toggleFolder(folderName);
+      // We need to wait for the DOM to update before animating
+      requestAnimationFrame(() => {
+        const el = folderContentRefs.current.get(folderName);
+        if (el) {
+          const naturalHeight = el.scrollHeight;
+          gsap.fromTo(
+            el,
+            { height: 0, opacity: 0 },
+            {
+              height: naturalHeight,
+              opacity: 1,
+              duration: 0.3,
+              ease: "power2.out",
+            },
+          );
+        }
+      });
+    }
+  };
+
+  // Render a single file row
+  const renderFileRow = (file: FileEntry) => (
+    <div key={file.id} className={styles.fileRow}>
+      <span className={styles.fileRowName}>{file.name}</span>
+      <span className={styles.fileRowSize}>{formatBytes(file.size)}</span>
+      <span className={styles.fileRowStatus}>
+        {file.downloadStatus === "idle" && ""}
+        {file.downloadStatus === "downloading" && (
+          <div className={styles.miniSpinner} />
+        )}
+        {file.downloadStatus === "done" && (
+          <FaCheckCircle color="#4CAF50" size={16} />
+        )}
+      </span>
+      {!isSharing && (
+        <button
+          className={styles.removeBtn}
+          onClick={() => removeFile(file.id)}
+          title="Remove file"
+        >
+          <FaTimes size={14} />
+        </button>
+      )}
+    </div>
+  );
+
+  // Render groups
+  const renderGroups = () => {
+    return fileGroups.map((group) => {
+      if (group.folderName === "") {
+        // Root files – no collapsible header
+        return group.files.map((file) => renderFileRow(file));
+      }
+
+      const isExpanded = expandedFolders.has(group.folderName);
+      const totalSize = group.files.reduce((sum, f) => sum + f.size, 0);
+
+      return (
+        <div key={group.folderName} className={styles.folderGroup}>
+          <div
+            className={styles.folderHeader}
+            onClick={() => handleFolderToggle(group.folderName)}
+          >
+            <span className={styles.folderArrow}>
+              {isExpanded ? <FaChevronDown /> : <FaChevronRight />}
+            </span>
+            <span className={styles.folderName}>{group.folderName}</span>
+            <span className={styles.folderMeta}>
+              {group.files.length} file{group.files.length > 1 ? "s" : ""} ·{" "}
+              {formatBytes(totalSize)}
+            </span>
+          </div>
+          <div
+            ref={(el) => {
+              if (el) folderContentRefs.current.set(group.folderName, el);
+            }}
+            className={styles.folderContent}
+            style={{
+              height: isExpanded ? "auto" : 0,
+              opacity: isExpanded ? 1 : 0,
+            }}
+          >
+            {group.files.map((file) => renderFileRow(file))}
+          </div>
+        </div>
+      );
+    });
+  };
+
   return (
     <div className={styles.container}>
-      <button
-        className={styles.backBtn}
+      <BackButton
         onClick={() => {
           stopSharing();
           onBack();
         }}
-      >
-        <FaArrowLeft style={{ marginRight: 6 }} /> Back
-      </button>
+      />
+
       <h2 className={styles.title}>Quick Share</h2>
       <p className={styles.subtitle}>
         {isSharing
@@ -303,35 +478,18 @@ const QuickShare: React.FC<Props> = ({ onBack, shareIP }) => {
           : "Add files, then start sharing."}
       </p>
 
-      {/* File list */}
+      {/* File list – before sharing */}
       {files.length > 0 && !isSharing && (
         <div className={styles.fileList} ref={fileListRef}>
-          {files.map((f) => (
-            <div key={f.id} className={styles.fileRow}>
-              <span className={styles.fileRowName}>
-                {f.relativePath || f.name}
-              </span>
-              <span className={styles.fileRowSize}>{formatBytes(f.size)}</span>
-              <span className={styles.fileRowStatus}>
-                {f.downloadStatus === "idle" && ""}
-                {f.downloadStatus === "downloading" && (
-                  <div className={styles.miniSpinner} />
-                )}
-                {f.downloadStatus === "done" && (
-                  <FaCheckCircle color="#4CAF50" size={16} />
-                )}
-              </span>
-              {!isSharing && (
-                <button
-                  className={styles.removeBtn}
-                  onClick={() => removeFile(f.id)}
-                  title="Remove file"
-                >
-                  <FaTimes size={14} />
-                </button>
-              )}
+          {hasFolders && (
+            <div className={styles.toggleAllRow}>
+              <button className={styles.toggleAllBtn} onClick={toggleAll}>
+                <FaLayerGroup size={14} style={{ marginRight: 6 }} />
+                {allExpanded ? "Collapse All" : "Expand All"}
+              </button>
             </div>
-          ))}
+          )}
+          {renderGroups()}
         </div>
       )}
 
@@ -346,7 +504,8 @@ const QuickShare: React.FC<Props> = ({ onBack, shareIP }) => {
           </button>
           {files.length > 0 && (
             <button className={styles.shareBtn} onClick={startSharing}>
-              Start Sharing ({files.length} file{files.length > 1 ? "s" : ""})
+              Start Sharing ({files.length} file{files.length > 1 ? "s" : ""}) —{" "}
+              {formatBytes(files.reduce((sum, f) => sum + f.size, 0))}
             </button>
           )}
         </div>
@@ -355,31 +514,19 @@ const QuickShare: React.FC<Props> = ({ onBack, shareIP }) => {
       {/* Sharing panel: two‑column layout */}
       {isSharing && (
         <div className={styles.shareLayout} ref={shareLayoutRef}>
-          {/* Left column: file list */}
           <div className={styles.fileColumn} ref={fileListRef}>
             <h3 className={styles.columnTitle}>Shared Files</h3>
-            {files.map((f) => (
-              <div key={f.id} className={styles.fileRow}>
-                <span className={styles.fileRowName}>
-                  {f.relativePath || f.name}
-                </span>
-                <span className={styles.fileRowSize}>
-                  {formatBytes(f.size)}
-                </span>
-                <span className={styles.fileRowStatus}>
-                  {f.downloadStatus === "idle" && ""}
-                  {f.downloadStatus === "downloading" && (
-                    <div className={styles.miniSpinner} />
-                  )}
-                  {f.downloadStatus === "done" && (
-                    <FaCheckCircle color="#4CAF50" size={16} />
-                  )}
-                </span>
+            {hasFolders && (
+              <div className={styles.toggleAllRow}>
+                <button className={styles.toggleAllBtn} onClick={toggleAll}>
+                  <FaLayerGroup size={14} style={{ marginRight: 6 }} />
+                  {allExpanded ? "Collapse All" : "Expand All"}
+                </button>
               </div>
-            ))}
+            )}
+            {renderGroups()}
           </div>
 
-          {/* Right column: QR code, link, copy button, stop button */}
           <div className={styles.qrColumn} ref={qrPanelRef}>
             {qrDataUrl ? (
               <img src={qrDataUrl} alt="QR Code" className={styles.qr} />

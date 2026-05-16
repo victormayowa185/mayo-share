@@ -7,6 +7,7 @@ import {
 } from "react-icons/fa";
 import gsap from "gsap";
 import { useGSAP } from "@gsap/react";
+import BackButton from "../../components/BackButton";
 import styles from "../../styles/screens/HotspotCheck.module.css";
 
 // Register the hook so GSAP can clean up automatically
@@ -67,11 +68,11 @@ const HotspotCheck: React.FC<Props> = ({
         gsap.fromTo(
           hotspotContainer.current,
           { opacity: 0, y: 20 },
-          { opacity: 1, y: 0, duration: 0.35, ease: "power2.out" }
+          { opacity: 1, y: 0, duration: 0.35, ease: "power2.out" },
         );
       }
     },
-    { dependencies: [showHotspotUI] }
+    { dependencies: [showHotspotUI] },
   );
 
   // Animate in the success message when hotspot finishes
@@ -81,11 +82,11 @@ const HotspotCheck: React.FC<Props> = ({
         gsap.fromTo(
           successContainer.current,
           { opacity: 0, scale: 0.95 },
-          { opacity: 1, scale: 1, duration: 0.35, ease: "back.out(1.4)" }
+          { opacity: 1, scale: 1, duration: 0.35, ease: "back.out(1.4)" },
         );
       }
     },
-    { dependencies: [success] }
+    { dependencies: [success] },
   );
 
   const startHotspot = async () => {
@@ -135,9 +136,7 @@ const HotspotCheck: React.FC<Props> = ({
   if (localIP && !showHotspotUI) {
     return (
       <div className={styles.container} ref={networkContainer}>
-        <button className={styles.backBtn} onClick={onBack}>
-          <FaArrowLeft style={{ marginRight: 6 }} /> Back
-        </button>
+        <BackButton onClick={onBack} />
         <h2 className={styles.title}>Network Found</h2>
         <div className={styles.networkInfo}>
           <FaWifi size={20} color="#4CAF50" />
@@ -162,7 +161,7 @@ const HotspotCheck: React.FC<Props> = ({
           onClick={startHotspot}
           disabled={running}
         >
-          – or – Start Offline Hotspot
+          – or – Start Hotspot
         </button>
       </div>
     );
@@ -171,9 +170,7 @@ const HotspotCheck: React.FC<Props> = ({
   // Hotspot UI (starting or started)
   return (
     <div className={styles.container} ref={hotspotContainer}>
-      <button className={styles.backBtn} onClick={onBack}>
-        <FaArrowLeft style={{ marginRight: 6 }} /> Back
-      </button>
+      <BackButton onClick={onBack} />
       <h2 className={styles.title}>Start Offline Hotspot</h2>
       <p className={styles.subtitle}>
         No network detected. Your hotspot must be active before sharing files.

@@ -1,8 +1,8 @@
-import React from 'react';
-import { VscGlobe } from 'react-icons/vsc';
-import { FaLink } from 'react-icons/fa6';
-import { FaArrowLeft } from 'react-icons/fa';
-import styles from '../../styles/screens/TransferMethodPicker.module.css';
+import React from "react";
+import { VscGlobe } from "react-icons/vsc";
+import { FaLink } from "react-icons/fa6";
+import BackButton from "../../components/BackButton";
+import styles from "../../styles/screens/TransferMethodPicker.module.css";
 
 interface Props {
   onSelectP2P: () => void;
@@ -10,12 +10,14 @@ interface Props {
   onBack: () => void;
 }
 
-const TransferMethodPicker: React.FC<Props> = ({ onSelectP2P, onSelectQuick, onBack }) => {
+const TransferMethodPicker: React.FC<Props> = ({
+  onSelectP2P,
+  onSelectQuick,
+  onBack,
+}) => {
   return (
     <div className={styles.container}>
-      <button className={styles.backBtn} onClick={onBack}>
-        <FaArrowLeft style={{ marginRight: 6 }} /> Back
-      </button>
+      <BackButton onClick={onBack} />
       <h2 className={styles.heading}>Choose Transfer Method</h2>
       <p className={styles.subtitle}>How would you like to share?</p>
 
@@ -47,12 +49,22 @@ interface CardProps {
   onClick: () => void;
 }
 
-const MethodCard: React.FC<CardProps> = ({ icon, title, description, color, onClick }) => (
+const MethodCard: React.FC<CardProps> = ({
+  icon,
+  title,
+  description,
+  color,
+  onClick,
+}) => (
   <div
     className={styles.card}
     onClick={onClick}
-    onMouseEnter={e => ((e.currentTarget as HTMLDivElement).style.borderColor = color)}
-    onMouseLeave={e => ((e.currentTarget as HTMLDivElement).style.borderColor = '#222')}
+    onMouseEnter={(e) =>
+      ((e.currentTarget as HTMLDivElement).style.borderColor = color)
+    }
+    onMouseLeave={(e) =>
+      ((e.currentTarget as HTMLDivElement).style.borderColor = "#222")
+    }
   >
     <div className={styles.cardEmoji}>{icon}</div>
     <div className={styles.cardTitle}>{title}</div>

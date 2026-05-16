@@ -1,26 +1,8 @@
 .container {
-  min-height: 100vh;
-  background: #0A0A0A;
+  min-height: 70vh;
+  background: #0a0a0a;
   color: white;
-  padding: 40px 24px;
-}
-
-.backBtn {
-  display: inline-flex;
-  align-items: center;
-  background: transparent;
-  border: 1px solid #333;
-  color: #888;
-  padding: 8px 16px;
-  border-radius: 8px;
-  cursor: pointer;
-  font-size: 0.9rem;
-  margin-bottom: 48px;
-}
-
-.backBtn:hover {
-  border-color: #555;
-  color: #ccc;
+  padding: 20px 24px;
 }
 
 .content {
@@ -30,7 +12,7 @@
   text-align: center;
   max-width: 400px;
   margin: 0 auto;
-  padding-top: 60px;
+  padding-top: 40px;
 }
 
 .title {
@@ -63,4 +45,43 @@
 
 .btn:hover {
   opacity: 0.9;
+}
+
+/* ── New styles for the rating feature ── */
+.thankYou {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.ratingText {
+  color: #ccc;
+  font-size: 1rem;
+}
+
+.supportLink {
+  color: #b169e0;
+  text-decoration: none;
+  font-size: 0.95rem;
+  padding: 8px 16px;
+  border: 1px solid #b169e0;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: background 0.15s;
+}
+
+.supportLink:hover {
+  background: #b169e0;
+  color: #fff;
+}
+
+.syncStatus {
+  color: #888;
+  font-size: 0.8rem;
+  margin-top: 12px;
+  text-align: center;
 }
