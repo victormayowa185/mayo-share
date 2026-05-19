@@ -2,13 +2,12 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: flex-start; /* center content vertically */
-  padding: 24px 24px;
-  min-height: 70vh; /* cover full viewport height */
-  background: #0a0a0a; /* match the app's main background */
+  width: 100%;
+  padding: 20px 24px 48px 24px;
+  min-height: calc(100vh - 60px);
+  background: #0a0a0a;
   color: #ddd;
 }
-
 
 .title {
   font-size: 1.6rem;

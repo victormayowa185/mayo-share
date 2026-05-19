@@ -1,13 +1,14 @@
-import React from "react";
-import { FaArrowLeft, FaEnvelope, FaGlobe } from "react-icons/fa";
+import React from 'react';
+import { FaEnvelope, FaGlobe } from 'react-icons/fa';
 import BackButton from '../../components/BackButton';
-import styles from "../../styles/screens/SupportScreen.module.css";
+import styles from '../../styles/screens/SupportScreen.module.css';
 
 interface Props {
   onBack: () => void;
+  onReplayOnboarding?: () => void;   // new
 }
 
-const SupportScreen: React.FC<Props> = ({ onBack }) => {
+const SupportScreen: React.FC<Props> = ({ onBack, onReplayOnboarding }) => {
   return (
     <div className={styles.container}>
       <BackButton onClick={onBack} />
@@ -28,7 +29,7 @@ const SupportScreen: React.FC<Props> = ({ onBack }) => {
         </div>
         <button
           className={styles.btn}
-          onClick={() => alert("Onboarding replay coming soon")}
+          onClick={() => onReplayOnboarding?.()}   // calls the callback
         >
           Replay Onboarding
         </button>

@@ -2,13 +2,12 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  width: 100%;  
-  padding: 40px 24px;   /* was 48px */
-  min-height: 100vh;
+  width: 100%;
+  padding: 20px 24px 48px 24px;
+  min-height: calc(100vh - 60px);
   background: #0a0a0a;
   color: #ddd;
 }
-
 
 .title {
   font-size: 1.6rem;

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { FaArrowLeft, FaCheckCircle, FaCopy, FaSpinner } from "react-icons/fa";
 import { FaDesktop, FaMobileAlt, FaTabletAlt } from "react-icons/fa";
 import QRCode from "qrcode";
-import BackButton from '../../components/BackButton';
+import BackButton from "../../components/BackButton";
 import styles from "../../styles/screens/ReceiveFromBrowser.module.css";
 
 interface ReceivedFile {
@@ -149,6 +149,7 @@ const ReceiveFromBrowser: React.FC<Props> = ({
   return (
     <div className={styles.container}>
       <BackButton
+        className={styles.compactBack}
         onClick={() => {
           if (isReceiving) stopReceiving();
           onBack();

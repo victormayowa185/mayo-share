@@ -1,11 +1,5 @@
 import React, { useState } from "react";
-import {
-  FaCheckCircle,
-  FaTimesCircle,
-  FaArrowLeft,
-  FaArrowRight,
-} from "react-icons/fa";
-import BackButton from '../../components/BackButton';
+import { FaArrowLeft, FaCheckCircle, FaTimesCircle, FaArrowRight } from "react-icons/fa";
 import styles from "../../styles/screens/SetupStepper.module.css";
 
 interface Props {
@@ -71,6 +65,8 @@ const SetupStepper: React.FC<Props> = ({ onComplete }) => {
     }
   };
 
+  const goBack = () => setCurrentStep((prev) => prev - 1);
+
   const step = steps[currentStep];
   const isLastStep = currentStep === steps.length - 1;
 
@@ -132,7 +128,11 @@ const SetupStepper: React.FC<Props> = ({ onComplete }) => {
 
       {/* Navigation */}
       <div className={styles.navRow}>
-        {currentStep > 0 && <BackButton onClick={onBack} />}
+        {currentStep > 0 && (
+          <button className={styles.btn} onClick={goBack}>
+            <FaArrowLeft style={{ marginRight: 6 }} /> Back
+          </button>
+        )}
         {!isLastStep && (
           <button
             onClick={() => setCurrentStep((s) => s + 1)}

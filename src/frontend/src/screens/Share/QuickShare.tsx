@@ -8,6 +8,7 @@ import {
   FaChevronDown,
   FaChevronRight,
   FaLayerGroup,
+  FaPen,
 } from "react-icons/fa";
 import QRCode from "qrcode";
 import gsap from "gsap";
@@ -48,6 +49,8 @@ const QuickShare: React.FC<Props> = ({ onBack, shareIP }) => {
   const [files, setFiles] = useState<FileEntry[]>([]);
   const [shareUrl, setShareUrl] = useState("");
   const [qrDataUrl, setQrDataUrl] = useState("");
+  const [editingFileId, setEditingFileId] = useState<string | null>(null);
+  const [editContent, setEditContent] = useState("");
   const [isSharing, setIsSharing] = useState(false);
   const [copied, setCopied] = useState(false);
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(
@@ -160,6 +163,7 @@ const QuickShare: React.FC<Props> = ({ onBack, shareIP }) => {
           fileName,
           base64,
         );
+
         const size = new Blob([text]).size;
         setFiles((prev) => [
           ...prev,
@@ -222,6 +226,32 @@ const QuickShare: React.FC<Props> = ({ onBack, shareIP }) => {
 
   const removeFile = (id: string) =>
     setFiles((prev) => prev.filter((f) => f.id !== id));
+
+  const startEditing = async (file: FileEntry) => {
+    try {
+      const content = await window.electronAPI.readTextFile(file.path);
+      setEditingFileId(file.id);
+      setEditContent(content);
+    } catch (err: any) {
+      alert("Could not read file: " + err.message);
+    }
+  };
+
+  const saveEditing = async (file: FileEntry) => {
+    try {
+      await window.electronAPI.writeTextFile(file.path, editContent);
+      // Update file size in state
+      setFiles((prev) =>
+        prev.map((f) =>
+          f.id === file.id ? { ...f, size: new Blob([editContent]).size } : f,
+        ),
+      );
+      setEditingFileId(null);
+      setEditContent("");
+    } catch (err: any) {
+      alert("Could not save file: " + err.message);
+    }
+  };
 
   // ── Grouping logic ──────────────────────────────────
   const groupFiles = (files: FileEntry[]): FileGroup[] => {
@@ -395,29 +425,67 @@ const QuickShare: React.FC<Props> = ({ onBack, shareIP }) => {
 
   // Render a single file row
   const renderFileRow = (file: FileEntry) => (
-    <div key={file.id} className={styles.fileRow}>
-      <span className={styles.fileRowName}>{file.name}</span>
-      <span className={styles.fileRowSize}>{formatBytes(file.size)}</span>
-      <span className={styles.fileRowStatus}>
-        {file.downloadStatus === "idle" && ""}
-        {file.downloadStatus === "downloading" && (
-          <div className={styles.miniSpinner} />
+  <div key={file.id} className={styles.fileRow}>
+    {editingFileId === file.id ? (
+      // ── Inline editor ──
+      <div className={styles.editContainer}>
+        <textarea
+          className={styles.editTextarea}
+          value={editContent}
+          onChange={(e) => setEditContent(e.target.value)}
+          rows={4}
+          autoFocus
+        />
+        <div className={styles.editActions}>
+          <button className={styles.btn} onClick={() => saveEditing(file)}>
+            Save
+          </button>
+          <button
+            className={styles.ghostBtn}
+            onClick={() => setEditingFileId(null)}
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    ) : (
+      // ── Normal file row ──
+      <>
+        <span className={styles.fileRowName}>{file.name}</span>
+        <span className={styles.fileRowSize}>{formatBytes(file.size)}</span>
+        <span className={styles.fileRowStatus}>
+          {file.downloadStatus === "idle" && ""}
+          {file.downloadStatus === "downloading" && (
+            <div className={styles.miniSpinner} />
+          )}
+          {file.downloadStatus === "done" && (
+            <FaCheckCircle color="#4CAF50" size={16} />
+          )}
+        </span>
+        {!isSharing && (
+          <>
+            {file.name.startsWith("pasted-text-") && (
+              <button
+                className={styles.editBtn}
+                onClick={() => startEditing(file)}
+                title="Edit text"
+              >
+                <FaPen size={14} />
+              </button>
+            )}
+            <button
+              className={styles.removeBtn}
+              onClick={() => removeFile(file.id)}
+              title="Remove file"
+            >
+              <FaTimes size={14} />
+            </button>
+          </>
         )}
-        {file.downloadStatus === "done" && (
-          <FaCheckCircle color="#4CAF50" size={16} />
-        )}
-      </span>
-      {!isSharing && (
-        <button
-          className={styles.removeBtn}
-          onClick={() => removeFile(file.id)}
-          title="Remove file"
-        >
-          <FaTimes size={14} />
-        </button>
-      )}
-    </div>
-  );
+      </>
+    )}
+  </div>
+);
 
   // Render groups
   const renderGroups = () => {

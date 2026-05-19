@@ -2,15 +2,17 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  width: 100%;  
-  padding: 48px 24px;
+  width: 100%;
+  padding: 20px 24px 48px 24px;
   min-height: calc(100vh - 60px);
-  color: white;
-  
+  background: #0a0a0a;
+  color: #ddd;
 }
 
-
-.title { font-size: 1.6rem; margin-bottom: 32px; }
+.title {
+  font-size: 1.6rem;
+  margin-bottom: 32px;
+}
 
 .modeCards {
   display: flex;
@@ -28,13 +30,29 @@
   width: 220px;
   cursor: pointer;
   text-align: center;
-  transition: border-color 0.2s, transform 0.15s;
+  transition:
+    border-color 0.2s,
+    transform 0.15s;
 }
-.modeCard:hover { border-color: #0066FF; transform: translateY(-3px); }
+.modeCard:hover {
+  border-color: #0066ff;
+  transform: translateY(-3px);
+}
 
-.cardEmoji { font-size: 2.5rem; margin-bottom: 12px; }
-.cardTitle { font-size: 1rem; font-weight: bold; margin-bottom: 8px; }
-.cardDesc { color: #888; font-size: 0.85rem; line-height: 1.5; }
+.cardEmoji {
+  font-size: 2.5rem;
+  margin-bottom: 12px;
+}
+.cardTitle {
+  font-size: 1rem;
+  font-weight: bold;
+  margin-bottom: 8px;
+}
+.cardDesc {
+  color: #888;
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
 
 .panel {
   display: flex;
@@ -45,7 +63,11 @@
   max-width: 480px;
 }
 
-.label { color: #888; font-size: 0.9rem; align-self: flex-start; }
+.label {
+  color: #888;
+  font-size: 0.9rem;
+  align-self: flex-start;
+}
 
 .codeBox {
   width: 100%;
@@ -72,14 +94,16 @@
 
 .btn {
   padding: 12px 28px;
-  background: #0066FF;
+  background: #0066ff;
   color: white;
   border: none;
   border-radius: 8px;
   font-size: 1rem;
   cursor: pointer;
 }
-.btn:hover { background: #0055dd; }
+.btn:hover {
+  background: #0055dd;
+}
 
 .copyBtn {
   background: #222;
@@ -93,8 +117,8 @@
 
 .connectedBadge {
   background: #0a1a0a;
-  border: 1px solid #4CAF50;
-  color: #4CAF50;
+  border: 1px solid #4caf50;
+  color: #4caf50;
   padding: 8px 20px;
   border-radius: 20px;
   font-size: 0.9rem;
@@ -112,11 +136,36 @@
   padding: 10px 14px;
 }
 
-.fileName { flex: 1; font-size: 0.9rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.progress { flex: 1; height: 6px; accent-color: #0066FF; }
-.pct { color: #0066FF; font-size: 0.85rem; white-space: nowrap; }
+.fileName {
+  flex: 1;
+  font-size: 0.9rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.progress {
+  flex: 1;
+  height: 6px;
+  accent-color: #0066ff;
+}
+.pct {
+  color: #0066ff;
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
 
-.hint { color: #555; font-size: 0.85rem; text-align: center; }
+.hint {
+  color: #555;
+  font-size: 0.85rem;
+  text-align: center;
+}
 
-.status { margin-top: 20px; color: #4CAF50; font-size: 0.95rem; text-align: center; }
-.error { color: #f44336; }
+.status {
+  margin-top: 20px;
+  color: #4caf50;
+  font-size: 0.95rem;
+  text-align: center;
+}
+.error {
+  color: #f44336;
+}

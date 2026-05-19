@@ -1,10 +1,10 @@
-/* Container matches app background */
 .container {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 48px 24px;
-  min-height: 70vh;
+  width: 100%;
+  padding: 20px 24px 48px 24px;
+  min-height: calc(100vh - 60px);
   background: #0a0a0a;
   color: #ddd;
 }
@@ -371,4 +371,49 @@
   .urlRow {
     max-width: 100%;
   }
+}
+
+
+
+/* Edit button for pasted text files */
+.editBtn {
+  background: transparent;
+  border: none;
+  color: #888;
+  cursor: pointer;
+  padding: 4px;
+}
+.editBtn:hover {
+  color: #b169e0;
+}
+
+/* Inline editor container */
+.editContainer {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.editTextarea {
+  width: 100%;
+  background: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 6px;
+  color: #ccc;
+  padding: 8px;
+  font-size: 0.85rem;
+  font-family: inherit;
+  resize: vertical;
+}
+
+.editActions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}  
+
+.editTextarea:focus {
+  outline: none;
+  border-color: #b169e0;
 }

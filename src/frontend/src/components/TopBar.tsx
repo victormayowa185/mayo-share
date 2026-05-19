@@ -32,9 +32,6 @@ const TopBar: React.FC<Props> = ({ onNavigate }) => {
       </div>
 
       <div className={styles.actions}>
-        <button className={styles.iconBtn} data-tooltip="Help">
-          <FaRegQuestionCircle size={20} />
-        </button>
 
         <div className={styles.dropdownWrapper}>
           <button className={styles.iconBtn} data-tooltip="Profile" onClick={() => setDropdownOpen(o => !o)}>

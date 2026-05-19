@@ -191,7 +191,10 @@ const App: React.FC = () => {
         )}
 
         {screen === "support" && (
-          <SupportScreen onBack={() => setScreen("home")} />
+          <SupportScreen
+            onBack={() => setScreen("home")}
+            onReplayOnboarding={resetSetup}
+          />
         )}
 
         {screen === "rate" && <RateUsScreen onBack={() => setScreen("home")} />}

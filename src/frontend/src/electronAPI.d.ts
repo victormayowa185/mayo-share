@@ -10,6 +10,18 @@ declare global {
     electronAPI: {
       getLocalIP: () => Promise<string | null>;
       getWifiSSID: () => Promise<string | null>;
+      getActivity: () => Promise<
+        Array<{ type: string; fileName: string; timestamp: string }>
+      >;
+      onActivityUpdated: (
+        callback: (entry: {
+          type: string;
+          fileName: string;
+          timestamp: string;
+        }) => void,
+      ) => void;
+      readTextFile: (filePath: string) => Promise<string>;
+      writeTextFile: (filePath: string, content: string) => Promise<void>;
       startHotspot: () => Promise<string>;
       selectFile: () => Promise<string[] | null>;
       selectFolder: () => Promise<FolderFile[] | null>;

@@ -1,14 +1,16 @@
-/* ========== SetupStepper Styles ========== */
-
 .container {
-  background: #0A0A0A;
-  min-height: 100vh;
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  color: white;
-  padding: 40px 20px;
+  width: 100%;
+  padding: 20px 24px 48px 24px;
+  min-height: calc(100vh - 60px);
+  background: #0a0a0a;
+  color: #ddd;
+}
+
+.compactBack {
+  margin-bottom: 0;   /* remove the large gap inside the nav row */
 }
 
 .logo {

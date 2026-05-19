@@ -7,6 +7,7 @@ import { open, close, read, writeFile, appendFileSync } from "fs";
 import { UploadServer } from "./uploadServer";
 import { DiscoveryManager } from "./discovery";
 import { statSync } from "fs";
+
 import fs from "fs";
 import os from "os";
 
@@ -115,6 +116,49 @@ const HOTSPOT_SCRIPT = `
   Log "SUCCESS: Hotspot is ON"
   exit 0
   `;
+// ---------- Helper: get best available IP ----------
+async function getBestIP(): Promise<string> {
+  const interfaces = os.networkInterfaces();
+  for (const iface of Object.values(interfaces)) {
+    if (!iface) continue;
+    for (const addr of iface) {
+      if (
+        addr.family === "IPv4" &&
+        !addr.internal &&
+        !addr.address.startsWith("192.168.137.") // exclude loopback hotspot
+      ) {
+        return addr.address;
+      }
+    }
+  }
+  return currentHotspotIP; // fallback to loopback
+}
+
+// ---------- Activity logging ----------
+const ACTIVITY_LOG_PATH = path.join("C:\\mayo-received", "activity.json");
+
+function addActivity(entry: {
+  type: "sent" | "received";
+  fileName: string;
+  timestamp: string;
+}) {
+  let log: any[] = [];
+  try {
+    const raw = fs.readFileSync(ACTIVITY_LOG_PATH, "utf-8");
+    log = JSON.parse(raw);
+  } catch {}
+  log.unshift(entry);
+  // Keep only the last 200 entries
+  if (log.length > 200) log = log.slice(0, 200);
+  try {
+    fs.mkdirSync(path.dirname(ACTIVITY_LOG_PATH), { recursive: true });
+    fs.writeFileSync(ACTIVITY_LOG_PATH, JSON.stringify(log, null, 2), "utf-8");
+  } catch (err) {
+    console.error("Failed to write activity log:", err);
+  }
+  // Optionally send the update to the renderer for live refresh
+  mainWindow?.webContents.send("activity-updated", entry);
+}
 
 const fileServer = new FileServer();
 const uploadServer = new UploadServer();
@@ -231,7 +275,7 @@ ipcMain.handle(
       const relativePaths = files.map((f) =>
         typeof f === "string" ? undefined : f.relative,
       );
-      const serverIP = ip || currentHotspotIP;
+      const serverIP = ip || (await getBestIP());
       const url = await fileServer.start(
         filePaths,
         relativePaths,
@@ -253,7 +297,7 @@ ipcMain.handle(
   "start-upload-server",
   async (_event, ip?: string): Promise<string> => {
     try {
-      const serverIP = ip || currentHotspotIP;
+      const serverIP = ip || (await getBestIP());
       const url = await uploadServer.start(serverIP);
       return url;
     } catch (err) {
@@ -287,6 +331,11 @@ uploadServer.on("file-received", (fileName: string) => {
     event: "received",
     fileName,
   });
+  addActivity({
+    type: "received",
+    fileName,
+    timestamp: new Date().toISOString(),
+  });
 });
 
 uploadServer.on(
@@ -301,9 +350,18 @@ uploadServer.on(
 );
 
 // ---------- Hotspot status check (for real-time status bar) ----------
+// ---------- Hotspot status check (for real-time status bar) ----------
 ipcMain.handle(
   "check-hotspot-status",
   async (): Promise<{ active: boolean; ip: string }> => {
+    // 1. First check if we're on any real network (phone hotspot, school Wi‑Fi, etc.)
+    const liveIP = await getBestIP();
+    if (liveIP !== currentHotspotIP) {
+      // We're on a real network – not our own loopback hotspot
+      return { active: true, ip: liveIP };
+    }
+
+    // 2. No real network found – check if the loopback hotspot is active via PowerShell
     return new Promise((resolve) => {
       const script = `
       try {
@@ -437,6 +495,11 @@ ipcMain.handle(
     size: number,
   ): Promise<string> => {
     return new Promise((resolve, reject) => {
+      // Helper to safely extract a single string from a formidable field
+      const getField = (val: string | string[] | undefined): string => {
+        if (Array.isArray(val)) return val[0] || "";
+        return val || "";
+      };
       // Open file, read chunk, return as base64
       open(filePath, "r", (err, fd) => {
         if (err) return reject(err);
@@ -518,10 +581,16 @@ fileServer.on("download-started", (_index: number, fileName: string) => {
     fileName,
   });
 });
+
 fileServer.on("download-completed", (_index: number, fileName: string) => {
   mainWindow?.webContents.send("download-update", {
     event: "completed",
     fileName,
+  });
+  addActivity({
+    type: "sent",
+    fileName,
+    timestamp: new Date().toISOString(),
   });
 });
 
@@ -560,6 +629,32 @@ ipcMain.handle(
     return filePath;
   },
 );
+
+// Read a text file and return its content
+ipcMain.handle(
+  "read-text-file",
+  async (_event, filePath: string): Promise<string> => {
+    return fs.promises.readFile(filePath, "utf-8");
+  },
+);
+
+// Overwrite a text file with new content
+ipcMain.handle(
+  "write-text-file",
+  async (_event, filePath: string, content: string): Promise<void> => {
+    await fs.promises.writeFile(filePath, content, "utf-8");
+  },
+);
+
+// Place near other ipcMain.handle calls
+ipcMain.handle("get-activity", async (): Promise<any[]> => {
+  try {
+    const raw = fs.readFileSync(ACTIVITY_LOG_PATH, "utf-8");
+    return JSON.parse(raw);
+  } catch {
+    return [];
+  }
+});
 
 ipcMain.handle("compress-sdp", async (_event, sdp: string): Promise<string> => {
   return Buffer.from(sdp, "utf-8").toString("base64");

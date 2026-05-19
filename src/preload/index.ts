@@ -9,6 +9,14 @@ contextBridge.exposeInMainWorld("electronAPI", {
   checkHotspotStatus: () => ipcRenderer.invoke("check-hotspot-status"),
   getWifiSSID: (): Promise<string | null> =>
     ipcRenderer.invoke("get-wifi-ssid"),
+  getActivity: (): Promise<any[]> => ipcRenderer.invoke("get-activity"),
+  onActivityUpdated: (callback: (entry: any) => void) => {
+    ipcRenderer.on("activity-updated", (_event, entry) => callback(entry));
+  },
+  readTextFile: (filePath: string) =>
+    ipcRenderer.invoke("read-text-file", filePath),
+  writeTextFile: (filePath: string, content: string) =>
+    ipcRenderer.invoke("write-text-file", filePath, content),
   startHotspot: () => ipcRenderer.invoke("start-hotspot"),
   selectFile: () => ipcRenderer.invoke("select-file"),
   getHostname: () => ipcRenderer.invoke("get-hostname"),

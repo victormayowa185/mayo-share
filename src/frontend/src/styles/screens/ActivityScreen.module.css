@@ -31,3 +31,43 @@
     color: #555;
     font-size: 0.95rem;
 }
+
+
+.activityList {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  width: 100%;
+  max-width: 500px;
+}
+
+.activityItem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #111;
+  border: 1px solid #222;
+  border-radius: 8px;
+  padding: 10px 14px;
+  margin-bottom: 6px;
+  font-size: 0.88rem;
+}
+
+.activityIcon {
+  width: 24px;
+  text-align: center;
+}
+
+.activityName {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #ccc;
+}
+
+.activityTime {
+  color: #666;
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
