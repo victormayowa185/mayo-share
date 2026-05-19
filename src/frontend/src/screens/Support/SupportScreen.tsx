@@ -5,10 +5,11 @@ import styles from '../../styles/screens/SupportScreen.module.css';
 
 interface Props {
   onBack: () => void;
-  onReplayOnboarding?: () => void;   // new
+  onReplayOnboarding?: () => void;
+  onNavigateTo?: (screen: string) => void;  // new
 }
 
-const SupportScreen: React.FC<Props> = ({ onBack, onReplayOnboarding }) => {
+const SupportScreen: React.FC<Props> = ({ onBack, onReplayOnboarding, onNavigateTo }) => {
   return (
     <div className={styles.container}>
       <BackButton onClick={onBack} />
@@ -29,9 +30,16 @@ const SupportScreen: React.FC<Props> = ({ onBack, onReplayOnboarding }) => {
         </div>
         <button
           className={styles.btn}
-          onClick={() => onReplayOnboarding?.()}   // calls the callback
+          onClick={() => onReplayOnboarding?.()}
         >
           Replay Onboarding
+        </button>
+        <button
+          className={styles.btn}
+          onClick={() => onNavigateTo?.('troubleshoot')}
+          style={{ marginTop: 12 }}
+        >
+          Troubleshoot
         </button>
       </div>
     </div>

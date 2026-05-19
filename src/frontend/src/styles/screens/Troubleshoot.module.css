@@ -1,0 +1,95 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  padding: 20px 24px 48px 24px;
+  min-height: calc(100vh - 60px);
+  background: #0a0a0a;
+  color: #ddd;
+}
+
+.title {
+  font-size: 1.6rem;
+  margin-bottom: 8px;
+  color: #fff;
+}
+
+.subtitle {
+  color: #888;
+  margin-bottom: 32px;
+  text-align: center;
+}
+
+.card {
+  background: #111;
+  border: 1px solid #222;
+  border-radius: 12px;
+  padding: 20px 24px;
+  width: 100%;
+  max-width: 520px;
+  margin-bottom: 20px;
+}
+
+.cardHeader {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.cardHeader h3 {
+  color: #fff;
+  font-size: 1.1rem;
+}
+
+.cardDesc {
+  color: #888;
+  font-size: 0.9rem;
+  margin-bottom: 16px;
+  line-height: 1.5;
+}
+
+.btn {
+  padding: 10px 24px;
+  background: #b169e0;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  cursor: pointer;
+}
+
+.btn:hover:not(:disabled) {
+  background: #9a4fd4;
+}
+
+.btn:disabled {
+  background: #333;
+  cursor: not-allowed;
+}
+
+.successMsg {
+  color: #4caf50;
+  margin-top: 12px;
+  font-size: 0.9rem;
+}
+
+.errorMsg {
+  color: #f44336;
+  margin-top: 12px;
+  font-size: 0.9rem;
+}
+
+.diagnosisResult {
+  margin-top: 16px;
+  padding: 12px;
+  background: #1a1a1a;
+  border-radius: 6px;
+}
+
+.diagnosisResult p {
+  margin: 4px 0;
+  color: #ccc;
+  font-size: 0.88rem;
+}

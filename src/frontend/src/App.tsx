@@ -10,6 +10,7 @@ import ActivityScreen from "./screens/Activity/ActivityScreen";
 import SupportScreen from "./screens/Support/SupportScreen";
 import RateUsScreen from "./screens/RateUs/RateUsScreen";
 import TopBar from "./components/TopBar";
+import TroubleshootScreen from "./screens/Troubleshoot/Troubleshoot";
 import ReceiveFromBrowser from "./screens/ReceiveFromBrowser/ReceiveFromBrowser";
 import StatusBar from "./components/StatusBar";
 
@@ -24,7 +25,8 @@ export type Screen =
   | "settings"
   | "activity"
   | "support"
-  | "rate";
+  | "rate"
+  | "troubleshoot"; // ✅ fixed
 
 const App: React.FC = () => {
   const [screen, setScreen] = useState<Screen>("home");
@@ -41,7 +43,6 @@ const App: React.FC = () => {
   }, []);
 
   // Poll hotspot status every 5 seconds
-  // Poll hotspot and local network status every 5 seconds
   useEffect(() => {
     if (setupComplete !== true) return;
 
@@ -52,8 +53,6 @@ const App: React.FC = () => {
         setHotspotActive(hotspotStatus.active);
         if (hotspotStatus.active && hotspotStatus.ip) {
           setHotspotIP(hotspotStatus.ip);
-          // If hotspot is active, label is usually set by HotspotCheck.
-          // But if we're on a screen that didn't set one, show fallback.
           setConnectionLabel(
             (prev) => prev || `Hotspot active · ${hotspotStatus.ip}`,
           );
@@ -66,12 +65,10 @@ const App: React.FC = () => {
         if (localIP) {
           const ssid = await window.electronAPI.getWifiSSID();
           const label = `Connected to ${ssid || "Wi-Fi"}`;
-          // Only overwrite if hotspot is not active
           if (!hotspotStatus.active) {
             setConnectionLabel(label);
           }
         } else if (!hotspotStatus.active) {
-          // No local network and no hotspot → show "No network"
           setConnectionLabel("No network");
         }
       } catch {
@@ -194,7 +191,12 @@ const App: React.FC = () => {
           <SupportScreen
             onBack={() => setScreen("home")}
             onReplayOnboarding={resetSetup}
+            onNavigateTo={setScreen}
           />
+        )}
+
+        {screen === "troubleshoot" && (
+          <TroubleshootScreen onBack={() => setScreen("support")} />
         )}
 
         {screen === "rate" && <RateUsScreen onBack={() => setScreen("home")} />}

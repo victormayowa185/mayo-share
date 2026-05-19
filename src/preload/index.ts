@@ -13,6 +13,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
   onActivityUpdated: (callback: (entry: any) => void) => {
     ipcRenderer.on("activity-updated", (_event, entry) => callback(entry));
   },
+  fixFirewall: () => ipcRenderer.invoke("fix-firewall"),
+  diagnoseNetwork: () => ipcRenderer.invoke("diagnose-network"),
   readTextFile: (filePath: string) =>
     ipcRenderer.invoke("read-text-file", filePath),
   writeTextFile: (filePath: string, content: string) =>

@@ -630,6 +630,60 @@ ipcMain.handle(
   },
 );
 
+ipcMain.handle("fix-firewall", async (): Promise<{ success: boolean; output?: string; error?: string }> => {
+  return new Promise((resolve) => {
+    const cmd = `netsh advfirewall firewall add rule name="MAYO Share" dir=in action=allow protocol=TCP localport=3000,3001`;
+    execFile(
+      "powershell.exe",
+      ["-Command", cmd],
+      { timeout: 15000 },
+      (error: Error | null, stdout: string, stderr: string) => {
+        if (error) {
+          resolve({ success: false, error: stderr || error.message });
+        } else {
+          resolve({ success: true, output: stdout || "Rule added successfully." });
+        }
+      }
+    );
+  });
+});
+
+ipcMain.handle("diagnose-network", async (): Promise<any> => {
+  return new Promise((resolve) => {
+    const psScript = `
+      $ssid = (netsh wlan show interfaces | Select-String "SSID" | Select-String -NotMatch "BSSID" | Select-Object -First 1).ToString().Split(':')[1].Trim()
+      $profile = Get-NetConnectionProfile | Where-Object { $_.InterfaceAlias -like "*Wi-Fi*" } | Select-Object -ExpandProperty NetworkCategory
+      $loopback = Get-NetAdapter | Where-Object { $_.InterfaceDescription -like "*KM-TEST*" } | Select-Object -First 1
+      $port3001 = netstat -ano | Select-String ":3001" | Select-String "LISTENING"
+      Write-Host $ssid
+      Write-Host $profile
+      Write-Host ($loopback -ne $null)
+      Write-Host ($port3001 -ne $null)
+    `;
+    execFile(
+      "powershell.exe",
+      ["-NoProfile", "-Command", psScript],
+      { timeout: 10000 },
+      (error, stdout, stderr) => {
+        if (error)
+          return resolve({
+            ssid: null,
+            profileCategory: null,
+            loopbackAdapterPresent: false,
+            port3001Listening: false,
+          });
+        const lines = (stdout || "").trim().split("\n");
+        resolve({
+          ssid: lines[0]?.trim() || null,
+          profileCategory: lines[1]?.trim() || null,
+          loopbackAdapterPresent: lines[2]?.trim() === "True",
+          port3001Listening: lines[3]?.trim() === "True",
+        });
+      },
+    );
+  });
+});
+
 // Read a text file and return its content
 ipcMain.handle(
   "read-text-file",

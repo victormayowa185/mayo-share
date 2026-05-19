@@ -25,6 +25,17 @@ declare global {
       startHotspot: () => Promise<string>;
       selectFile: () => Promise<string[] | null>;
       selectFolder: () => Promise<FolderFile[] | null>;
+      fixFirewall: () => Promise<{
+        success: boolean;
+        output?: string;
+        error?: string;
+      }>;
+      diagnoseNetwork: () => Promise<{
+        ssid: string | null;
+        profileCategory: string | null;
+        loopbackAdapterPresent: boolean;
+        port3001Listening: boolean;
+      }>;
       startFileServer: (files: (string | FolderFile)[]) => Promise<string>;
       stopFileServer: () => Promise<void>;
       getFileSize: (filePath: string) => Promise<number>;
