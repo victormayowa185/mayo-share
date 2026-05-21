@@ -30,6 +30,12 @@ declare global {
         output?: string;
         error?: string;
       }>;
+      getTranslations: (lang: string) => Promise<Record<string, string>>;
+      getLanguage: () => Promise<string>;
+      setLanguage: (lang: string) => Promise<void>;
+      getSavePath: () => Promise<string>;
+      setSavePath: (path: string) => Promise<void>;
+      selectSaveFolder: () => Promise<string | null>;
       diagnoseNetwork: () => Promise<{
         ssid: string | null;
         profileCategory: string | null;

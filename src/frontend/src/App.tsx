@@ -12,6 +12,7 @@ import RateUsScreen from "./screens/RateUs/RateUsScreen";
 import TopBar from "./components/TopBar";
 import TroubleshootScreen from "./screens/Troubleshoot/Troubleshoot";
 import ReceiveFromBrowser from "./screens/ReceiveFromBrowser/ReceiveFromBrowser";
+import SettingsScreen from "./screens/Settings/SettingsScreen";
 import StatusBar from "./components/StatusBar";
 
 export type Screen =
@@ -26,7 +27,7 @@ export type Screen =
   | "activity"
   | "support"
   | "rate"
-  | "troubleshoot"; // ✅ fixed
+  | "troubleshoot";
 
 const App: React.FC = () => {
   const [screen, setScreen] = useState<Screen>("home");
@@ -194,6 +195,10 @@ const App: React.FC = () => {
             onNavigateTo={setScreen}
           />
         )}
+
+        {screen === "settings" && (
+  <SettingsScreen onBack={() => setScreen("home")} />
+)}
 
         {screen === "troubleshoot" && (
           <TroubleshootScreen onBack={() => setScreen("support")} />

@@ -13,6 +13,13 @@ contextBridge.exposeInMainWorld("electronAPI", {
   onActivityUpdated: (callback: (entry: any) => void) => {
     ipcRenderer.on("activity-updated", (_event, entry) => callback(entry));
   },
+  getTranslations: (lang: string) =>
+    ipcRenderer.invoke("get-translations", lang),
+  getLanguage: () => ipcRenderer.invoke("get-language"),
+  setLanguage: (lang: string) => ipcRenderer.invoke("set-language", lang),
+  getSavePath: () => ipcRenderer.invoke("get-save-path"),
+  setSavePath: (path: string) => ipcRenderer.invoke("set-save-path", path),
+  selectSaveFolder: () => ipcRenderer.invoke("select-save-folder"),
   fixFirewall: () => ipcRenderer.invoke("fix-firewall"),
   diagnoseNetwork: () => ipcRenderer.invoke("diagnose-network"),
   readTextFile: (filePath: string) =>

@@ -1,0 +1,17 @@
+{
+  "back": "Pada",
+  "settings": "Eto",
+  "receiveFiles": "Gba awọn faili",
+  "shareFiles": "Pin awọn faili",
+  "deviceConnect": "So ẹrọ pọ",
+  "receiveFromBrowser": "Gba lati aṣàwákiri",
+  "homeHeading": "Kí lo fẹ́ ṣe?",
+  "homeSubtitle": "Yan iṣẹ kan lati bẹrẹ",
+  "shareNow": "Pin bayii",
+  "startOfflineHotspot": "Bẹrẹ Hotspot Aisinipo",
+  "networkFound": "Nẹtiwọki Ti Ri",
+  "youAreConnectedTo": "O ti sopọ mọ {{ssid}}.",
+  "filesWillBeShared": "Awọn faili yoo pin lori nẹtiwọki yi.",
+  "shareFilesViaLink": "Pin awọn faili nipasẹ ọna asopọ tabi QR koodu. Olugba nikan nilo aṣàwákiri — ko si app ti a beere.",
+  "deviceConnectDesc": "Ipese P2P ni kikun — ṣe akopọ awọn faili pupọ, fagilee nigbakugba, tun bẹrẹ gbigbe. O nilo MAYO Share lori awọn ẹrọ mejeeji."
+}

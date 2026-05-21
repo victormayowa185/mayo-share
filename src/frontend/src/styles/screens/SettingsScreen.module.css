@@ -1,0 +1,135 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 20px 24px 20px 24px;
+  min-height: 70vh;
+  background: #0a0a0a;
+  color: #ddd;
+}
+
+.title {
+  font-size: 1.6rem;
+  margin-bottom: 24px;
+  color: #fff;
+}
+
+.card {
+  background: #111;
+  border: 1px solid #222;
+  border-radius: 12px;
+  padding: 20px 24px;
+  width: 100%;
+  max-width: 520px;
+  margin-bottom: 20px;
+}
+
+.cardHeader {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.cardHeader h3 {
+  color: #fff;
+  font-size: 1.1rem;
+}
+
+.cardDesc {
+  color: #888;
+  font-size: 0.9rem;
+  margin-bottom: 16px;
+  line-height: 1.5;
+}
+
+.pathDisplay {
+  background: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 6px;
+  padding: 10px 14px;
+  color: #ccc;
+  font-size: 0.9rem;
+  word-break: break-all;
+  margin-bottom: 12px;
+}
+
+.editRow {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.pathInput {
+  width: 100%;
+  padding: 10px 14px;
+  border-radius: 6px;
+  border: 1px solid #333;
+  background: #1a1a1a;
+  color: #ccc;
+  font-size: 0.9rem;
+}
+
+.editButtons {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.btn {
+  padding: 10px 20px;
+  background: #b169e0;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.btn:hover {
+  background: #9a4fd4;
+}
+
+.ghostBtn {
+  padding: 10px 20px;
+  background: transparent;
+  border: 1px solid #333;
+  color: #ccc;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.ghostBtn:hover {
+  border-color: #555;
+  color: #fff;
+}
+
+.status {
+  color: #4caf50;
+  margin-top: 12px;
+  font-size: 0.9rem;
+}
+
+
+/* Language dropdown */
+.langSelect {
+  width: 100%;
+  padding: 10px 14px;
+  border-radius: 8px;
+  border: 1px solid #333;
+  background: #1a1a1a;
+  color: #ccc;
+  font-size: 0.9rem;
+  margin-top: 12px;
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23ccc' d='M6 8.825a.5.5 0 0 1-.354-.146l-4-4a.5.5 0 0 1 .708-.708L6 7.617l3.646-3.646a.5.5 0 0 1 .708.708l-4 4A.5.5 0 0 1 6 8.825z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 14px center;
+}
+
+.langSelect:focus {
+  outline: none;
+  border-color: #b169e0;
+}

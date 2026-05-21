@@ -1,0 +1,12 @@
+{
+  "settings": "Settings",
+  "language": "Language",
+  "saveFolder": "Save Folder",
+  "saveFolderDesc": "Files you receive will be saved in this folder. You can change it anytime.",
+  "changeFolder": "Change Folder",
+  "browse": "Browse",
+  "save": "Save",
+  "cancel": "Cancel",
+  "saveFolderUpdated": "Save folder updated.",
+  "saveFailed": "Failed to save"
+}

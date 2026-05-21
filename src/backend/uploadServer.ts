@@ -16,7 +16,11 @@ interface SSEClient {
   id: string;
   res: ServerResponse;
 }
-const RECEIVE_DIR = "C:\\mayo-received";
+// This will be set dynamically when the server starts
+let RECEIVE_DIR = "C:\\mayo-received";
+export function setReceiveDir(path: string) {
+  RECEIVE_DIR = path;
+}
 const PORT = 3001;
 
 export class UploadServer extends EventEmitter {

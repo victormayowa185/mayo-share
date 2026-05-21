@@ -4,8 +4,8 @@ import { execFile } from "child_process";
 import { FileServer } from "./fileServer";
 import http from "http";
 import { open, close, read, writeFile, appendFileSync } from "fs";
-import { UploadServer } from "./uploadServer";
 import { DiscoveryManager } from "./discovery";
+import { UploadServer, setReceiveDir } from "./uploadServer";
 import { statSync } from "fs";
 
 import fs from "fs";
@@ -207,6 +207,51 @@ function createWindow(): void {
     return { action: "deny" };
   });
 }
+
+// ---------- i18n (multi‑language) ----------
+const LOCALES_DIR = path.join(__dirname, "..", "..", "src", "locales");
+let currentLanguage = "en";
+
+// Load all translation files once and cache them
+const translationsCache: Record<string, any> = {};
+function loadAllTranslations() {
+  const files = fs.readdirSync(LOCALES_DIR).filter((f) => f.endsWith(".json"));
+  for (const file of files) {
+    const lang = path.basename(file, ".json");
+    try {
+      const raw = fs.readFileSync(path.join(LOCALES_DIR, file), "utf-8");
+      translationsCache[lang] = JSON.parse(raw);
+    } catch {}
+  }
+}
+loadAllTranslations();
+
+ipcMain.handle("get-translations", async (_event, lang: string) => {
+  return translationsCache[lang] || translationsCache["en"] || {};
+});
+
+ipcMain.handle("get-language", async () => {
+  return currentLanguage;
+});
+
+ipcMain.handle("set-language", async (_event, lang: string) => {
+  if (translationsCache[lang]) {
+    currentLanguage = lang;
+    // Persist to a file or electron‑store – here we use a simple JSON file
+    const settingsPath = path.join(currentSavePath, "mayo-settings.json");
+    try {
+      const settings = JSON.parse(
+        fs.readFileSync(settingsPath, "utf-8") || "{}",
+      );
+      settings.language = lang;
+      fs.writeFileSync(
+        settingsPath,
+        JSON.stringify(settings, null, 2),
+        "utf-8",
+      );
+    } catch {}
+  }
+});
 
 // ---------- Hotspot ----------
 ipcMain.handle("start-hotspot", async (): Promise<string> => {
@@ -630,23 +675,29 @@ ipcMain.handle(
   },
 );
 
-ipcMain.handle("fix-firewall", async (): Promise<{ success: boolean; output?: string; error?: string }> => {
-  return new Promise((resolve) => {
-    const cmd = `netsh advfirewall firewall add rule name="MAYO Share" dir=in action=allow protocol=TCP localport=3000,3001`;
-    execFile(
-      "powershell.exe",
-      ["-Command", cmd],
-      { timeout: 15000 },
-      (error: Error | null, stdout: string, stderr: string) => {
-        if (error) {
-          resolve({ success: false, error: stderr || error.message });
-        } else {
-          resolve({ success: true, output: stdout || "Rule added successfully." });
-        }
-      }
-    );
-  });
-});
+ipcMain.handle(
+  "fix-firewall",
+  async (): Promise<{ success: boolean; output?: string; error?: string }> => {
+    return new Promise((resolve) => {
+      const cmd = `netsh advfirewall firewall add rule name="MAYO Share" dir=in action=allow protocol=TCP localport=3000,3001`;
+      execFile(
+        "powershell.exe",
+        ["-Command", cmd],
+        { timeout: 15000 },
+        (error: Error | null, stdout: string, stderr: string) => {
+          if (error) {
+            resolve({ success: false, error: stderr || error.message });
+          } else {
+            resolve({
+              success: true,
+              output: stdout || "Rule added successfully.",
+            });
+          }
+        },
+      );
+    });
+  },
+);
 
 ipcMain.handle("diagnose-network", async (): Promise<any> => {
   return new Promise((resolve) => {
@@ -720,6 +771,59 @@ ipcMain.handle(
     return Buffer.from(compact, "base64").toString("utf-8");
   },
 );
+
+// ---------- Settings: save path ----------
+let currentSavePath = "C:\\mayo-received";
+
+// Load saved path when app starts
+async function loadSettings() {
+  try {
+    const settingsPath = path.join(currentSavePath, "mayo-settings.json");
+    const raw = await fs.promises.readFile(settingsPath, "utf-8");
+    const settings = JSON.parse(raw);
+    if (settings.savePath) {
+      currentLanguage = settings.language;
+      currentSavePath = settings.savePath;
+      setReceiveDir(currentSavePath);
+    }
+  } catch {}
+}
+
+ipcMain.handle("get-save-path", async (): Promise<string> => {
+  return currentSavePath;
+});
+
+ipcMain.handle(
+  "set-save-path",
+  async (_event, newPath: string): Promise<void> => {
+    // Basic validation: ensure it's a non‑empty string
+    if (newPath && newPath.trim().length > 0) {
+      currentSavePath = newPath.trim();
+      setReceiveDir(currentSavePath);
+      // Optionally persist to a settings file
+      try {
+        await fs.promises.mkdir(path.dirname(currentSavePath), {
+          recursive: true,
+        });
+        await fs.promises.writeFile(
+          path.join(currentSavePath, "mayo-settings.json"),
+          JSON.stringify({ savePath: currentSavePath }),
+          "utf-8",
+        );
+      } catch {}
+    }
+  },
+);
+
+ipcMain.handle("select-save-folder", async (): Promise<string | null> => {
+  if (!mainWindow) return null;
+  const result = await dialog.showOpenDialog(mainWindow, {
+    properties: ["openDirectory"],
+    title: "Select where to save received files",
+  });
+  if (result.canceled || result.filePaths.length === 0) return null;
+  return result.filePaths[0];
+});
 
 ipcMain.handle("ping", async () => "pong");
 // ---------- Discovery (mDNS + signaling server) ----------
@@ -795,7 +899,10 @@ discoveryManager.on("answer-received", (answerSDP: string) => {
 });
 
 // ---------- App startup ----------
-app.whenReady().then(createWindow);
+app.whenReady().then(async () => {
+  await loadSettings();
+  createWindow();
+});
 
 app.on("before-quit", () => {
   discoveryManager.stop();

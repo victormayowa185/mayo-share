@@ -1,15 +1,19 @@
-import React from 'react';
-import { FaEnvelope, FaGlobe } from 'react-icons/fa';
-import BackButton from '../../components/BackButton';
-import styles from '../../styles/screens/SupportScreen.module.css';
+import React from "react";
+import { FaEnvelope, FaGlobe } from "react-icons/fa";
+import BackButton from "../../components/BackButton";
+import styles from "../../styles/screens/SupportScreen.module.css";
 
 interface Props {
   onBack: () => void;
   onReplayOnboarding?: () => void;
-  onNavigateTo?: (screen: string) => void;  // new
+  onNavigateTo?: (screen: string) => void; // new
 }
 
-const SupportScreen: React.FC<Props> = ({ onBack, onReplayOnboarding, onNavigateTo }) => {
+const SupportScreen: React.FC<Props> = ({
+  onBack,
+  onReplayOnboarding,
+  onNavigateTo,
+}) => {
   return (
     <div className={styles.container}>
       <BackButton onClick={onBack} />
@@ -23,21 +27,13 @@ const SupportScreen: React.FC<Props> = ({ onBack, onReplayOnboarding, onNavigate
             <FaEnvelope size={16} color="#888" />
             <span>victormayowa185@gmail.com</span>
           </div>
-          <div className={styles.contactRow}>
-            <FaGlobe size={16} color="#888" />
-            <span>github.com/victormayowa185</span>
-          </div>
         </div>
-        <button
-          className={styles.btn}
-          onClick={() => onReplayOnboarding?.()}
-        >
+        <button className={styles.btn} onClick={() => onReplayOnboarding?.()}>
           Replay Onboarding
         </button>
         <button
           className={styles.btn}
-          onClick={() => onNavigateTo?.('troubleshoot')}
-          style={{ marginTop: 12 }}
+          onClick={() => onNavigateTo?.("troubleshoot")}
         >
           Troubleshoot
         </button>

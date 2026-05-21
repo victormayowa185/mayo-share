@@ -3,8 +3,8 @@
   flex-direction: column;
   align-items: center;
   width: 100%;
-  padding: 20px 24px 48px 24px;
-  min-height: calc(100vh - 60px);
+  padding: 20px 24px 20px 24px;
+  min-height: 70vh;
   background: #0a0a0a;
   color: #ddd;
 }

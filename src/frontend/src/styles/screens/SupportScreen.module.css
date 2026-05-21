@@ -49,3 +49,24 @@
   margin-top: 8px;
   padding-top: 16px;
 }
+
+
+.btn {
+  padding: 12px 28px;
+  background: #b169e0;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 500;
+  font-size: 1rem;
+  display: block;
+  width: 40%;
+  max-width: 300px;
+  margin: 8px auto 0 auto;
+  transition: background 0.15s;
+}
+
+.btn:hover {
+  background: #9a4fd4;
+}
