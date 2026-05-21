@@ -111,7 +111,6 @@
   font-size: 0.9rem;
 }
 
-
 /* Language dropdown */
 .langSelect {
   width: 100%;
@@ -132,4 +131,28 @@
 .langSelect:focus {
   outline: none;
   border-color: #b169e0;
+}
+
+.aboutLabel {
+  color: #888;
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin-top: 16px;
+  margin-bottom: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.supportLink {
+  color: #b169e0;
+  text-decoration: none;
+  font-size: 0.9rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.supportLink:hover {
+  text-decoration: underline;
 }

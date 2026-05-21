@@ -30,6 +30,10 @@ declare global {
         output?: string;
         error?: string;
       }>;
+      clearActivity: () => Promise<void>;
+      onActivityCleared: (callback: () => void) => void;
+      onDeviceNameChanged: (callback: (name: string) => void) => void;
+      setDeviceName: (name: string) => Promise<void>;
       getTranslations: (lang: string) => Promise<Record<string, string>>;
       getLanguage: () => Promise<string>;
       setLanguage: (lang: string) => Promise<void>;

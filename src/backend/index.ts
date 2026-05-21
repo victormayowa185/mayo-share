@@ -456,9 +456,16 @@ ipcMain.handle(
 
 // HOST NAME
 ipcMain.handle("get-hostname", async () => {
+  try {
+    const settingsPath = path.join(currentSavePath, "mayo-settings.json");
+    if (fs.existsSync(settingsPath)) {
+      const raw = fs.readFileSync(settingsPath, "utf-8");
+      const settings = JSON.parse(raw);
+      if (settings.deviceName) return settings.deviceName;
+    }
+  } catch {}
   return os.hostname();
 });
-
 // ---------- Local IP detection (for existing Wi‑Fi) ----------
 ipcMain.handle("get-local-ip", async (): Promise<string | null> => {
   const interfaces = os.networkInterfaces();
@@ -761,6 +768,15 @@ ipcMain.handle("get-activity", async (): Promise<any[]> => {
   }
 });
 
+ipcMain.handle("clear-activity", async (): Promise<void> => {
+  try {
+    fs.writeFileSync(ACTIVITY_LOG_PATH, "[]", "utf-8");
+    mainWindow?.webContents.send("activity-cleared");
+  } catch (err) {
+    console.error("Failed to clear activity log:", err);
+  }
+});
+
 ipcMain.handle("compress-sdp", async (_event, sdp: string): Promise<string> => {
   return Buffer.from(sdp, "utf-8").toString("base64");
 });
@@ -810,6 +826,29 @@ ipcMain.handle(
           JSON.stringify({ savePath: currentSavePath }),
           "utf-8",
         );
+      } catch {}
+    }
+  },
+);
+
+ipcMain.handle(
+  "set-device-name",
+  async (_event, name: string): Promise<void> => {
+    if (name && name.trim().length > 0) {
+      try {
+        const settingsPath = path.join(currentSavePath, "mayo-settings.json");
+        let settings: any = {};
+        if (fs.existsSync(settingsPath)) {
+          const raw = fs.readFileSync(settingsPath, "utf-8");
+          settings = JSON.parse(raw);
+        }
+        settings.deviceName = name.trim();
+          fs.writeFileSync(
+          settingsPath,
+          JSON.stringify(settings, null, 2),
+          "utf-8"
+        );
+        mainWindow?.webContents.send("device-name-changed", name.trim()); // ← add this line
       } catch {}
     }
   },

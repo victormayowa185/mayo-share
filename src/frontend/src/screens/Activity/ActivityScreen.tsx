@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from "react";
 import {
-  FaArrowLeft,
   FaClipboardList,
   FaUpload,
   FaDownload,
@@ -26,11 +25,20 @@ const ActivityScreen: React.FC<Props> = ({ onBack }) => {
     setActivities(data);
   };
 
+  const clearHistory = async () => {
+    await window.electronAPI.clearActivity();
+    setActivities([]);
+  };
+
   useEffect(() => {
     loadActivities();
-    // Listen for live updates
+
     window.electronAPI.onActivityUpdated(() => {
       loadActivities();
+    });
+
+    window.electronAPI.onActivityCleared(() => {
+      setActivities([]);
     });
   }, []);
 
@@ -42,6 +50,15 @@ const ActivityScreen: React.FC<Props> = ({ onBack }) => {
   return (
     <div className={styles.container}>
       <BackButton onClick={onBack} />
+
+      {activities.length > 0 && (
+        <div className={styles.clearFixed}>
+          <button className={styles.clearBtn} onClick={clearHistory}>
+            Clear History
+          </button>
+        </div>
+      )}
+
       <div className={styles.content}>
         <h2 className={styles.title}>Activity</h2>
         {activities.length === 0 ? (

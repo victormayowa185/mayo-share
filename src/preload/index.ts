@@ -13,8 +13,16 @@ contextBridge.exposeInMainWorld("electronAPI", {
   onActivityUpdated: (callback: (entry: any) => void) => {
     ipcRenderer.on("activity-updated", (_event, entry) => callback(entry));
   },
+  onDeviceNameChanged: (callback: (name: string) => void) => {
+    ipcRenderer.on("device-name-changed", (_event, name) => callback(name));
+  },
   getTranslations: (lang: string) =>
     ipcRenderer.invoke("get-translations", lang),
+  setDeviceName: (name: string) => ipcRenderer.invoke("set-device-name", name),
+  clearActivity: () => ipcRenderer.invoke("clear-activity"),
+  onActivityCleared: (callback: () => void) => {
+    ipcRenderer.on("activity-cleared", () => callback());
+  },
   getLanguage: () => ipcRenderer.invoke("get-language"),
   setLanguage: (lang: string) => ipcRenderer.invoke("set-language", lang),
   getSavePath: () => ipcRenderer.invoke("get-save-path"),

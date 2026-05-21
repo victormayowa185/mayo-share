@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import {FaHistory, FaQuestionCircle, FaStar, FaCog } from 'react-icons/fa';
+import { FaHistory, FaQuestionCircle, FaStar, FaCog } from "react-icons/fa";
 import { CgProfile } from "react-icons/cg";
 import styles from "../styles/components/TopBar.module.css";
 interface Props {
@@ -9,6 +9,26 @@ interface Props {
 const TopBar: React.FC<Props> = ({ onNavigate }) => {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [hostname, setHostname] = useState("My Device");
+
+  const loadHostname = async () => {
+    try {
+      const name = await window.electronAPI.getHostname();
+      setHostname(name);
+    } catch {
+      setHostname("My Device");
+    }
+  };
+
+  useEffect(() => {
+    loadHostname();
+  }, []);
+
+  // Listen for name changes from Settings
+  useEffect(() => {
+    window.electronAPI.onDeviceNameChanged((newName: string) => {
+      setHostname(newName);
+    });
+  }, []);
 
   useEffect(() => {
     window.electronAPI

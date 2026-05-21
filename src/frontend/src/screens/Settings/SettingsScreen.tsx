@@ -16,6 +16,17 @@ const SettingsScreen: React.FC<Props> = ({ onBack }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [status, setStatus] = useState("");
   const [currentLang, setCurrentLang] = useState("en");
+  const [deviceName, setDeviceName] = useState("");
+  const [editDeviceName, setEditDeviceName] = useState("");
+  const [editingDevice, setEditingDevice] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      const name = await window.electronAPI.getHostname();
+      setDeviceName(name);
+      setEditDeviceName(name);
+    })();
+  }, []);
 
   useEffect(() => {
     (async () => {
@@ -61,6 +72,53 @@ const SettingsScreen: React.FC<Props> = ({ onBack }) => {
       <BackButton onClick={onBack} />
       <h2 className={styles.title}>{t("settings")}</h2>
 
+      {/* Device Name Card */}
+      <div className={styles.card}>
+        <h3>{t("deviceName")}</h3>
+        <p className={styles.cardDesc}>{t("deviceNameDesc")}</p>
+        {!editingDevice ? (
+          <>
+            <div className={styles.pathDisplay}>{deviceName}</div>
+            <button
+              className={styles.btn}
+              onClick={() => setEditingDevice(true)}
+            >
+              {t("changeDeviceName")}
+            </button>
+          </>
+        ) : (
+          <div className={styles.editRow}>
+            <input
+              className={styles.pathInput}
+              value={editDeviceName}
+              onChange={(e) => setEditDeviceName(e.target.value)}
+              placeholder="My Laptop"
+            />
+            <div className={styles.editButtons}>
+              <button
+                className={styles.btn}
+                onClick={async () => {
+                  await window.electronAPI.setDeviceName(editDeviceName);
+                  setDeviceName(editDeviceName);
+                  setEditingDevice(false);
+                }}
+              >
+                {t("save")}
+              </button>
+              <button
+                className={styles.ghostBtn}
+                onClick={() => {
+                  setEditDeviceName(deviceName);
+                  setEditingDevice(false);
+                }}
+              >
+                {t("cancel")}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* Language Card */}
       <div className={styles.card}>
         <h3>{t("language")}</h3>
@@ -70,7 +128,8 @@ const SettingsScreen: React.FC<Props> = ({ onBack }) => {
           onChange={async (e) => {
             const lang = e.target.value;
             await window.electronAPI.setLanguage(lang);
-            const newTranslations = await window.electronAPI.getTranslations(lang);
+            const newTranslations =
+              await window.electronAPI.getTranslations(lang);
             i18next.addResourceBundle(lang, "translation", newTranslations);
             await i18next.changeLanguage(lang);
             setCurrentLang(lang);
@@ -126,6 +185,36 @@ const SettingsScreen: React.FC<Props> = ({ onBack }) => {
           </div>
         )}
         {status && <p className={styles.status}>{status}</p>}
+      </div>
+
+      {/* About Card */}
+      <div className={styles.card}>
+        <h3>{t("about")}</h3>
+        <p className={styles.cardDesc}>{t("aboutDescription")}</p>
+
+        <p className={styles.aboutLabel}>{t("platforms")}</p>
+        <p className={styles.cardDesc}>{t("platformsDetail")}</p>
+
+        <p className={styles.aboutLabel}>{t("author")}</p>
+        <p className={styles.cardDesc}>{t("authorName")}</p>
+
+        <p className={styles.aboutLabel}>{t("contributions")}</p>
+        <p className={styles.cardDesc}>{t("contributionsDetail")}</p>
+
+        <p className={styles.aboutLabel}>{t("translations")}</p>
+        <p className={styles.cardDesc}>{t("translationsDetail")}</p>
+
+        <p className={styles.aboutLabel}>{t("license")}</p>
+        <p className={styles.cardDesc}>{t("licenseDetail")}</p>
+
+        <a
+          href="https://github.com/victormayowa185/mayo-manual"
+          target="_blank"
+          rel="noopener noreferrer"
+          className={styles.supportLink}
+        >
+          {t("viewOnGitHub")}
+        </a>
       </div>
     </div>
   );

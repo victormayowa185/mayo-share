@@ -8,5 +8,24 @@
   "save": "Save",
   "cancel": "Cancel",
   "saveFolderUpdated": "Save folder updated.",
-  "saveFailed": "Failed to save"
+  "saveFailed": "Failed to save",
+  "deviceName": "Device Name",
+  "deviceNameDesc": "This name will appear in the profile menu and elsewhere.",
+  "changeDeviceName": "Change Device Name"
+  {
+  "about": "About",
+  "aboutDescription": "MAYO Share is a free, open‑source, offline file‑transfer app for Windows. It lets you send and receive files without internet, using your local Wi‑Fi or a hotspot. It's designed for schools, offices, and remote areas where data is expensive or unavailable.",
+  "platforms": "Available on:",
+  "platformsDetail": "Windows (64‑bit) · macOS coming soon · Linux coming soon",
+  "author": "Author",
+  "authorName": "Victor Mayowa",
+  "contributions": "Contributions",
+  "contributionsDetail": "Currently a solo project. Community contributions welcome via GitHub.",
+  "translations": "Translations",
+  "translationsDetail": "Managed on Weblate. Help translate into Yoruba, Hausa, Igbo, and more!",
+  "license": "License",
+  "licenseDetail": "Licensed under GPLv3. See the LICENSE file for details.",
+  "sourceCode": "Source Code",
+  "viewOnGitHub": "View on GitHub"
+}
 }

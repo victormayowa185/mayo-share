@@ -71,3 +71,37 @@
   font-size: 0.78rem;
   white-space: nowrap;
 }
+
+
+.clearRow {
+  display: flex;
+  justify-content: flex-end;
+  width: 100%;
+  max-width: 500px;
+  margin: 0 auto 12px auto;
+}
+
+/* Fixed Clear History button at bottom center */
+.clearFixed {
+  position: fixed;
+  bottom: 48px;          /* 20px above StatusBar (28px) to avoid overlap */
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10;
+}
+
+.clearBtn {
+  background: #f44336;
+  border: none;
+  color: #fff;
+  padding: 10px 28px;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: background 0.15s;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+}
+
+.clearBtn:hover {
+  background: #d32f2f;
+}
