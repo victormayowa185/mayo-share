@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { FaStar, FaCoffee } from "react-icons/fa";
+import { FaStar, FaHeart } from "react-icons/fa";
 import BackButton from "../../components/BackButton";
 import styles from "../../styles/screens/RateUsScreen.module.css";
 
@@ -15,7 +15,6 @@ const RateUsScreen: React.FC<Props> = ({ onBack }) => {
   const [submitted, setSubmitted] = useState(false);
   const [syncStatus, setSyncStatus] = useState<string>("");
 
-  // Load saved rating on mount
   useEffect(() => {
     try {
       const saved = localStorage.getItem(RATING_STORAGE_KEY);
@@ -29,7 +28,6 @@ const RateUsScreen: React.FC<Props> = ({ onBack }) => {
     } catch {}
   }, []);
 
-  // Sync pending rating when online
   useEffect(() => {
     const syncRating = async () => {
       if (!navigator.onLine) return;
@@ -39,38 +37,30 @@ const RateUsScreen: React.FC<Props> = ({ onBack }) => {
         const data = JSON.parse(saved);
         if (!data.pendingSync) return;
 
-        setSyncStatus("Syncing…");
+        setSyncStatus("Syncing rating…");
 
-        // Replace this URL with your actual backend endpoint
-        const response = await fetch("https://your-backend.com/api/ratings", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            rating: data.rating,
-            timestamp: data.timestamp,
-            appVersion: "1.0.0",
-          }),
+        const result = await window.electronAPI.submitRating({
+          rating: data.rating,
+          timestamp: data.timestamp,
+          appVersion: "1.0.0",
         });
 
-        if (response.ok) {
+        if (result.success) {
           localStorage.setItem(
             RATING_STORAGE_KEY,
-            JSON.stringify({
-              ...data,
-              pendingSync: false,
-            }),
+            JSON.stringify({ ...data, pendingSync: false }),
           );
           setSyncStatus("Rating submitted. Thank you!");
+          setTimeout(() => setSyncStatus(""), 3000);
         } else {
-          setSyncStatus("Sync failed. Will retry later.");
+          setSyncStatus("Will sync rating when online.");
         }
       } catch {
-        setSyncStatus("Sync failed. Will retry later.");
+        setSyncStatus("Will sync rating when online.");
       }
     };
 
     syncRating();
-
     window.addEventListener("online", syncRating);
     return () => window.removeEventListener("online", syncRating);
   }, [submitted]);
@@ -80,7 +70,6 @@ const RateUsScreen: React.FC<Props> = ({ onBack }) => {
     setSelectedRating(star);
     setSubmitted(true);
 
-    // Save locally immediately
     localStorage.setItem(
       RATING_STORAGE_KEY,
       JSON.stringify({
@@ -90,7 +79,7 @@ const RateUsScreen: React.FC<Props> = ({ onBack }) => {
       }),
     );
 
-    setSyncStatus("Saved. Will submit when online.");
+    setSyncStatus("Rating saved. Will sync when online.");
   };
 
   return (
@@ -136,13 +125,13 @@ const RateUsScreen: React.FC<Props> = ({ onBack }) => {
               {selectedRating > 1 ? "s" : ""}!
             </p>
             <a
-              href="https://www.buymeacoffee.com/yourhandle"
+              href="https://github.com/sponsors/victormayowa185"
               target="_blank"
               rel="noopener noreferrer"
-              className={styles.supportLink}
+              className={styles.sponsorLink}
             >
-              <FaCoffee style={{ marginRight: 6 }} />
-              Support Development
+              <FaHeart style={{ marginRight: 6 }} />
+              Sponsor on GitHub
             </a>
           </div>
         )}

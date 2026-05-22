@@ -16,6 +16,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   onDeviceNameChanged: (callback: (name: string) => void) => {
     ipcRenderer.on("device-name-changed", (_event, name) => callback(name));
   },
+  submitRating: (data: any) => ipcRenderer.invoke("submit-rating", data),
   getTranslations: (lang: string) =>
     ipcRenderer.invoke("get-translations", lang),
   setDeviceName: (name: string) => ipcRenderer.invoke("set-device-name", name),

@@ -30,6 +30,11 @@ declare global {
         output?: string;
         error?: string;
       }>;
+      submitRating: (data: {
+        rating: number;
+        timestamp: string;
+        appVersion: string;
+      }) => Promise<{ success: boolean; error?: string }>;
       clearActivity: () => Promise<void>;
       onActivityCleared: (callback: () => void) => void;
       onDeviceNameChanged: (callback: (name: string) => void) => void;

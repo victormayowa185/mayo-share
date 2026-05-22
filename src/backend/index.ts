@@ -3,9 +3,10 @@ import path from "path";
 import { execFile } from "child_process";
 import { FileServer } from "./fileServer";
 import http from "http";
-import { open, close, read, writeFile, appendFileSync } from "fs";
+import { open, close, read, appendFileSync } from "fs";
 import { DiscoveryManager } from "./discovery";
 import { UploadServer, setReceiveDir } from "./uploadServer";
+import { saveRating } from "./firebase";
 import { statSync } from "fs";
 
 import fs from "fs";
@@ -293,6 +294,15 @@ ipcMain.handle("start-hotspot", async (): Promise<string> => {
   });
 });
 
+ipcMain.handle("submit-rating", async (_event, ratingData) => {
+  try {
+    await saveRating(ratingData);
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+});
+
 // ---------- File selection ----------
 ipcMain.handle("select-file", async (): Promise<string[] | null> => {
   if (!mainWindow) return null;
@@ -394,19 +404,9 @@ uploadServer.on(
   },
 );
 
-// ---------- Hotspot status check (for real-time status bar) ----------
-// ---------- Hotspot status check (for real-time status bar) ----------
 ipcMain.handle(
   "check-hotspot-status",
   async (): Promise<{ active: boolean; ip: string }> => {
-    // 1. First check if we're on any real network (phone hotspot, school Wi‑Fi, etc.)
-    const liveIP = await getBestIP();
-    if (liveIP !== currentHotspotIP) {
-      // We're on a real network – not our own loopback hotspot
-      return { active: true, ip: liveIP };
-    }
-
-    // 2. No real network found – check if the loopback hotspot is active via PowerShell
     return new Promise((resolve) => {
       const script = `
       try {
@@ -453,7 +453,6 @@ ipcMain.handle(
     });
   },
 );
-
 // HOST NAME
 ipcMain.handle("get-hostname", async () => {
   try {
@@ -843,10 +842,10 @@ ipcMain.handle(
           settings = JSON.parse(raw);
         }
         settings.deviceName = name.trim();
-          fs.writeFileSync(
+        fs.writeFileSync(
           settingsPath,
           JSON.stringify(settings, null, 2),
-          "utf-8"
+          "utf-8",
         );
         mainWindow?.webContents.send("device-name-changed", name.trim()); // ← add this line
       } catch {}

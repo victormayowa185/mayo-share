@@ -61,22 +61,23 @@
   font-size: 1rem;
 }
 
-.supportLink {
-  color: #b169e0;
+.sponsorLink {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 24px;
+  background: #c96198;              /* GitHub heart colour */
+  color: white;
+  border-radius: 8px;
   text-decoration: none;
   font-size: 0.95rem;
-  padding: 8px 16px;
-  border: 1px solid #b169e0;
-  border-radius: 8px;
-  display: flex;
-  align-items: center;
-  gap: 6px;
+  font-weight: 500;
+  margin-top: 12px;
   transition: background 0.15s;
 }
 
-.supportLink:hover {
-  background: #b169e0;
-  color: #fff;
+.sponsorLink:hover {
+  background: #a84d7e;
 }
 
 .syncStatus {
