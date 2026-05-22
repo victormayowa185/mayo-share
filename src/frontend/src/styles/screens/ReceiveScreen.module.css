@@ -35,7 +35,7 @@
     transform 0.15s;
 }
 .modeCard:hover {
-  border-color: #0066ff;
+  border-color: #b169e0;
   transform: translateY(-3px);
 }
 
@@ -94,7 +94,7 @@
 
 .btn {
   padding: 12px 28px;
-  background: #0066ff;
+  background: #b169e0;
   color: white;
   border: none;
   border-radius: 8px;
@@ -102,7 +102,7 @@
   cursor: pointer;
 }
 .btn:hover {
-  background: #0055dd;
+  background: #b169e0;
 }
 
 .copyBtn {
@@ -146,10 +146,10 @@
 .progress {
   flex: 1;
   height: 6px;
-  accent-color: #0066ff;
+  accent-color: #b169e0;
 }
 .pct {
-  color: #0066ff;
+  color: #b169e0;
   font-size: 0.85rem;
   white-space: nowrap;
 }

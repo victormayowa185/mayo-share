@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import { FaCircle, FaTimes, FaFolderOpen } from "react-icons/fa";
 import QRCode from "qrcode";
 import gsap from "gsap";
@@ -39,6 +40,8 @@ const formatBytes = (b: number) => {
 };
 
 const P2PSession: React.FC<Props> = ({ onBack }) => {
+  const { t } = useTranslation();
+
   const [mode, setMode] = useState<"choose" | "create" | "join">("choose");
   const [sessionStatus, setSessionStatus] = useState("");
   const [connected, setConnected] = useState(false);
@@ -60,7 +63,7 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
 
   // Auto‑retry states
   const [waitingMessage, setWaitingMessage] = useState(
-    "Looking for nearby devices…",
+    t("lookingForDevices")
   );
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -70,6 +73,9 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
   const createLayoutRef = useRef<HTMLDivElement>(null);
   const joinLayoutRef = useRef<HTMLDivElement>(null);
   const receivePathsRef = useRef<Record<string, string>>({});
+
+  // Ref for the mode‑chooser section
+  const modeChooserRef = useRef<HTMLDivElement>(null);
 
   const showFileArea = () => setConnected(true);
 
@@ -118,7 +124,7 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
 
     if (msg.type === "file-end") {
       const { id } = msg;
-      setSessionStatus(`File received: ${receiveMap[id]?.name || ""}`);
+      setSessionStatus(t("fileReceived", { name: receiveMap[id]?.name || "" }));
       await window.electronAPI.clearResumeState(id);
       delete receivePathsRef.current[id];
       setReceiveMap((prev) => {
@@ -148,9 +154,7 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
 
       const localIP = await window.electronAPI.getLocalIP();
       if (!localIP) {
-        setWaitingMessage(
-          "No network detected. Please connect to a Wi‑Fi network or start your hotspot first.",
-        );
+        setWaitingMessage(t("noNetworkDetected"));
         return;
       }
 
@@ -160,7 +164,7 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
       const dc = pc.createDataChannel("mayo-share", { ordered: true });
       localDC.current = dc;
       dc.onopen = () => {
-        setSessionStatus("Connected! Data channel open.");
+        setSessionStatus(t("dataChannelOpen"));
         showFileArea();
       };
       dc.onmessage = (e) => handleDCMessage(e.data);
@@ -176,22 +180,22 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
       setSignalingPort(port);
       setAdvertising(true);
 
-      setWaitingMessage("Looking for nearby devices…");
+      setWaitingMessage(t("lookingForDevices"));
 
       retryTimerRef.current = setTimeout(() => {
-        setWaitingMessage("Retrying…");
+        setWaitingMessage(t("retrying"));
         setTimeout(() => {
           if (!connected) startAdvertisingSession();
         }, 1500);
       }, 10000);
     } catch (err: any) {
-      setSessionStatus("Error: " + err.message);
+      setSessionStatus(t("errorOccurred", { message: err.message }));
     }
   };
 
   const createSession = () => {
     setMode("create");
-    setWaitingMessage("Looking for nearby devices…");
+    setWaitingMessage(t("lookingForDevices"));
     startAdvertisingSession();
   };
 
@@ -220,7 +224,7 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
         const dc = event.channel;
         localDC.current = dc;
         dc.onopen = () => {
-          setSessionStatus("Connected! Data channel open.");
+          setSessionStatus(t("dataChannelOpen"));
           showFileArea();
         };
         dc.onmessage = (e) => handleDCMessage(e.data);
@@ -245,7 +249,7 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
       });
       setAnswerQrDataUrl(qrData);
     } catch (err: any) {
-      setSessionStatus("Error: " + err.message);
+      setSessionStatus(t("errorOccurred", { message: err.message }));
     }
   };
 
@@ -378,10 +382,10 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
           await localPC.current.setRemoteDescription(
             new RTCSessionDescription({ type: "answer", sdp: answerSDP }),
           );
-          setSessionStatus("Connected! Data channel open.");
+          setSessionStatus(t("dataChannelOpen"));
           showFileArea();
         } catch (err: any) {
-          setSessionStatus("Invalid answer: " + err.message);
+          setSessionStatus(t("invalidAnswer", { message: err.message }));
         }
       }
     });
@@ -391,7 +395,7 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
 
   const sendAll = async () => {
     if (!localDC.current || localDC.current.readyState !== "open") {
-      setSessionStatus("Data channel not open.");
+      setSessionStatus(t("dataChannelNotOpen"));
       return;
     }
     setIsSending(true);
@@ -474,10 +478,25 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
     }
 
     setIsSending(false);
-    setSessionStatus("All files sent!");
+    setSessionStatus(t("allFilesSent"));
   };
 
-  // GSAP animations
+  // ── GSAP animations ─────────────────────────────────
+  // Fade in the mode‑chooser when first shown
+  useGSAP(
+    () => {
+      if (mode === "choose" && modeChooserRef.current) {
+        gsap.fromTo(
+          modeChooserRef.current,
+          { opacity: 0, y: 20 },
+          { opacity: 1, y: 0, duration: 0.35, ease: "power2.out" }
+        );
+      }
+    },
+    { dependencies: [mode] }
+  );
+
+  // Existing animations for create & join panels
   useGSAP(
     () => {
       if (mode === "create" && createLayoutRef.current) {
@@ -507,24 +526,30 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
   return (
     <div className={styles.container}>
       <BackButton onClick={onBack} />
-      <h2 className={styles.title}>Device Connect</h2>
+      <h2 className={styles.title}>{t("deviceConnect")}</h2>
 
       {mode === "choose" && !connected && (
-        <div className={styles.modeRow}>
-          <button className={styles.btn} onClick={createSession}>
-            Create Session
-          </button>
-          <button
-            className={styles.ghostBtn}
-            onClick={() => {
-              setMode("join");
-              setDiscoveredDevices([]);
-              setBrowsing(true);
-              window.electronAPI.startBrowsing();
-            }}
-          >
-            Join Session
-          </button>
+        <div ref={modeChooserRef}>
+          <div className={styles.modeRow}>
+            <button className={styles.btn} onClick={createSession}>
+              {t("createSession")}
+            </button>
+            <button
+              className={styles.ghostBtn}
+              onClick={() => {
+                setMode("join");
+                setDiscoveredDevices([]);
+                setBrowsing(true);
+                window.electronAPI.startBrowsing();
+              }}
+            >
+              {t("joinSession")}
+            </button>
+          </div>
+          <div className={styles.emptyState}>
+            <FaFolderOpen size={48} color="#555" />
+            <p>{t("createOrJoin")}</p>
+          </div>
         </div>
       )}
 
@@ -533,18 +558,17 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
         <div className={styles.createPanel} ref={createLayoutRef}>
           <div className={styles.spinner} />
           <p className={styles.waitingText}>{waitingMessage}</p>
-          {waitingMessage.includes("No network") && (
+          {waitingMessage === t("noNetworkDetected") && (
             <p className={styles.hint} style={{ marginTop: 12 }}>
-              Please connect to a Wi‑Fi network or start your hotspot and try
-              again.
+              {t("connectToWifiHint")}
             </p>
           )}
-          {waitingMessage.includes("Retrying") && (
+          {waitingMessage === t("retrying") && (
             <p
               className={styles.hint}
               style={{ marginTop: 12, color: "#b169e0" }}
             >
-              Searching again automatically…
+              {t("searchingAgain")}
             </p>
           )}
         </div>
@@ -554,9 +578,7 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
       {mode === "join" && !connected && (
         <div className={styles.codePanel} ref={joinLayoutRef}>
           <p className={styles.label}>
-            {browsing
-              ? "Nearby devices:"
-              : "Paste the offer code from the other device:"}
+            {browsing ? t("nearbyDevices") : t("pasteOfferCode")}
           </p>
           {browsing && (
             <div className={styles.deviceList}>
@@ -570,7 +592,7 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
                   }}
                 >
                   <div className={styles.spinner} />
-                  <p className={styles.hint}>Searching for devices...</p>
+                  <p className={styles.hint}>{t("searchingForDevices")}</p>
                 </div>
               )}
               {discoveredDevices.map((dev, idx) => (
@@ -591,7 +613,7 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
                         const dc = event.channel;
                         localDC.current = dc;
                         dc.onopen = () => {
-                          setSessionStatus("Connected! Data channel open.");
+                          setSessionStatus(t("dataChannelOpen"));
                           showFileArea();
                         };
                         dc.onmessage = (e) => handleDCMessage(e.data);
@@ -622,7 +644,7 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
                         body: compactAnswer,
                       });
                     } catch (err: any) {
-                      setSessionStatus("Error: " + err.message);
+                      setSessionStatus(t("errorOccurred", { message: err.message }));
                     }
                   }}
                 >
@@ -637,18 +659,18 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
                 className={styles.codeBox}
                 value={offerInput}
                 onChange={(e) => setOfferInput(e.target.value)}
-                placeholder="Paste offer code here"
+                placeholder={t("pasteOfferCodePlaceholder")}
                 rows={4}
               />
               <button className={styles.btn} onClick={processOffer}>
-                Process Offer
+                {t("processOffer")}
               </button>
             </>
           )}
           {answerCode && !browsing && (
             <>
               <p className={styles.label} style={{ marginTop: 24 }}>
-                Your answer code — give this back:
+                {t("yourAnswerCode")}
               </p>
               <textarea
                 className={styles.codeBox}
@@ -660,12 +682,12 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
                 className={styles.copyBtn}
                 onClick={() => navigator.clipboard.writeText(answerCode)}
               >
-                Copy Code
+                {t("copyCode")}
               </button>
               {answerQrDataUrl && (
                 <img
                   src={answerQrDataUrl}
-                  alt="Answer QR"
+                  alt={t("answerQR")}
                   className={styles.qr}
                 />
               )}
@@ -686,7 +708,7 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
         <div className={styles.fileArea}>
           <div className={styles.connectedBadge}>
             <FaCircle size={12} color="#4CAF50" style={{ marginRight: 8 }} />{" "}
-            Connected
+            {t("connected")}
           </div>
           <div className={styles.actionRow}>
             <button
@@ -694,21 +716,21 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
               onClick={addFiles}
               disabled={isSending}
             >
-              Add Files
+              {t("addFiles")}
             </button>
             <button
               className={styles.ghostBtn}
               onClick={() => document.execCommand("paste")}
               disabled={isSending}
             >
-              Paste (Ctrl+V)
+              {t("paste")}
             </button>
             <button
               className={styles.sendBtn}
               onClick={sendAll}
               disabled={fileQueue.length === 0 || isSending}
             >
-              {isSending ? "Sending..." : "Send All"}
+              {isSending ? t("sending") : t("sendAll")}
             </button>
           </div>
           {fileQueue.length > 0 && (
@@ -722,13 +744,13 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
                   <span className={styles.queueStatus}>
                     {f.status === "transferring"
                       ? `${f.progress}%`
-                      : `[${f.status}]`}
+                      : t(`queueStatus_${f.status}`)}
                   </span>
                   {f.status !== "transferring" && f.status !== "done" && (
                     <button
                       className={styles.removeBtn}
                       onClick={() => removeFile(f.id)}
-                      title="Remove file"
+                      title={t("removeFile")}
                     >
                       <FaTimes size={16} />
                     </button>
@@ -739,7 +761,7 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
           )}
           {Object.keys(receiveMap).length > 0 && (
             <div className={styles.incomingSection}>
-              <p className={styles.label}>Receiving files...</p>
+              <p className={styles.label}>{t("receivingFiles")}</p>
               {Object.entries(receiveMap).map(([id, entry]) => (
                 <div key={id} className={styles.queueItem}>
                   <span className={styles.queueName}>{entry.name}</span>
@@ -755,13 +777,6 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
               ))}
             </div>
           )}
-        </div>
-      )}
-
-      {!connected && mode === "choose" && (
-        <div className={styles.emptyState}>
-          <FaFolderOpen size={48} color="#555" />
-          <p>Create or join a session to start.</p>
         </div>
       )}
     </div>

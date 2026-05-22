@@ -1,49 +1,102 @@
-import React, { useState } from "react";
-import { FaArrowLeft, FaCheckCircle, FaTimesCircle, FaArrowRight } from "react-icons/fa";
+import React, { useState, useRef } from "react";
+import { useTranslation } from "react-i18next";
+import gsap from "gsap";
+import { useGSAP } from "@gsap/react";
+import {
+  FaArrowLeft,
+  FaCheckCircle,
+  FaTimesCircle,
+  FaArrowRight,
+} from "react-icons/fa";
 import styles from "../../styles/screens/SetupStepper.module.css";
+
+gsap.registerPlugin(useGSAP);
 
 interface Props {
   onComplete: () => void;
 }
 
-const steps = [
-  {
-    title: "Open Add Hardware Wizard",
-    instruction:
-      "Click the button below. A hardware wizard will open automatically.",
-    note: 'When it opens, click "Next" to continue.',
-  },
-  {
-    title: "Select Hardware Type",
-    instruction:
-      'In the wizard, choose "Install the hardware that I manually select from a list", then click Next.',
-    note: 'Scroll down and select "Network adapters", then click Next.',
-  },
-  {
-    title: "Select the Loopback Adapter",
-    instruction:
-      'In the Manufacturer list, select "Microsoft". In the Model list, select "Microsoft KM-TEST Loopback Adapter".',
-    note: "Click Next, then Finish.",
-  },
-  {
-    title: "Verify Setup",
-    instruction:
-      "Click the button below to check if the adapter was installed correctly.",
-    note: "You should see a green checkmark if everything is ready.",
-  },
-];
-
 const SetupStepper: React.FC<Props> = ({ onComplete }) => {
+  const { t } = useTranslation();
+
+  // Step definitions – now using translation keys
+  const steps = [
+    {
+      titleKey: "step1Title",
+      instructionKey: "step1Instruction",
+      noteKey: "step1Note",
+    },
+    {
+      titleKey: "step2Title",
+      instructionKey: "step2Instruction",
+      noteKey: "step2Note",
+    },
+    {
+      titleKey: "step3Title",
+      instructionKey: "step3Instruction",
+      noteKey: "step3Note",
+    },
+    {
+      titleKey: "step4Title",
+      instructionKey: "step4Instruction",
+      noteKey: "step4Note",
+    },
+  ];
+
   const [currentStep, setCurrentStep] = useState(0);
   const [verifyStatus, setVerifyStatus] = useState<
     "idle" | "checking" | "ok" | "fail"
   >("idle");
 
+  // Refs for GSAP animation
+  const cardRef = useRef<HTMLDivElement>(null);
+  const stepsIndicatorRef = useRef<HTMLDivElement>(null);
+  const navRowRef = useRef<HTMLDivElement>(null);
+
+  // Entrance animation – triggers on mount and whenever currentStep changes
+  useGSAP(
+    () => {
+      const tl = gsap.timeline({ defaults: { ease: "power2.out" } });
+
+      // Fade in the step indicator and card
+      if (stepsIndicatorRef.current) {
+        tl.fromTo(
+          stepsIndicatorRef.current,
+          { opacity: 0, y: 8 },
+          { opacity: 1, y: 0, duration: 0.3 },
+          0,
+        );
+      }
+      if (cardRef.current) {
+        tl.fromTo(
+          cardRef.current,
+          { opacity: 0, y: 12 },
+          { opacity: 1, y: 0, duration: 0.35 },
+          "-=0.15",
+        );
+      }
+      // Fade in the navigation buttons
+      if (navRowRef.current) {
+        const buttons = navRowRef.current.querySelectorAll("button");
+        if (buttons.length > 0) {
+          tl.fromTo(
+            buttons,
+            { opacity: 0, y: 6 },
+            { opacity: 1, y: 0, duration: 0.25, stagger: 0.05 },
+            "-=0.1",
+          );
+        }
+      }
+    },
+    { dependencies: [currentStep] },
+  );
+
   const launchWizard = async () => {
-    try {
-      await window.electronAPI.startHotspot(); // placeholder
-    } catch {
-      // ignore
+    const result = await window.electronAPI.launchHardwareWizard();
+    if (!result.success) {
+      alert(
+        "Could not open hardware wizard: " + (result.error || "unknown error"),
+      );
     }
   };
 
@@ -72,32 +125,36 @@ const SetupStepper: React.FC<Props> = ({ onComplete }) => {
 
   return (
     <div className={styles.container}>
-      <div className={styles.logo}>🦅 MAYO Share</div>
-      <div className={styles.subtitle}>First-time setup</div>
+      <div className={styles.logo}>
+        <span className={styles.logoIcon}>
+        </span>
+        <span className={styles.logoText}>MAYO Share</span>
+      </div>
+      <div className={styles.subtitle}>{t("firstTimeSetup")}</div>
 
       {/* Step indicator */}
-      <div className={styles.steps}>
+      <div className={styles.steps} ref={stepsIndicatorRef}>
         {steps.map((_, i) => (
           <div
             key={i}
             className={styles.stepDot}
-            style={{ background: i <= currentStep ? "#0066FF" : "#333" }}
+            style={{ background: i <= currentStep ? "#b169e0" : "#333" }}
           />
         ))}
       </div>
 
       {/* Card */}
-      <div className={styles.card}>
+      <div className={styles.card} ref={cardRef}>
         <div className={styles.stepNumber}>
-          Step {currentStep + 1} of {steps.length}
+          {t("stepXofY", { current: currentStep + 1, total: steps.length })}
         </div>
-        <h2 className={styles.title}>{step.title}</h2>
-        <p className={styles.instruction}>{step.instruction}</p>
-        <p className={styles.note}>{step.note}</p>
+        <h2 className={styles.title}>{t(step.titleKey)}</h2>
+        <p className={styles.instruction}>{t(step.instructionKey)}</p>
+        <p className={styles.note}>{t(step.noteKey)}</p>
 
         {currentStep === 0 && (
           <button onClick={launchWizard} className={styles.btn}>
-            Open Hardware Wizard
+            {t("openHardwareWizard")}
           </button>
         )}
 
@@ -108,18 +165,18 @@ const SetupStepper: React.FC<Props> = ({ onComplete }) => {
               className={styles.btn}
               disabled={verifyStatus === "checking"}
             >
-              {verifyStatus === "checking" ? "Checking..." : "Verify Setup"}
+              {verifyStatus === "checking" ? t("checking") : t("verifySetup")}
             </button>
             {verifyStatus === "ok" && (
               <div className={styles.successMsg}>
-                <FaCheckCircle style={{ marginRight: 8 }} /> Setup complete! You
-                are ready to use MAYO Share.
+                <FaCheckCircle style={{ marginRight: 8 }} />{" "}
+                {t("setupComplete")}
               </div>
             )}
             {verifyStatus === "fail" && (
               <div className={styles.failMsg}>
-                <FaTimesCircle style={{ marginRight: 8 }} /> Adapter not found.
-                Please go back and repeat the steps.
+                <FaTimesCircle style={{ marginRight: 8 }} />{" "}
+                {t("adapterNotFound")}
               </div>
             )}
           </div>
@@ -127,10 +184,10 @@ const SetupStepper: React.FC<Props> = ({ onComplete }) => {
       </div>
 
       {/* Navigation */}
-      <div className={styles.navRow}>
+      <div className={styles.navRow} ref={navRowRef}>
         {currentStep > 0 && (
           <button className={styles.btn} onClick={goBack}>
-            <FaArrowLeft style={{ marginRight: 6 }} /> Back
+            <FaArrowLeft style={{ marginRight: 6 }} /> {t("back")}
           </button>
         )}
         {!isLastStep && (
@@ -138,7 +195,7 @@ const SetupStepper: React.FC<Props> = ({ onComplete }) => {
             onClick={() => setCurrentStep((s) => s + 1)}
             className={styles.btn}
           >
-            Next <FaArrowRight style={{ marginLeft: 6 }} />
+            {t("next")} <FaArrowRight style={{ marginLeft: 6 }} />
           </button>
         )}
         {isLastStep && verifyStatus === "ok" && (
@@ -147,11 +204,11 @@ const SetupStepper: React.FC<Props> = ({ onComplete }) => {
             className={styles.btn}
             style={{ background: "#4CAF50" }}
           >
-            Enter MAYO Share <FaArrowRight style={{ marginLeft: 6 }} />
+            {t("enterMayoShare")} <FaArrowRight style={{ marginLeft: 6 }} />
           </button>
         )}
         <button onClick={onComplete} className={styles.ghostBtn}>
-          Skip for now
+          {t("skipForNow")}
         </button>
       </div>
     </div>

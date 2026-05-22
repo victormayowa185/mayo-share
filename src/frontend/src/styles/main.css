@@ -23,3 +23,40 @@ body {
 .text-center {
   text-align: center;
 }
+
+
+
+/* ========== Custom Scrollbar (global) ========== */
+
+/* Make sure the window can scroll */
+html, body {
+  overflow: auto; /* or overflow-y: auto; */
+}
+
+/* Firefox */
+html, body {
+  scrollbar-width: thin;
+  scrollbar-color: #382249 #0A0A0A;
+}
+
+/* Chromium – target both html and body */
+html::-webkit-scrollbar,
+body::-webkit-scrollbar {
+  width: 8px;
+}
+
+html::-webkit-scrollbar-track,
+body::-webkit-scrollbar-track {
+  background: #0A0A0A;
+}
+
+html::-webkit-scrollbar-thumb,
+body::-webkit-scrollbar-thumb {
+  background: #382249;
+  border-radius: 4px;
+}
+
+html::-webkit-scrollbar-thumb:hover,
+body::-webkit-scrollbar-thumb:hover {
+  background: #382249;
+}

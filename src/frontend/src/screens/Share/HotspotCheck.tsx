@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import {
-  FaArrowLeft,
   FaCheckCircle,
   FaArrowRight,
   FaWifi,
@@ -26,6 +26,8 @@ const HotspotCheck: React.FC<Props> = ({
   onHotspotStarted,
   onConnectionChange,
 }) => {
+  const { t } = useTranslation();
+
   const [errorMessage, setErrorMessage] = useState("");
   const [running, setRunning] = useState(false);
   const [success, setSuccess] = useState(false);
@@ -115,10 +117,10 @@ const HotspotCheck: React.FC<Props> = ({
         onHotspotStarted(ip);
         onConnectionChange(`Hotspot active · ${ip}`);
       } else {
-        setErrorMessage("Failed to start hotspot. Check log for details.");
+        setErrorMessage(t("hotspotFailed"));
       }
     } catch (err: any) {
-      setErrorMessage("Error: " + (err.message || err));
+      setErrorMessage(t("errorOccurred") + ": " + (err.message || err));
     } finally {
       setRunning(false);
     }
@@ -127,7 +129,7 @@ const HotspotCheck: React.FC<Props> = ({
   if (checkingNetwork) {
     return (
       <div className={styles.container}>
-        <p style={{ color: "#aaa" }}>Detecting network...</p>
+        <p style={{ color: "#aaa" }}>{t("detectingNetwork")}</p>
       </div>
     );
   }
@@ -137,14 +139,14 @@ const HotspotCheck: React.FC<Props> = ({
     return (
       <div className={styles.container} ref={networkContainer}>
         <BackButton onClick={onBack} />
-        <h2 className={styles.title}>Network Found</h2>
+        <h2 className={styles.title}>{t("networkFound")}</h2>
         <div className={styles.networkInfo}>
           <FaWifi size={20} color="#4CAF50" />
           <span className={styles.networkName}>{ssid}</span>
         </div>
         <p className={styles.subtitle}>
-          You're connected to {ssid}.<br />
-          Files will be shared on this network.
+          {t("youAreConnectedTo", { ssid })}<br />
+          {t("filesWillBeShared")}
         </p>
 
         <button
@@ -154,14 +156,14 @@ const HotspotCheck: React.FC<Props> = ({
             onReady();
           }}
         >
-          Share Now
+          {t("shareNow")}
         </button>
         <button
           className={styles.ghostBtn}
           onClick={startHotspot}
           disabled={running}
         >
-          – or – Start Hotspot
+          {t("startOfflineHotspot")}
         </button>
       </div>
     );
@@ -171,10 +173,8 @@ const HotspotCheck: React.FC<Props> = ({
   return (
     <div className={styles.container} ref={hotspotContainer}>
       <BackButton onClick={onBack} />
-      <h2 className={styles.title}>Start Offline Hotspot</h2>
-      <p className={styles.subtitle}>
-        No network detected. Your hotspot must be active before sharing files.
-      </p>
+      <h2 className={styles.title}>{t("startOfflineHotspotTitle")}</h2>
+      <p className={styles.subtitle}>{t("hotspotRequired")}</p>
 
       {!success && (
         <>
@@ -185,10 +185,10 @@ const HotspotCheck: React.FC<Props> = ({
           >
             {running ? (
               <span className={styles.spinnerContainer}>
-                <span className={styles.spinner} /> Starting hotspot…
+                <span className={styles.spinner} /> {t("startingHotspot")}
               </span>
             ) : (
-              "Start Hotspot"
+              t("startHotspot")
             )}
           </button>
           {errorMessage && (
@@ -201,10 +201,10 @@ const HotspotCheck: React.FC<Props> = ({
         <div className={styles.successRow} ref={successContainer}>
           <div className={styles.successMsg}>
             <FaCheckCircle style={{ marginRight: 8 }} />
-            Hotspot is active!
+            {t("hotspotActiveMessage")}
           </div>
           <button className={styles.btn} onClick={onReady}>
-            Continue <FaArrowRight style={{ marginLeft: 6 }} />
+            {t("continue")} <FaArrowRight style={{ marginLeft: 6 }} />
           </button>
         </div>
       )}

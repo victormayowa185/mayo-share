@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { FaArrowLeft, FaCheckCircle, FaCopy, FaSpinner } from "react-icons/fa";
 import { FaDesktop, FaMobileAlt, FaTabletAlt } from "react-icons/fa";
 import QRCode from "qrcode";
+import { useTranslation } from "react-i18next"; // ← import the hook
 import BackButton from "../../components/BackButton";
 import styles from "../../styles/screens/ReceiveFromBrowser.module.css";
 
@@ -34,6 +35,7 @@ const ReceiveFromBrowser: React.FC<Props> = ({
   onSenderApproved,
   onStopReceiving,
 }) => {
+  const { t } = useTranslation(); // ← get the t function
   const [shareUrl, setShareUrl] = useState("");
   const [qrDataUrl, setQrDataUrl] = useState("");
   const [isReceiving, setIsReceiving] = useState(false);
@@ -81,25 +83,28 @@ const ReceiveFromBrowser: React.FC<Props> = ({
     onStopReceiving?.();
     try {
       setStartingHotspot(true);
-      setHotspotStatus("Checking network...");
+      setHotspotStatus(t("checkingNetwork"));
 
       // 1. Try to detect an existing Wi‑Fi network
       const localIP = await window.electronAPI.getLocalIP();
       if (localIP) {
-        setHotspotStatus("Using existing network...");
-        // No hotspot needed, just start the server on the local IP
+        setHotspotStatus(t("usingExistingNetwork"));
         const url = await window.electronAPI.startUploadServer(localIP);
         setShareUrl(url);
         setIsReceiving(true);
         setStartingHotspot(false);
         setHotspotStatus("");
-        const qrData = await QRCode.toDataURL(url, { width: 200, margin: 2 });
+        const qrData = await QRCode.toDataURL(url, {
+          width: 200,
+          margin: 2,
+          color: { dark: "#b169e0", light: "#0A0A0A" },
+        });
         setQrDataUrl(qrData);
         return;
       }
 
       // 2. No existing network found – fall back to hotspot
-      setHotspotStatus("No existing network. Starting hotspot...");
+      setHotspotStatus(t("startingHotspotFallback"));
       const status = await window.electronAPI.checkHotspotStatus();
       let ip = status.ip;
 
@@ -111,20 +116,24 @@ const ReceiveFromBrowser: React.FC<Props> = ({
           );
           if (ipMatch && ipMatch[1]) ip = ipMatch[1];
         } else {
-          throw new Error("Hotspot could not be started. " + result);
+          throw new Error(t("hotspotStartFailed") + ": " + result);
         }
       }
 
-      setHotspotStatus("Hotspot active. Starting upload server...");
-      const url = await window.electronAPI.startUploadServer(); // no IP → uses hotspot
+      setHotspotStatus(t("hotspotActiveStartingServer"));
+      const url = await window.electronAPI.startUploadServer();
       setShareUrl(url);
       setIsReceiving(true);
       setStartingHotspot(false);
       setHotspotStatus("");
-      const qrData = await QRCode.toDataURL(url, { width: 200, margin: 2 });
+      const qrData = await QRCode.toDataURL(url, {
+        width: 200,
+        margin: 2,
+        color: { dark: "#b169e0", light: "#0A0A0A" },
+      });
       setQrDataUrl(qrData);
     } catch (err: any) {
-      alert("Error: " + (err.message || err));
+      alert(t("errorOccurred") + ": " + (err.message || err));
       setStartingHotspot(false);
       setHotspotStatus("");
     }
@@ -155,11 +164,9 @@ const ReceiveFromBrowser: React.FC<Props> = ({
           onBack();
         }}
       />
-      <h2 className={styles.title}>Receive from Browser</h2>
+      <h2 className={styles.title}>{t("receiveFromBrowser")}</h2>
       <p className={styles.subtitle}>
-        {isReceiving
-          ? "Ask the sender to open this link and send files."
-          : "Start a receiving session so others can send files to you."}
+        {isReceiving ? t("askSenderToOpenLink") : t("startReceivingDesc")}
       </p>
 
       {/* Show hotspot progress */}
@@ -180,7 +187,7 @@ const ReceiveFromBrowser: React.FC<Props> = ({
 
       {!isReceiving && !startingHotspot && (
         <button className={styles.btn} onClick={startReceiving}>
-          Start Receiving
+          {t("startReceiving")}
         </button>
       )}
 
@@ -191,7 +198,7 @@ const ReceiveFromBrowser: React.FC<Props> = ({
             <img src={qrDataUrl} alt="QR Code" className={styles.qr} />
           ) : (
             <div className={styles.qrPlaceholder}>
-              <span>Generating QR…</span>
+              <span>{t("generatingQR")}</span>
             </div>
           )}
 
@@ -206,34 +213,33 @@ const ReceiveFromBrowser: React.FC<Props> = ({
                     color="#4CAF50"
                     size={14}
                   />{" "}
-                  Copied
+                  {t("copied")}
                 </>
               ) : (
                 <>
-                  <FaCopy style={{ marginRight: 4 }} size={14} /> Copy
+                  <FaCopy style={{ marginRight: 4 }} size={14} />{" "}
+                  {t("copyLink")}
                 </>
               )}
             </button>
           </div>
 
-          <p className={styles.hint}>
-            Tell the sender to connect to your hotspot and open this link.
-          </p>
+          <p className={styles.hint}>{t("tellReceiverToConnect")}</p>
 
           <button className={styles.stopBtn} onClick={stopReceiving}>
-            Stop Receiving
+            {t("stopReceiving")}
           </button>
 
           {/* Pending Senders */}
           {pendingSenders.length > 0 && (
             <div className={styles.receivedSection}>
-              <h3 className={styles.receivedTitle}>Pending Senders</h3>
+              <h3 className={styles.receivedTitle}>{t("pendingSenders")}</h3>
               <ul className={styles.fileList}>
                 {pendingSenders.map((s) => (
                   <li key={s.sessionId} className={styles.fileItem}>
                     <span className={styles.fileName}>
                       {getDeviceIcon(s.deviceType)}
-                      {s.senderName || "Unnamed"}
+                      {s.senderName || t("unnamed")}
                     </span>
                     <div style={{ display: "flex", gap: 8 }}>
                       <button
@@ -246,7 +252,7 @@ const ReceiveFromBrowser: React.FC<Props> = ({
                           onSenderApproved?.();
                         }}
                       >
-                        Accept
+                        {t("accept")}
                       </button>
                       <button
                         className={styles.declineBtn}
@@ -257,7 +263,7 @@ const ReceiveFromBrowser: React.FC<Props> = ({
                           );
                         }}
                       >
-                        Decline
+                        {t("decline")}
                       </button>
                     </div>
                   </li>
@@ -269,7 +275,7 @@ const ReceiveFromBrowser: React.FC<Props> = ({
           {/* Received files list */}
           {receivedFiles.length > 0 && (
             <div className={styles.receivedSection}>
-              <h3 className={styles.receivedTitle}>Received Files</h3>
+              <h3 className={styles.receivedTitle}>{t("receivedFiles")}</h3>
               <ul className={styles.fileList}>
                 {receivedFiles.map((f) => (
                   <li key={f.id} className={styles.fileItem}>
@@ -287,9 +293,7 @@ const ReceiveFromBrowser: React.FC<Props> = ({
           )}
 
           {pendingSenders.length === 0 && receivedFiles.length === 0 && (
-            <p className={styles.waitingHint}>
-              Waiting for senders to connect…
-            </p>
+            <p className={styles.waitingHint}>{t("waitingForSenders")}</p>
           )}
         </div>
       )}

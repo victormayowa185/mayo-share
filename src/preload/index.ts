@@ -19,6 +19,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   submitRating: (data: any) => ipcRenderer.invoke("submit-rating", data),
   getTranslations: (lang: string) =>
     ipcRenderer.invoke("get-translations", lang),
+  launchHardwareWizard: () => ipcRenderer.invoke("launch-hardware-wizard"),
   setDeviceName: (name: string) => ipcRenderer.invoke("set-device-name", name),
   clearActivity: () => ipcRenderer.invoke("clear-activity"),
   onActivityCleared: (callback: () => void) => {

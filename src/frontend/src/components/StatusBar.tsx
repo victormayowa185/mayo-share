@@ -1,6 +1,11 @@
-import React from "react";
+import React, { useRef } from "react";
+import { useTranslation } from "react-i18next";
+import gsap from "gsap";
+import { useGSAP } from "@gsap/react";
 import { FaCircle, FaUsers } from "react-icons/fa";
 import styles from "../styles/components/StatusBar.module.css";
+
+gsap.registerPlugin(useGSAP);
 
 interface Props {
   hotspotActive: boolean;
@@ -21,8 +26,22 @@ const StatusBar: React.FC<Props> = ({
   connectedDevices,
   connectionLabel,
 }) => {
+  const { t } = useTranslation();
+  const barRef = useRef<HTMLDivElement>(null);
+
+  // Subtle entrance animation – plays once on mount
+  useGSAP(() => {
+    if (barRef.current) {
+      gsap.fromTo(
+        barRef.current,
+        { opacity: 0 },
+        { opacity: 1, duration: 0.3, ease: "power2.out" }
+      );
+    }
+  }, []);
+
   return (
-    <footer className={styles.bar}>
+    <footer className={styles.bar} ref={barRef}>
       <div className={styles.left}>
         {connectionLabel ? (
           <span className={styles.hotspotOn}>
@@ -32,12 +51,12 @@ const StatusBar: React.FC<Props> = ({
         ) : hotspotActive ? (
           <span className={styles.hotspotOn}>
             <FaCircle size={8} color="#4caf50" style={{ marginRight: 6 }} />
-            Hotspot active · {hotspotIP}
+            {t("hotspotActive")} · {hotspotIP}
           </span>
         ) : (
           <span className={styles.hotspotOff}>
             <FaCircle size={8} color="#555" style={{ marginRight: 6 }} />
-            No network
+            {t("noNetwork")}
           </span>
         )}
       </div>
@@ -46,7 +65,7 @@ const StatusBar: React.FC<Props> = ({
         {connectedDevices !== undefined && connectedDevices > 0 && (
           <span className={styles.transfer}>
             <FaUsers size={14} style={{ marginRight: 4 }} />
-            {connectedDevices} connected
+            {t("connectedDevices", { count: connectedDevices })}
           </span>
         )}
         {transferLabel && (

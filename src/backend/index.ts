@@ -741,6 +741,26 @@ ipcMain.handle("diagnose-network", async (): Promise<any> => {
   });
 });
 
+
+ipcMain.handle("launch-hardware-wizard", async (): Promise<{ success: boolean; error?: string }> => {
+  return new Promise((resolve) => {
+    execFile(
+      "rundll32.exe",
+      ["shell32.dll,Control_RunDLL", "hdwwiz.cpl"],
+      { timeout: 10000 },
+      (error) => {
+        if (error) {
+          resolve({ success: false, error: error.message });
+        } else {
+          resolve({ success: true });
+        }
+      }
+    );
+  });
+});
+
+
+
 // Read a text file and return its content
 ipcMain.handle(
   "read-text-file",

@@ -1,7 +1,12 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
+import { useTranslation } from "react-i18next";
+import gsap from "gsap";
+import { useGSAP } from "@gsap/react";
 import { FaStar, FaHeart } from "react-icons/fa";
 import BackButton from "../../components/BackButton";
 import styles from "../../styles/screens/RateUsScreen.module.css";
+
+gsap.registerPlugin(useGSAP);
 
 interface Props {
   onBack: () => void;
@@ -10,11 +15,28 @@ interface Props {
 const RATING_STORAGE_KEY = "mayo-user-rating";
 
 const RateUsScreen: React.FC<Props> = ({ onBack }) => {
+  const { t } = useTranslation();
+
   const [selectedRating, setSelectedRating] = useState<number>(0);
   const [hoverRating, setHoverRating] = useState<number>(0);
   const [submitted, setSubmitted] = useState(false);
   const [syncStatus, setSyncStatus] = useState<string>("");
 
+  // Ref for entrance animation
+  const contentRef = useRef<HTMLDivElement>(null);
+
+  // GSAP entrance animation
+  useGSAP(() => {
+    if (contentRef.current) {
+      gsap.fromTo(
+        contentRef.current,
+        { opacity: 0, y: 24 },
+        { opacity: 1, y: 0, duration: 0.45, ease: "power2.out" }
+      );
+    }
+  }, []);
+
+  // Load saved rating on mount
   useEffect(() => {
     try {
       const saved = localStorage.getItem(RATING_STORAGE_KEY);
@@ -28,6 +50,7 @@ const RateUsScreen: React.FC<Props> = ({ onBack }) => {
     } catch {}
   }, []);
 
+  // Sync pending rating when online
   useEffect(() => {
     const syncRating = async () => {
       if (!navigator.onLine) return;
@@ -37,7 +60,7 @@ const RateUsScreen: React.FC<Props> = ({ onBack }) => {
         const data = JSON.parse(saved);
         if (!data.pendingSync) return;
 
-        setSyncStatus("Syncing rating…");
+        setSyncStatus(t("syncingRating"));
 
         const result = await window.electronAPI.submitRating({
           rating: data.rating,
@@ -50,13 +73,13 @@ const RateUsScreen: React.FC<Props> = ({ onBack }) => {
             RATING_STORAGE_KEY,
             JSON.stringify({ ...data, pendingSync: false }),
           );
-          setSyncStatus("Rating submitted. Thank you!");
+          setSyncStatus(t("ratingSubmittedThankYou"));
           setTimeout(() => setSyncStatus(""), 3000);
         } else {
-          setSyncStatus("Will sync rating when online.");
+          setSyncStatus(t("willSyncRatingWhenOnline"));
         }
       } catch {
-        setSyncStatus("Will sync rating when online.");
+        setSyncStatus(t("willSyncRatingWhenOnline"));
       }
     };
 
@@ -79,18 +102,16 @@ const RateUsScreen: React.FC<Props> = ({ onBack }) => {
       }),
     );
 
-    setSyncStatus("Rating saved. Will sync when online.");
+    setSyncStatus(t("ratingSavedWillSyncWhenOnline"));
   };
 
   return (
     <div className={styles.container}>
       <BackButton onClick={onBack} />
-      <div className={styles.content}>
-        <h2 className={styles.title}>Rate Us</h2>
+      <div className={styles.content} ref={contentRef}>
+        <h2 className={styles.title}>{t("rateUs")}</h2>
         <p className={styles.paragraph}>
-          {submitted
-            ? "Thank you for your feedback!"
-            : "Enjoying MAYO Share? Let others know!"}
+          {submitted ? t("thankYouFeedback") : t("enjoyingMayoShare")}
         </p>
 
         <div className={styles.stars}>
@@ -114,14 +135,14 @@ const RateUsScreen: React.FC<Props> = ({ onBack }) => {
 
         {!submitted && (
           <button className={styles.btn} onClick={() => handleStarClick(5)}>
-            Rate Now
+            {t("rateNow")}
           </button>
         )}
 
         {submitted && (
           <div className={styles.thankYou}>
             <p className={styles.ratingText}>
-              You rated MAYO Share {selectedRating} star
+              {t("youRatedMayoShare", { rating: selectedRating })}
               {selectedRating > 1 ? "s" : ""}!
             </p>
             <a
@@ -131,7 +152,7 @@ const RateUsScreen: React.FC<Props> = ({ onBack }) => {
               className={styles.sponsorLink}
             >
               <FaHeart style={{ marginRight: 6 }} />
-              Sponsor on GitHub
+              {t("sponsorOnGitHub")}
             </a>
           </div>
         )}

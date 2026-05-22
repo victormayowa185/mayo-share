@@ -3,14 +3,14 @@
   flex-direction: column;
   align-items: center;
   width: 100%;
-  padding: 20px 40px 28px 24px;
-  min-height: 70vh;
+  padding: 70px 24px 28px 24px;
+  min-height: 90vh;
   background: #0a0a0a;
   color: #ddd;
 }
 
 .compactBack {
-  margin-bottom: 0;   /* remove the large gap inside the nav row */
+  margin-bottom: 0;   /* optional, for tighter spacing */
 }
 
 .logo {
@@ -47,7 +47,7 @@
 }
 
 .stepNumber {
-  color: #0066FF;
+  color: #b169e0;               /* brand purple */
   font-size: 0.85rem;
   margin-bottom: 8px;
   text-transform: uppercase;
@@ -74,11 +74,22 @@
 .btn {
   padding: 12px 28px;
   font-size: 16px;
-  background: #0066FF;
+  background: #b169e0;          /* brand purple */
   color: white;
   border: none;
   border-radius: 8px;
   cursor: pointer;
+  transition: background 0.15s;
+}
+
+.btn:hover {
+  background: #9a4fd4;          /* slightly darker purple */
+}
+
+.btn:disabled {
+  background: #333;
+  color: #888;
+  cursor: not-allowed;
 }
 
 .ghostBtn {
@@ -89,6 +100,12 @@
   border: 1px solid #333;
   border-radius: 8px;
   cursor: pointer;
+  transition: all 0.15s;
+}
+
+.ghostBtn:hover {
+  border-color: #b169e0;
+  color: #b169e0;
 }
 
 .successMsg {
@@ -107,4 +124,25 @@
   display: flex;
   gap: 16px;
   margin-top: 32px;
+}
+
+.logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: #fff;
+  margin-bottom: 8px;
+}
+
+.logoIcon {
+  display: flex;
+  align-items: center;
+}
+
+.logoText {
+  color: #fff;
+  font-size: 1.4rem;
+  font-weight: 700;
 }

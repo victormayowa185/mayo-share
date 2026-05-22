@@ -1,4 +1,7 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
+import { useTranslation } from "react-i18next";
+import gsap from "gsap";
+import { useGSAP } from "@gsap/react";
 import { FaLink } from "react-icons/fa6";
 import { MdGetApp } from "react-icons/md";
 import ReceiveFromBrowser from "../ReceiveFromBrowser/ReceiveFromBrowser.tsx";
@@ -6,30 +9,54 @@ import P2PSession from "../Share/P2PSession";
 import BackButton from "../../components/BackButton";
 import styles from "../../styles/screens/ReceiveScreen.module.css";
 
+gsap.registerPlugin(useGSAP);
+
 interface Props {
   onBack: () => void;
 }
 
 const ReceiveScreen: React.FC<Props> = ({ onBack }) => {
+  const { t } = useTranslation();
   const [mode, setMode] = useState<"choose" | "p2p" | "browser">("choose");
+
+  // Ref for the cards container
+  const cardsRef = useRef<HTMLDivElement>(null);
+
+  // Entrance animation – only when mode is "choose" (the mode chooser is visible)
+  useGSAP(
+    () => {
+      if (mode === "choose" && cardsRef.current) {
+        // Fade in the whole card section
+        gsap.fromTo(
+          cardsRef.current,
+          { opacity: 0, y: 20 },
+          { opacity: 1, y: 0, duration: 0.4, ease: "power2.out" }
+        );
+      }
+    },
+    { dependencies: [mode] }
+  );
 
   return (
     <div className={styles.container}>
       {/* Outer back arrow – hidden when P2P or browser mode is active */}
       {mode === "choose" && <BackButton onClick={onBack} />}
-      {mode === "choose" && <h2 className={styles.title}>Receive Files</h2>}
+      {mode === "choose" && (
+        <h2 className={styles.title}>{t("receiveFiles")}</h2>
+      )}
 
       {/* ── Mode chooser ── */}
       {mode === "choose" && (
-        <div className={styles.modeCards}>
+        <div className={styles.modeCards} ref={cardsRef}>
           <div className={styles.modeCard} onClick={() => setMode("p2p")}>
             <div className={styles.cardEmoji}>
               <FaLink size={36} />
             </div>
-            <div className={styles.cardTitle}>Join Device Connect</div>
+            <div className={styles.cardTitle}>
+              {t("joinDeviceConnect")}
+            </div>
             <div className={styles.cardDesc}>
-              Accept files from a MAYO Share session. Paste the offer code or
-              auto‑discover nearby devices.
+              {t("joinDeviceConnectDesc")}
             </div>
           </div>
 
@@ -37,10 +64,11 @@ const ReceiveScreen: React.FC<Props> = ({ onBack }) => {
             <div className={styles.cardEmoji}>
               <MdGetApp size={36} />
             </div>
-            <div className={styles.cardTitle}>Receive from Browser</div>
+            <div className={styles.cardTitle}>
+              {t("receiveFromBrowser")}
+            </div>
             <div className={styles.cardDesc}>
-              Let a phone or any device send files TO this laptop. No app needed
-              on their side.
+              {t("receiveFromBrowserDesc")}
             </div>
           </div>
         </div>

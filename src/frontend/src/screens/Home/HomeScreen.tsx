@@ -1,9 +1,13 @@
-import React from 'react';
+import React, { useRef } from 'react';
+import { useTranslation } from 'react-i18next';
+import gsap from 'gsap';
+import { useGSAP } from '@gsap/react';
 import { Screen } from '../../App';
-import TopBar from '../../components/TopBar';
 import { IoIosSend } from 'react-icons/io';
 import { MdGetApp } from 'react-icons/md';
 import styles from '../../styles/screens/HomeScreen.module.css';
+
+gsap.registerPlugin(useGSAP);
 
 interface Props {
   currentScreen: Screen;
@@ -11,26 +15,63 @@ interface Props {
 }
 
 const HomeScreen: React.FC<Props> = ({ setScreen }) => {
+  const { t } = useTranslation();
+
+  // Refs for GSAP
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const subtitleRef = useRef<HTMLParagraphElement>(null);
+  const cardsRef = useRef<HTMLDivElement>(null);
+
+  // Entrance animation
+  useGSAP(() => {
+    const tl = gsap.timeline({ defaults: { ease: 'power2.out' } });
+
+    tl.fromTo(
+      [headingRef.current, subtitleRef.current],
+      { opacity: 0, y: 16 },
+      { opacity: 1, y: 0, duration: 0.4, stagger: 0.1 }
+    );
+
+    if (cardsRef.current) {
+      tl.fromTo(
+        cardsRef.current.querySelectorAll(`.${styles.card}`),
+        { opacity: 0, y: 20 },
+        {
+          opacity: 1,
+          y: 0,
+          duration: 0.4,
+          stagger: 0.1,
+          ease: 'power2.out',
+        },
+        '-=0.2'
+      );
+    }
+  }, []);
+
   return (
     <div className={styles.container}>
       <div className={styles.inner}>
-        <h1 className={styles.heading}>What do you want to do?</h1>
-        <p className={styles.subtitle}>Choose an action to get started</p>
+        <h1 className={styles.heading} ref={headingRef}>
+          {t('homeHeading')}
+        </h1>
+        <p className={styles.subtitle} ref={subtitleRef}>
+          {t('homeSubtitle')}
+        </p>
 
-        <div className={styles.cardsContainer}>
+        <div className={styles.cardsContainer} ref={cardsRef}>
           <ActionCard
             icon={<IoIosSend size={48} />}
-            title="Share Files"
-            description="Send files to another device over your local hotspot"
+            title={t('shareFiles')}
+            description={t('shareFilesDesc')}
             onClick={() => setScreen('share-hotspot-check')}
-            color="#0066FF"
+            color="#b169e0"
           />
           <ActionCard
             icon={<MdGetApp size={48} />}
-            title="Receive Files"
-            description="Accept files from another device on the same network"
+            title={t('receiveFiles')}
+            description={t('receiveFilesDesc')}
             onClick={() => setScreen('receive')}
-            color="#4CAF50"
+            color="#b169e0"
           />
         </div>
       </div>
@@ -39,7 +80,7 @@ const HomeScreen: React.FC<Props> = ({ setScreen }) => {
 };
 
 interface CardProps {
-  icon: React.ReactNode;       // replaced emoji string
+  icon: React.ReactNode;
   title: string;
   description: string;
   onClick: () => void;

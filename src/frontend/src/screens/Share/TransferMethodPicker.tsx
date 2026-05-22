@@ -1,8 +1,13 @@
-import React from "react";
+import React, { useRef } from "react";
+import { useTranslation } from "react-i18next";
+import gsap from "gsap";
+import { useGSAP } from "@gsap/react";
 import { VscGlobe } from "react-icons/vsc";
 import { FaLink } from "react-icons/fa6";
 import BackButton from "../../components/BackButton";
 import styles from "../../styles/screens/TransferMethodPicker.module.css";
+
+gsap.registerPlugin(useGSAP);
 
 interface Props {
   onSelectP2P: () => void;
@@ -15,25 +20,45 @@ const TransferMethodPicker: React.FC<Props> = ({
   onSelectQuick,
   onBack,
 }) => {
+  const { t } = useTranslation();
+  const cardsRef = useRef<HTMLDivElement>(null);
+
+  // Entrance animation – cards stagger in from below
+  useGSAP(() => {
+    if (cardsRef.current) {
+      gsap.fromTo(
+        cardsRef.current.querySelectorAll(`.${styles.card}`),
+        { opacity: 0, y: 20 },
+        {
+          opacity: 1,
+          y: 0,
+          duration: 0.4,
+          stagger: 0.1,
+          ease: "power2.out",
+        }
+      );
+    }
+  }, []);
+
   return (
     <div className={styles.container}>
       <BackButton onClick={onBack} />
-      <h2 className={styles.heading}>Choose Transfer Method</h2>
-      <p className={styles.subtitle}>How would you like to share?</p>
+      <h2 className={styles.heading}>{t("chooseTransferMethod")}</h2>
+      <p className={styles.subtitle}>{t("howToShare")}</p>
 
-      <div className={styles.cards}>
+      <div className={styles.cards} ref={cardsRef}>
         <MethodCard
           icon={<VscGlobe size={40} />}
-          title="Quick Share"
-          description="Share files via a link or QR code. The receiver only needs a browser — no app required."
-          color="#0066FF"
+          title={t("quickShare")}
+          description={t("quickShareDesc")}
+          color="#b169e0"
           onClick={onSelectQuick}
         />
         <MethodCard
           icon={<FaLink size={36} />}
-          title="Device Connect"
-          description="Full P2P session — queue multiple files, cancel anytime, resume transfers. Requires MAYO Share on both devices."
-          color="#4CAF50"
+          title={t("deviceConnect")}
+          description={t("deviceConnectDesc")}
+          color="#b169e0"
           onClick={onSelectP2P}
         />
       </div>

@@ -30,6 +30,7 @@ declare global {
         output?: string;
         error?: string;
       }>;
+      launchHardwareWizard: () => Promise<{ success: boolean; error?: string }>;
       submitRating: (data: {
         rating: number;
         timestamp: string;

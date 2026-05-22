@@ -1,7 +1,18 @@
-import React, { useState } from 'react';
-import { FaCheckCircle, FaTimesCircle, FaWrench, FaNetworkWired, FaShieldAlt } from 'react-icons/fa';
+import React, { useState, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
+import gsap from 'gsap';
+import { useGSAP } from '@gsap/react';
+import {
+  FaCheckCircle,
+  FaTimesCircle,
+  FaWrench,
+  FaNetworkWired,
+  FaShieldAlt,
+} from 'react-icons/fa';
 import BackButton from '../../components/BackButton';
-import styles from '../../styles/screens/Troubleshoot.module.css';
+import styles from "../../styles/screens/Troubleshoot.module.css";
+
+gsap.registerPlugin(useGSAP);
 
 interface Props {
   onBack: () => void;
@@ -15,10 +26,33 @@ interface NetworkDiagnosis {
 }
 
 const TroubleshootScreen: React.FC<Props> = ({ onBack }) => {
-  const [firewallStatus, setFirewallStatus] = useState<'idle' | 'working' | 'success' | 'error'>('idle');
+  const { t } = useTranslation();
+
+  const [firewallStatus, setFirewallStatus] = useState<'idle' | 'working' | 'success' | 'error' | 'needsAdmin'>('idle');
   const [firewallMessage, setFirewallMessage] = useState('');
   const [diagnosisResult, setDiagnosisResult] = useState<NetworkDiagnosis | null>(null);
   const [diagnosisWorking, setDiagnosisWorking] = useState(false);
+
+  // Refs for GSAP
+  const cardsRef = useRef<HTMLDivElement>(null);
+
+  // GSAP entrance animation – stagger cards into view
+  useGSAP(() => {
+    if (cardsRef.current) {
+      const cards = cardsRef.current.querySelectorAll(`.${styles.card}`);
+      gsap.fromTo(
+        cards,
+        { opacity: 0, y: 20 },
+        {
+          opacity: 1,
+          y: 0,
+          duration: 0.35,
+          stagger: 0.12,
+          ease: 'power2.out',
+        },
+      );
+    }
+  }, []);
 
   const handleFixFirewall = async () => {
     setFirewallStatus('working');
@@ -27,14 +61,20 @@ const TroubleshootScreen: React.FC<Props> = ({ onBack }) => {
       const result = await window.electronAPI.fixFirewall();
       if (result.success) {
         setFirewallStatus('success');
-        setFirewallMessage(result.output || 'Firewall rule added successfully.');
+        setFirewallMessage(result.output || t('firewallRuleAdded'));
       } else {
-        setFirewallStatus('error');
-        setFirewallMessage(result.error || 'Failed to add firewall rule.');
+        // Check if it's a permission error
+        if (result.error && result.error.includes('administrator')) {
+          setFirewallStatus('needsAdmin');
+          setFirewallMessage(t('runAsAdmin'));
+        } else {
+          setFirewallStatus('error');
+          setFirewallMessage(result.error || t('firewallRuleFailed'));
+        }
       }
     } catch (err: any) {
       setFirewallStatus('error');
-      setFirewallMessage(err.message || 'An unexpected error occurred.');
+      setFirewallMessage(err.message || t('unexpectedError'));
     }
   };
 
@@ -53,85 +93,86 @@ const TroubleshootScreen: React.FC<Props> = ({ onBack }) => {
   return (
     <div className={styles.container}>
       <BackButton onClick={onBack} />
-      <h2 className={styles.title}>Troubleshoot</h2>
-      <p className={styles.subtitle}>Diagnose and fix common connection issues.</p>
+      <h2 className={styles.title}>{t('troubleshoot')}</h2>
+      <p className={styles.subtitle}>{t('troubleshootSubtitle')}</p>
 
-      {/* ── Firewall Auto‑Fix ── */}
-      <div className={styles.card}>
-        <div className={styles.cardHeader}>
-          <FaShieldAlt size={20} color="#b169e0" />
-          <h3>Firewall Auto‑Fix</h3>
-        </div>
-        <p className={styles.cardDesc}>
-          Windows Firewall may block incoming connections on ports 3000 and 3001. Click the button to automatically add the required rule.
-        </p>
-        <button
-          className={styles.btn}
-          onClick={handleFixFirewall}
-          disabled={firewallStatus === 'working'}
-        >
-          {firewallStatus === 'working' ? 'Working…' : 'Fix Firewall'}
-        </button>
-        {firewallStatus === 'success' && (
-          <div className={styles.successMsg}>
-            <FaCheckCircle style={{ marginRight: 6 }} /> {firewallMessage}
-          </div>
-        )}
-        {firewallStatus === 'error' && (
-          <div className={styles.errorMsg}>
-            <FaTimesCircle style={{ marginRight: 6 }} /> {firewallMessage}
-          </div>
-        )}
-      </div>
-
-      {/* ── Network & Port Status Checker ── */}
-      <div className={styles.card}>
-        <div className={styles.cardHeader}>
-          <FaNetworkWired size={20} color="#b169e0" />
-          <h3>Network & Port Status</h3>
-        </div>
-        <p className={styles.cardDesc}>
-          Check your current network environment and whether the server ports are listening.
-        </p>
-        <button
-          className={styles.btn}
-          onClick={handleDiagnoseNetwork}
-          disabled={diagnosisWorking}
-        >
-          {diagnosisWorking ? 'Checking…' : 'Run Diagnostics'}
-        </button>
-        {diagnosisResult && (
-          <div className={styles.diagnosisResult}>
-            <p><strong>Wi‑Fi SSID:</strong> {diagnosisResult.ssid || 'Not connected'}</p>
-            <p><strong>Network Category:</strong> {diagnosisResult.profileCategory || 'Unknown'}</p>
-            <p>
-              <strong>Loopback Adapter:</strong>{' '}
-              {diagnosisResult.loopbackAdapterPresent ? '✅ Present' : '❌ Not found'}
-            </p>
-            <p>
-              <strong>Port 3001:</strong>{' '}
-              {diagnosisResult.port3001Listening ? '✅ Listening' : '❌ Not listening'}
-            </p>
-          </div>
-        )}
-      </div>
-
-      {/* ── Smart Fallback Advice ── */}
-      {diagnosisResult && diagnosisResult.profileCategory === 'Public' && (
+      <div ref={cardsRef}>
+        {/* ── Firewall Auto‑Fix ── */}
         <div className={styles.card}>
           <div className={styles.cardHeader}>
-            <FaWrench size={20} color="#b169e0" />
-            <h3>Smart Advice</h3>
+            <FaShieldAlt size={20} color="#b169e0" />
+            <h3>{t('firewallAutoFix')}</h3>
           </div>
-          <p className={styles.cardDesc}>
-            You are connected to a <strong>Public</strong> network. Some networks block device‑to‑device communication. For a guaranteed connection, try using the offline hotspot:
-            <br />
-            <em>Receive &gt; Start Offline Hotspot</em>
-          </p>
+          <p className={styles.cardDesc}>{t('firewallAutoFixDesc')}</p>
+          <button
+            className={styles.btn}
+            onClick={handleFixFirewall}
+            disabled={firewallStatus === 'working'}
+          >
+            {firewallStatus === 'working' ? t('working') : t('fixFirewall')}
+          </button>
+          {firewallStatus === 'success' && (
+            <div className={styles.successMsg}>
+              <FaCheckCircle style={{ marginRight: 6 }} /> {firewallMessage}
+            </div>
+          )}
+          {firewallStatus === 'error' && (
+            <div className={styles.errorMsg}>
+              <FaTimesCircle style={{ marginRight: 6 }} /> {firewallMessage}
+            </div>
+          )}
+          {firewallStatus === 'needsAdmin' && (
+            <div className={styles.adminHint}>
+              <FaTimesCircle style={{ marginRight: 6 }} /> {t('runAsAdmin')}
+            </div>
+          )}
         </div>
-      )}
+
+        {/* ── Network & Port Status Checker ── */}
+        <div className={styles.card}>
+          <div className={styles.cardHeader}>
+            <FaNetworkWired size={20} color="#b169e0" />
+            <h3>{t('networkPortStatus')}</h3>
+          </div>
+          <p className={styles.cardDesc}>{t('networkPortStatusDesc')}</p>
+          <button
+            className={styles.btn}
+            onClick={handleDiagnoseNetwork}
+            disabled={diagnosisWorking}
+          >
+            {diagnosisWorking ? t('checking') : t('runDiagnostics')}
+          </button>
+          {diagnosisResult && (
+            <div className={styles.diagnosisResult}>
+              <p><strong>{t('wifiSSID')}:</strong> {diagnosisResult.ssid || t('notConnected')}</p>
+              <p><strong>{t('networkCategory')}:</strong> {diagnosisResult.profileCategory || t('unknown')}</p>
+              <p>
+                <strong>{t('loopbackAdapter')}:</strong>{' '}
+                {diagnosisResult.loopbackAdapterPresent ? t('present') : t('notFound')}
+              </p>
+              <p>
+                <strong>{t('port3001')}:</strong>{' '}
+                {diagnosisResult.port3001Listening ? t('listening') : t('notListening')}
+              </p>
+            </div>
+          )}
+        </div>
+
+        {/* ── Smart Fallback Advice ── */}
+        {diagnosisResult && diagnosisResult.profileCategory === 'Public' && (
+          <div className={styles.card}>
+            <div className={styles.cardHeader}>
+              <FaWrench size={20} color="#b169e0" />
+              <h3>{t('smartAdvice')}</h3>
+            </div>
+            <p className={styles.cardDesc}>
+              {t('publicNetworkAdvice')}
+            </p>
+          </div>
+        )}
+      </div>
     </div>
   );
 };
 
-export default TroubleshootScreen;  
+export default TroubleshootScreen;

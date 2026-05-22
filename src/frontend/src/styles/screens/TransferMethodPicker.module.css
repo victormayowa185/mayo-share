@@ -9,9 +9,15 @@
   color: #ddd;
 }
 
-.heading { font-size: 1.6rem; margin-bottom: 8px; }
+.heading {
+  font-size: 1.6rem;
+  margin-bottom: 8px;
+}
 
-.subtitle { color: #888; margin-bottom: 40px; }
+.subtitle {
+  color: #888;
+  margin-bottom: 40px;
+}
 
 .cards {
   display: flex;
@@ -28,13 +34,28 @@
   width: 240px;
   cursor: pointer;
   text-align: center;
-  transition: border-color 0.2s, transform 0.15s;
+  transition:
+    border-color 0.2s,
+    transform 0.15s;
 }
 
-.card:hover { transform: translateY(-3px); }
+.card:hover {
+  transform: translateY(-3px);
+}
 
-.cardEmoji { font-size: 2.8rem; margin-bottom: 16px; }
+.cardEmoji {
+  font-size: 2.8rem;
+  margin-bottom: 16px;
+}
 
-.cardTitle { font-size: 1.1rem; font-weight: bold; margin-bottom: 10px; }
+.cardTitle {
+  font-size: 1.1rem;
+  font-weight: bold;
+  margin-bottom: 10px;
+}
 
-.cardDesc { color: #888; font-size: 0.88rem; line-height: 1.6; }
+.cardDesc {
+  color: #888;
+  font-size: 0.88rem;
+  line-height: 1.6;
+}
