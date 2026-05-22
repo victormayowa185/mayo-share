@@ -11,8 +11,7 @@
   "saveFailed": "Failed to save",
   "deviceName": "Device Name",
   "deviceNameDesc": "This name will appear in the profile menu and elsewhere.",
-  "changeDeviceName": "Change Device Name"
-  {
+  "changeDeviceName": "Change Device Name",
   "about": "About",
   "aboutDescription": "MAYO Share is a free, open‑source, offline file‑transfer app for Windows. It lets you send and receive files without internet, using your local Wi‑Fi or a hotspot. It's designed for schools, offices, and remote areas where data is expensive or unavailable.",
   "platforms": "Available on:",
@@ -27,5 +26,4 @@
   "licenseDetail": "Licensed under GPLv3. See the LICENSE file for details.",
   "sourceCode": "Source Code",
   "viewOnGitHub": "View on GitHub"
-}
 }
