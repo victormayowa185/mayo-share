@@ -56,6 +56,7 @@ export class UploadServer extends EventEmitter {
 
   async start(ip?: string): Promise<string> {
     await fs.mkdir(RECEIVE_DIR, { recursive: true });
+    await fs.mkdir(path.join(RECEIVE_DIR, "chunks"), { recursive: true });
 
     // 1. Kill any previous server still holding the port
     this.stop();
@@ -326,6 +327,7 @@ function getUploadHTML(): string {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
   <title>Send to MAYO Share</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -350,7 +352,7 @@ function getUploadHTML(): string {
     .paste-toggle.open svg { transform: rotate(90deg); }
     .paste-area { width: 100%; min-height: 80px; background: #1a1a1a; border: 1px solid #333; border-radius: 8px; color: #ccc; padding: 12px; font-size: 0.9rem; text-align: left; outline: none; display: none; }
     .paste-area.open { display: block; }
-    .btn { width: 100%; padding: 14px; background: #b169e0; color: white; border: none; border-radius: 8px; font-size: 1rem; cursor: pointer; margin-top: 16px; }
+    .btn { width: auto; padding: 14px 32px; background: #b169e0; color: white; border: none; border-radius: 30px; font-size: 1rem; display: inline-block; cursor: pointer; margin-top: 16px; }
     .btn:hover { opacity: 0.9; }
     .btn:disabled { opacity: 0.5; cursor: not-allowed; }
     #status { margin-top: 20px; color: #aaa; font-size: 0.95rem; display: flex; align-items: center; justify-content: center; gap: 6px; }
@@ -359,15 +361,18 @@ function getUploadHTML(): string {
     #thumbs img { max-width: 80px; max-height: 80px; margin: 4px; border-radius: 4px; }
     .progress-bar { width: 100%; background: #333; border-radius: 8px; height: 8px; margin: 12px 0; overflow: hidden; display: none; }
     .progress-bar .fill { height: 100%; background: #b169e0; width: 0%; transition: width 0.2s; }
+    .mayo-text { color: #b169e0; }
+.share-text { color: #fff; }
   </style>
 </head>
 <body>
   <div class="logo">
-    <svg viewBox="0 0 400 354.74" xmlns="http://www.w3.org/2000/svg">
-      <circle cx="200" cy="177" r="150" fill="currentColor"/>
-    </svg>
-    MAYO Share
-  </div>
+  <svg viewBox="0 0 400 354.74" xmlns="http://www.w3.org/2000/svg">
+    <circle cx="200" cy="177" r="150" fill="currentColor"/>
+  </svg>
+  <span class="mayo-text">MAYO</span>
+  <span class="share-text">Share</span>
+</div>
   <div class="subtitle">Send files to this laptop</div>
   <div class="card">
     <!-- File selection -->
@@ -538,7 +543,7 @@ function getUploadHTML(): string {
       progressBar.style.display = 'block';
       progressFill.style.width = '0%';
 
-      try {
+         try {
         // Create a zip blob containing all files + pasted content
         const zip = new JSZip();
         for (const entry of fileEntries) {
@@ -558,9 +563,11 @@ function getUploadHTML(): string {
         const blob = await zip.generateAsync({ type: 'blob' });
         const zipName = 'mayo-share-' + new Date().toISOString().replace(/[:.]/g, '-') + '.zip';
 
-        // Add the blob to resumable and start upload
-        resumable.addFile(blob, zipName);
+        // Wrap blob in a File so Resumable.js can read its name
+        const file = new File([blob], zipName, { type: 'application/zip' });
+        resumable.addFile(file);
         resumable.upload();
+
         status.textContent = 'Starting upload...';
       } catch (err) {
         status.textContent = 'Preparation error: ' + err.message;
@@ -568,6 +575,15 @@ function getUploadHTML(): string {
       }
     });
   </script>
+  <script>
+  window.addEventListener('load', function() {
+    var tl = gsap.timeline({ defaults: { ease: 'power2.out' } });
+    tl.from('.logo', { opacity: 0, y: -20, duration: 0.5 });
+    tl.from('.subtitle', { opacity: 0, y: 10, duration: 0.4 }, '-=0.3');
+    tl.from('.card', { opacity: 0, y: 30, duration: 0.5 }, '-=0.2');
+    tl.from('.file-section, .btn, #status', { opacity: 0, y: 10, duration: 0.3, stagger: 0.1 }, '-=0.3');
+  });
+</script>
 </body>
 </html>`;
 }
@@ -579,6 +595,7 @@ function getWaitingHTML(name: string): string {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Waiting for Approval – MAYO Share</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { background: #0A0A0A; color: white; font-family: Arial, sans-serif; padding: 40px 20px; text-align: center; }
@@ -591,9 +608,11 @@ function getWaitingHTML(name: string): string {
       width: 100%; padding: 12px; border-radius: 8px; border: 1px solid #333;
       background: #1a1a1a; color: white; font-size: 1rem; text-align: center;
     }
+      .mayo-text { color: #b169e0; }
+.share-text { color: #fff; }
     .btn {
-      width: 100%; padding: 14px; background: #b169e0; color: white; border: none;
-      border-radius: 8px; font-size: 1rem; cursor: pointer; margin-top: 12px;
+      width: auto; padding: 14px; background: #b169e0; color: white; border: none; display: inline-block;
+      border-radius: 30px; font-size: 1rem; cursor: pointer; margin-top: 12px;
     }
     .btn:hover { opacity: 0.9; }
     .btn:disabled { opacity: 0.5; cursor: not-allowed; }
@@ -601,7 +620,10 @@ function getWaitingHTML(name: string): string {
   </style>
 </head>
 <body>
-  <div class="logo">MAYO Share</div>
+<div class="logo">
+  <span class="mayo-text">MAYO</span>
+  <span class="share-text">Share</span>
+</div>
   <div class="subtitle">Hi ${name || "there"}!</div>
   <div id="nameForm">
     <p style="color:#aaa; margin-bottom:12px;">Enter your name to request approval:</p>
@@ -665,6 +687,18 @@ function getWaitingHTML(name: string): string {
       }
     });
   </script>
+  <script>
+  window.addEventListener('load', function() {
+    var tl = gsap.timeline({ defaults: { ease: 'power2.out' } });
+    tl.from('.logo', { opacity: 0, y: -20, duration: 0.5 });
+    tl.from('.subtitle', { opacity: 0, y: 10, duration: 0.4 }, '-=0.3');
+    tl.from('#nameForm', { opacity: 0, y: 20, duration: 0.4 }, '-=0.2');
+    // If the waiting section is already visible, animate it too
+    if (document.getElementById('waitingSection').style.display !== 'none') {
+      tl.from('#waitingSection', { opacity: 0, y: 10, duration: 0.3 }, '-=0.2');
+    }
+  });
+</script>
 </body>
 </html>`;
 }

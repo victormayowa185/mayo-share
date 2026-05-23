@@ -63,4 +63,4 @@ const SupportScreen: React.FC<Props> = ({
   );
 };
 
-export default SupportScreen;
+export default SupportScreen; 

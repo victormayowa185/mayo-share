@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import HomeScreen from "./screens/Home/HomeScreen";
 import SetupStepper from "./screens/Onboarding/SetupStepper";
+import LanguageSelectScreen from "./screens/LanguageSelect/LanguageSelectScreen";
 import HotspotCheck from "./screens/Share/HotspotCheck";
 import TransferMethodPicker from "./screens/Share/TransferMethodPicker";
 import QuickShare from "./screens/Share/QuickShare";
@@ -27,20 +28,24 @@ export type Screen =
   | "activity"
   | "support"
   | "rate"
-  | "troubleshoot";
+  | "troubleshoot"
+  | "language-select";
 
 const App: React.FC = () => {
   const [screen, setScreen] = useState<Screen>("home");
   const [setupComplete, setSetupComplete] = useState<boolean | null>(null);
+  const [languageSet, setLanguageSet] = useState<boolean | null>(null);
   const [hotspotActive, setHotspotActive] = useState(false);
   const [hotspotIP, setHotspotIP] = useState("");
   const [connectedDevicesCount, setConnectedDevicesCount] = useState(0);
   const [connectionLabel, setConnectionLabel] = useState<string | null>(null);
 
-  // Check setup flag on mount
+  // Check setup flags on mount
   useEffect(() => {
     const done = localStorage.getItem("mayo-setup-complete");
+    const langDone = localStorage.getItem("mayo-language-set");
     setSetupComplete(done === "true");
+    setLanguageSet(langDone === "true");
   }, []);
 
   // Poll hotspot status every 5 seconds
@@ -49,7 +54,6 @@ const App: React.FC = () => {
 
     const updateStatus = async () => {
       try {
-        // 1. Check hotspot status
         const hotspotStatus = await window.electronAPI.checkHotspotStatus();
         setHotspotActive(hotspotStatus.active);
         if (hotspotStatus.active && hotspotStatus.ip) {
@@ -61,7 +65,6 @@ const App: React.FC = () => {
           setHotspotIP("");
         }
 
-        // 2. Check local Wi‑Fi (existing network)
         const localIP = await window.electronAPI.getLocalIP();
         if (localIP) {
           const ssid = await window.electronAPI.getWifiSSID();
@@ -100,7 +103,8 @@ const App: React.FC = () => {
     setHotspotIP(ip);
   };
 
-  if (setupComplete === null) {
+  // ----- EARLY RETURNS (loading, language, setup) -----
+  if (setupComplete === null || languageSet === null) {
     return (
       <div
         style={{
@@ -116,10 +120,22 @@ const App: React.FC = () => {
     );
   }
 
+  if (!languageSet) {
+    return (
+      <LanguageSelectScreen
+        onComplete={() => {
+          localStorage.setItem("mayo-language-set", "true");
+          setLanguageSet(true);
+        }}
+      />
+    );
+  }
+
   if (!setupComplete) {
     return <SetupStepper onComplete={completeSetup} />;
   }
 
+  // ----- MAIN APP (home & all screens) -----
   return (
     <div
       style={{
@@ -197,8 +213,8 @@ const App: React.FC = () => {
         )}
 
         {screen === "settings" && (
-  <SettingsScreen onBack={() => setScreen("home")} />
-)}
+          <SettingsScreen onBack={() => setScreen("home")} />
+        )}
 
         {screen === "troubleshoot" && (
           <TroubleshootScreen onBack={() => setScreen("support")} />

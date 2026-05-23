@@ -51,7 +51,8 @@ const TopBar: React.FC<Props> = ({ onNavigate }) => {
   return (
     <header className={styles.topbar} ref={headerRef}>
       <div className={styles.logo}>
-        <span className={styles.logoText}>MAYO Share</span>
+        <span className={styles.logoText}>MAYO</span>
+        <span className={styles.logoShare}>Share</span>
       </div>
 
       <div className={styles.actions}>

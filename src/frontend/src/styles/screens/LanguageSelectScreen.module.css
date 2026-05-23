@@ -1,0 +1,73 @@
+.container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  background: #0A0A0A;
+  padding: 24px;
+  justify-content: center; 
+}
+
+.inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  max-width: 440px;
+  width: 100%;
+}
+
+/* ---------- MAYO Share text ---------- */
+.logo {
+  font-size: 2.5rem;
+  font-weight: 700;
+  margin-bottom: 40px;
+}
+
+.mayo {
+  color: #b169e0;
+}
+
+.share {
+  color: #fff;
+}
+
+/* ---------- Subtitle ---------- */
+.subtitle {
+  color: #aaa;
+  font-size: 1.1rem;
+  margin-bottom: 32px;
+}
+
+/* ---------- Language picker wrapper ---------- */
+.pickerWrapper {
+  width: 100%;
+  margin-bottom: 40px;
+  overflow: visible;
+  position: relative;
+  z-index: 1;
+}
+
+/* ---------- Continue button ---------- */
+.continueBtn {
+  padding: 14px 48px;
+  background: #b169e0;
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+  z-index: 0;
+}
+
+.continueBtn:disabled {
+  background: #333;
+  color: #777;
+  cursor: not-allowed;
+}
+
+.continueBtn:not(:disabled):hover {
+  background: #9a4fd4;
+}

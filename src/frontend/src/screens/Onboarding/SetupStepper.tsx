@@ -126,8 +126,7 @@ const SetupStepper: React.FC<Props> = ({ onComplete }) => {
   return (
     <div className={styles.container}>
       <div className={styles.logo}>
-        <span className={styles.logoIcon}>
-        </span>
+        <span className={styles.logoIcon}></span>
         <span className={styles.logoText}>MAYO Share</span>
       </div>
       <div className={styles.subtitle}>{t("firstTimeSetup")}</div>
@@ -207,9 +206,12 @@ const SetupStepper: React.FC<Props> = ({ onComplete }) => {
             {t("enterMayoShare")} <FaArrowRight style={{ marginLeft: 6 }} />
           </button>
         )}
-        <button onClick={onComplete} className={styles.ghostBtn}>
-          {t("skipForNow")}
-        </button>
+        {/* Hide Skip when on the last step and verification is done */}
+        {!(isLastStep && verifyStatus === "ok") && (
+          <button onClick={onComplete} className={styles.ghostBtn}>
+            {t("skipForNow")}
+          </button>
+        )}
       </div>
     </div>
   );
