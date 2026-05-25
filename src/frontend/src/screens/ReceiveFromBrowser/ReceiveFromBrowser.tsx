@@ -42,12 +42,12 @@ const ReceiveFromBrowser: React.FC<Props> = ({
   const [copied, setCopied] = useState(false);
   const [startingHotspot, setStartingHotspot] = useState(false);
   const [hotspotStatus, setHotspotStatus] = useState("");
+  const [approvedSenders, setApprovedSenders] = useState<string[]>([]);
   const [receivedFiles, setReceivedFiles] = useState<ReceivedFile[]>([]);
   const [pendingSenders, setPendingSenders] = useState<
     { sessionId: string; senderName: string; deviceType: string }[]
   >([]);
 
-  // Listen for incoming files
   useEffect(() => {
     window.electronAPI.onUploadUpdate((data) => {
       if (data.event === "received") {
@@ -60,7 +60,6 @@ const ReceiveFromBrowser: React.FC<Props> = ({
       }
     });
   }, []);
-
   useEffect(() => {
     window.electronAPI.onSenderConnected(
       (data: { sessionId: string; senderName: string; deviceType: string }) => {
@@ -249,6 +248,10 @@ const ReceiveFromBrowser: React.FC<Props> = ({
                           setPendingSenders((prev) =>
                             prev.filter((x) => x.sessionId !== s.sessionId),
                           );
+                          setApprovedSenders((prev) => [
+                            ...prev,
+                            s.senderName || "Unknown",
+                          ]);
                           onSenderApproved?.();
                         }}
                       >
@@ -266,6 +269,24 @@ const ReceiveFromBrowser: React.FC<Props> = ({
                         {t("decline")}
                       </button>
                     </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {approvedSenders.length > 0 && (
+            <div className={styles.receivedSection}>
+              <h3 className={styles.receivedTitle}>Uploading from</h3>
+              <ul className={styles.fileList}>
+                {approvedSenders.map((name, i) => (
+                  <li key={i} className={styles.fileItem}>
+                    <div
+                      className={styles.miniSpinner}
+                      style={{ marginRight: 8 }}
+                    />
+                    <span className={styles.fileName}>{name}</span>
+                    <span className={styles.fileTime}>Uploading…</span>
                   </li>
                 ))}
               </ul>
@@ -292,9 +313,11 @@ const ReceiveFromBrowser: React.FC<Props> = ({
             </div>
           )}
 
-          {pendingSenders.length === 0 && receivedFiles.length === 0 && (
-            <p className={styles.waitingHint}>{t("waitingForSenders")}</p>
-          )}
+          {pendingSenders.length === 0 &&
+            receivedFiles.length === 0 &&
+            approvedSenders.length === 0 && (
+              <p className={styles.waitingHint}>{t("waitingForSenders")}</p>
+            )}
         </div>
       )}
     </div>

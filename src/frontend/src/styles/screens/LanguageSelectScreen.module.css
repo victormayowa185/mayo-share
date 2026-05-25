@@ -3,9 +3,8 @@
   align-items: center;
   justify-content: center;
   min-height: 100vh;
-  background: #0A0A0A;
+  background: var(--bg-primary);
   padding: 24px;
-  justify-content: center; 
 }
 
 .inner {
@@ -25,16 +24,16 @@
 }
 
 .mayo {
-  color: #b169e0;
+  color: var(--accent);
 }
 
 .share {
-  color: #fff;
+  color: var(--text-inverse);
 }
 
 /* ---------- Subtitle ---------- */
 .subtitle {
-  color: #aaa;
+  color: var(--text-muted);
   font-size: 1.1rem;
   margin-bottom: 32px;
 }
@@ -51,8 +50,8 @@
 /* ---------- Continue button ---------- */
 .continueBtn {
   padding: 14px 48px;
-  background: #b169e0;
-  color: #fff;
+  background: var(--accent);
+  color: var(--text-inverse);
   border: none;
   border-radius: 10px;
   font-size: 1rem;
@@ -63,11 +62,11 @@
 }
 
 .continueBtn:disabled {
-  background: #333;
-  color: #777;
+  background: var(--border-light);
+  color: var(--text-disabled);
   cursor: not-allowed;
 }
 
 .continueBtn:not(:disabled):hover {
-  background: #9a4fd4;
+  background: var(--accent-hover);
 }

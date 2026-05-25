@@ -269,23 +269,38 @@ export class UploadServer extends EventEmitter {
               const destChunkPath = path.join(chunkDir, chunkNumber);
               await fs.rename(chunkFile.filepath, destChunkPath);
 
+              console.log(
+                `Chunk ${chunkNumber}/${totalChunks} saved. File: ${originalFilename}`,
+              );
+
               const existingChunks = await fs.readdir(chunkDir);
+              console.log(
+                `Chunks on disk: ${existingChunks.length}, need: ${totalChunks}`,
+              );
               if (existingChunks.length === totalChunks) {
+                await fs.mkdir(session.saveDir, { recursive: true });
                 const finalPath = path.join(session.saveDir, originalFilename);
-                const writeStream = (await import("fs")).createWriteStream(
-                  finalPath,
-                );
-                for (let i = 0; i < totalChunks; i++) {
-                  const chunkPath = path.join(chunkDir, i.toString());
-                  const data = await fs.readFile(chunkPath);
-                  writeStream.write(data);
-                  await fs.unlink(chunkPath);
-                }
-                writeStream.end();
-                await fs.rmdir(chunkDir);
+                const { createWriteStream } = await import("fs");
+                const writeStream = createWriteStream(finalPath);
+                await new Promise<void>((resolve, reject) => {
+                  writeStream.on("finish", resolve);
+                  writeStream.on("error", reject);
+                  (async () => {
+                    // Resumable.js chunk numbers start at 1, not 0
+                    for (let i = 1; i <= totalChunks; i++) {
+                      const chunkPath = path.join(chunkDir, i.toString());
+                      const data = await fs.readFile(chunkPath);
+                      writeStream.write(data);
+                      await fs.unlink(chunkPath);
+                    }
+                    writeStream.end();
+                  })().catch(reject);
+                });
+                try {
+                  await fs.rmdir(chunkDir);
+                } catch {}
                 this.emit("file-received", originalFilename);
               }
-
               res.writeHead(200, { "Content-Type": "text/plain" });
               res.end("Chunk received");
             } catch (e: any) {
@@ -386,16 +401,12 @@ function getUploadHTML(): string {
     </div>
 
     <!-- Paste section -->
-    <div class="file-section">
-      <div class="paste-toggle" id="pasteToggle">
-        <span>Paste text or image</span>
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M9 18l6-6-6-6"/>
-        </svg>
-      </div>
-      <div class="paste-area" id="pasteArea" contenteditable="true" placeholder="Paste text here, or paste an image (Ctrl+V)"></div>
-      <div id="thumbs"></div>
-    </div>
+  <!-- Paste section -->
+<div class="file-section">
+  <label>Paste text or image (Ctrl+V):</label>
+  <div class="paste-area open" id="pasteArea" contenteditable="true" style="display:block;" placeholder="Paste text here, or paste an image"></div>
+  <div id="thumbs"></div>
+</div>
 
     <button class="btn" id="sendBtn">Send</button>
     <div class="progress-bar" id="progressBar">
@@ -410,7 +421,6 @@ function getUploadHTML(): string {
     const addFilesBtn = document.getElementById('addFilesBtn');
     const addFolderBtn = document.getElementById('addFolderBtn');
     const fileListEl = document.getElementById('fileList');
-    const pasteToggle = document.getElementById('pasteToggle');
     const pasteArea = document.getElementById('pasteArea');
     const sendBtn = document.getElementById('sendBtn');
     const status = document.getElementById('status');
@@ -472,11 +482,6 @@ function getUploadHTML(): string {
     fileInput.addEventListener('change', () => addFilesFromInput(fileInput));
     folderInput.addEventListener('change', () => addFilesFromInput(folderInput));
 
-    pasteToggle.addEventListener('click', () => {
-      pasteArea.classList.toggle('open');
-      pasteToggle.classList.toggle('open');
-    });
-
     pasteArea.addEventListener('paste', (e) => {
       const items = e.clipboardData?.items;
       if (!items) return;
@@ -534,7 +539,8 @@ function getUploadHTML(): string {
     });
 
     sendBtn.addEventListener('click', async () => {
-      if (fileEntries.length === 0 && !pastedImageData) {
+     const text = pasteArea.innerText.trim();
+        if (fileEntries.length === 0 && !pastedImageData && !text) {
         status.textContent = 'Please add files or paste something first.';
         return;
       }

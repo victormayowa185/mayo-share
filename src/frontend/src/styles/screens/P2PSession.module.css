@@ -5,8 +5,8 @@
   width: 100%;
   padding: 10px 24px 48px 24px;
   min-height: 60vh;
-  background: #0a0a0a;
-  color: #ddd;
+  background: var(--bg-primary);
+  color: var(--text-primary);
 }
 
 .createPanel {
@@ -19,11 +19,10 @@
   margin: 0 auto;
 }
 
-
 .title {
   font-size: 1.6rem;
   margin-bottom: 32px;
-  color: #fff;
+  color: var(--text-inverse);
 }
 
 .modeRow {
@@ -51,7 +50,7 @@
 }
 
 .columnTitle {
-  color: #aaa;
+  color: var(--text-column-title);
   font-size: 0.9rem;
   margin-bottom: 12px;
   text-transform: uppercase;
@@ -60,7 +59,7 @@
 }
 
 .label {
-  color: #888;
+  color: var(--text-muted);
   font-size: 0.9rem;
   margin-bottom: 8px;
   text-align: center;
@@ -70,8 +69,8 @@
   width: 200px;
   height: 200px;
   border-radius: 12px;
-  border: 2px solid #b169e0;
-  background: #0a0a0a;
+  border: 2px solid var(--accent);
+  background: var(--bg-primary);
   margin: 16px 0;
 }
 
@@ -79,13 +78,13 @@
   width: 200px;
   height: 200px;
   border-radius: 12px;
-  border: 2px dashed #333;
+  border: 2px dashed var(--border-light);
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  color: #555;
+  color: var(--text-dim);
   margin: 16px 0;
 }
 
@@ -96,9 +95,9 @@
 }
 
 .copyBtn {
-  background: #222;
-  border: 1px solid #333;
-  color: #ccc;
+  background: var(--bg-copy-btn);
+  border: 1px solid var(--border-light);
+  color: var(--text-secondary);
   padding: 8px 20px;
   border-radius: 8px;
   cursor: pointer;
@@ -106,13 +105,13 @@
 }
 
 .copyBtn:hover {
-  background: #2a2a2a;
+  background: var(--bg-copy-btn-hover);
 }
 
 .toggleBtn {
   background: none;
-  border: 1px solid #333;
-  color: #888;
+  border: 1px solid var(--border-light);
+  color: var(--text-muted);
   padding: 8px 16px;
   border-radius: 6px;
   cursor: pointer;
@@ -120,16 +119,16 @@
 }
 
 .toggleBtn:hover {
-  border-color: #555;
-  color: #ccc;
+  border-color: var(--border-hover-light);
+  color: var(--text-secondary);
 }
 
 .codeBox {
   width: 100%;
-  background: #111;
-  border: 1px solid #333;
+  background: var(--bg-card);
+  border: 1px solid var(--border-light);
   border-radius: 8px;
-  color: #ccc;
+  color: var(--text-secondary);
   padding: 12px;
   font-size: 0.78rem;
   font-family: monospace;
@@ -138,11 +137,11 @@
   margin-bottom: 8px;
 }
 
-/* Primary button – now purple */
+/* Primary button */
 .btn {
   padding: 12px 28px;
-  background: #b169e0;
-  color: white;
+  background: var(--accent);
+  color: var(--text-inverse);
   border: none;
   border-radius: 8px;
   font-size: 1rem;
@@ -150,28 +149,28 @@
 }
 
 .btn:hover:not(:disabled) {
-  background: #9a4fd4;
+  background: var(--accent-hover);
 }
 
 .btn:disabled {
-  background: #333;
-  color: #888;
+  background: var(--border-light);
+  color: var(--text-muted);
   cursor: not-allowed;
 }
 
 .ghostBtn {
   padding: 12px 28px;
   background: transparent;
-  color: #ccc;
-  border: 1px solid #333;
+  color: var(--text-secondary);
+  border: 1px solid var(--border-light);
   border-radius: 8px;
   font-size: 1rem;
   cursor: pointer;
 }
 
 .ghostBtn:hover {
-  border-color: #b169e0;
-  color: #b169e0;
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 /* Code panel used by join mode */
@@ -193,35 +192,35 @@
 }
 
 .deviceItem {
-  background: #1a1a1a;
-  border: 1px solid #333;
+  background: var(--bg-input);
+  border: 1px solid var(--border-light);
   border-radius: 8px;
   padding: 10px 14px;
   cursor: pointer;
-  color: #ccc;
+  color: var(--text-secondary);
   transition: border-color 0.15s;
 }
 
 .deviceItem:hover {
-  background: #252525;
-  border-color: #b169e0;
+  background: var(--bg-hover);
+  border-color: var(--accent);
 }
 
 .hint {
-  color: #666;
+  color: var(--text-placeholder);
   font-size: 0.85rem;
   text-align: center;
 }
 
 .status {
   margin-top: 16px;
-  color: #4caf50;
+  color: var(--success);
   font-size: 0.95rem;
   text-align: center;
 }
 
 .error {
-  color: #f44336;
+  color: var(--error);
 }
 
 /* Connected file area */
@@ -236,9 +235,9 @@
 }
 
 .connectedBadge {
-  background: #0a1a0a;
-  border: 1px solid #4caf50;
-  color: #4caf50;
+  background: var(--connected-badge-bg);
+  border: 1px solid var(--success);
+  color: var(--success);
   padding: 6px 16px;
   border-radius: 20px;
   font-size: 0.9rem;
@@ -253,8 +252,8 @@
 
 .sendBtn {
   padding: 12px 28px;
-  background: #4caf50;
-  color: white;
+  background: var(--success);
+  color: var(--text-inverse);
   border: none;
   border-radius: 8px;
   font-size: 1rem;
@@ -262,12 +261,12 @@
 }
 
 .sendBtn:hover:not(:disabled) {
-  background: #43a047;
+  background: var(--success-hover);
 }
 
 .sendBtn:disabled {
-  background: #333;
-  color: #888;
+  background: var(--border-light);
+  color: var(--text-muted);
   cursor: not-allowed;
 }
 
@@ -282,8 +281,8 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  background: #111;
-  border: 1px solid #222;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
   border-radius: 8px;
   padding: 10px 14px;
   font-size: 0.88rem;
@@ -297,12 +296,12 @@
 }
 
 .queueSize {
-  color: #888;
+  color: var(--text-muted);
   white-space: nowrap;
 }
 
 .queueStatus {
-  color: #b169e0;
+  color: var(--accent);
   white-space: nowrap;
   min-width: 60px;
   text-align: right;
@@ -311,19 +310,19 @@
 .removeBtn {
   background: transparent;
   border: none;
-  color: #888;
+  color: var(--text-muted);
   cursor: pointer;
   font-size: 0.9rem;
 }
 
 .removeBtn:hover {
-  color: #f44336;
+  color: var(--error);
 }
 
 .progress {
   flex: 1;
   height: 6px;
-  accent-color: #b169e0;
+  accent-color: var(--accent);
 }
 
 .incomingSection {
@@ -335,21 +334,21 @@
   flex-direction: column;
   align-items: center;
   gap: 12px;
-  color: #555;
+  color: var(--text-dim);
   margin-top: 48px;
 }
 
 /* ── Create / Join session status ── */
 .waitingText {
-  color: #ccc;
+  color: var(--text-secondary);
   font-size: 1rem;
   text-align: center;
   margin-top: 20px;
 }
 
 .spinner {
-  border: 3px solid #333;
-  border-top: 3px solid #b169e0;
+  border: 3px solid var(--border-light);
+  border-top: 3px solid var(--accent);
   border-radius: 50%;
   width: 40px;
   height: 40px;

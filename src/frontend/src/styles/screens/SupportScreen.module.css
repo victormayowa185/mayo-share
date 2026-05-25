@@ -1,10 +1,9 @@
 .container {
   min-height: 70vh;
-  background: #0A0A0A;
-  color: white;
+  background: var(--bg-primary);
+  color: var(--text-inverse);
   padding: 20px 24px;
 }
-
 
 .content {
   display: flex;
@@ -19,16 +18,17 @@
 .title {
   font-size: 1.5rem;
   margin-bottom: 8px;
+  color: var(--text-primary);
 }
 
 .paragraph {
-  color: #ccc;
+  color: var(--text-secondary);
   margin-bottom: 32px;
 }
 
 .card {
-  background: #111;
-  border: 1px solid #222;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
   border-radius: 12px;
   padding: 20px;
   margin-bottom: 32px;
@@ -39,22 +39,21 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  color: #ccc;
+  color: var(--text-secondary);
   font-size: 0.95rem;
   padding: 8px 0;
 }
 
 .contactRow + .contactRow {
-  border-top: 1px solid #222;
+  border-top: 1px solid var(--border);
   margin-top: 8px;
   padding-top: 16px;
 }
 
-
 .btn {
   padding: 12px 28px;
-  background: #b169e0;
-  color: white;
+  background: var(--accent);
+  color: var(--text-inverse);
   border: none;
   border-radius: 8px;
   cursor: pointer;
@@ -68,5 +67,5 @@
 }
 
 .btn:hover {
-  background: #9a4fd4;
+  background: var(--accent-hover);
 }

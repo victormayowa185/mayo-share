@@ -5,8 +5,8 @@
   width: 100%;
   padding: 40px 24px 48px 24px;
   min-height: calc(100vh - 60px);
-  background: #0a0a0a;
-  color: #ddd;
+  background: var(--bg-primary);
+  color: var(--text-primary);
 }
 
 .inner {
@@ -14,17 +14,19 @@
   flex-direction: column;
   align-items: center;
   justify-content: flex-start;
-  padding: 40px 20px 20px 20px;      /* less bottom padding */
+  padding: 40px 20px 20px 20px;
   gap: 20px;
-  flex: 1;                    
+  flex: 1;
 }
 
 .heading {
   font-size: 1.8rem;
   margin-bottom: 8px;
+  color: var(--text-primary);
 }
+
 .subtitle {
-  color: #888;
+  color: var(--text-muted);
   margin-bottom: 32px;
 }
 
@@ -35,30 +37,42 @@
   justify-content: center;
 }
 
+/* Purple card – always your accent colour */
 .card {
-  background: #111;
-  border: 1px solid #222;
+  background: var(--home-card-bg);
+  border: var(--home-card-border);               /* ← dynamic border */
   border-radius: 16px;
   padding: 32px 28px;
   width: 220px;
   cursor: pointer;
   text-align: center;
+  color: var(--home-card-text);
   transition:
     border-color 0.2s,
     transform 0.1s;
 }
 
+.card:hover {
+  border-color: var(--home-card-hover-border);   /* purple in dark, none in light */
+  transform: translateY(-2px);
+}
+
 .cardEmoji {
   font-size: 3rem;
   margin-bottom: 16px;
+  color: var(--home-card-icon);
 }
+
 .cardTitle {
   font-size: 1.2rem;
   font-weight: bold;
   margin-bottom: 8px;
+  color: var(--home-card-text);
 }
+
+
 .cardDescription {
-  color: #888;
+  color: var(--home-card-text-desc);
   font-size: 0.9rem;
   line-height: 1.5;
 }

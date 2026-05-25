@@ -1,13 +1,14 @@
-﻿import { createServer, Server, IncomingMessage, ServerResponse } from 'http';
-import { promises as fs, createReadStream, statSync } from 'fs';
-import path from 'path';
-import { EventEmitter } from 'events';
+﻿import { createServer, Server, IncomingMessage, ServerResponse } from "http";
+import { promises as fs, createReadStream, statSync } from "fs";
+import path from "path";
+import { EventEmitter } from "events";
 
 interface SharedFile {
-  filePath: string;        // absolute disk path for reading
-  fileName: string;        // basename, used for Content-Disposition
+  filePath: string;
+  fileName: string;
   fileSize: number;
-  relativePath: string;    // e.g. "Brave/brave.exe" or just "photo.jpg"
+  relativePath: string;
+  downloadProgress?: number;
 }
 
 export class FileServer extends EventEmitter {
@@ -20,9 +21,10 @@ export class FileServer extends EventEmitter {
     filePaths: string[],
     relativePaths?: (string | undefined)[],
     port?: number,
-    ip?: string
+    ip?: string,
+    message?: string,
   ): Promise<string> {
-    if (this.server) throw new Error('Server already running');
+    if (this.server) throw new Error("Server already running");
     if (port) this.port = port;
 
     // Build file list, verify all exist
@@ -45,63 +47,88 @@ export class FileServer extends EventEmitter {
     }
 
     return new Promise((resolve, reject) => {
-      this.server = createServer((req: IncomingMessage, res: ServerResponse) => {
-        const url = req.url || '/';
+      this.server = createServer(
+        (req: IncomingMessage, res: ServerResponse) => {
+          const url = req.url || "/";
 
-        // Serve the HTML index page
-        if (url === '/' || url === '') {
-          const html = buildDownloadPage(this.files);
-          res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-          res.end(html);
-          return;
-        }
-
-        // Serve individual files: /file/ followed by the relative path
-        if (url.startsWith('/file/')) {
-          const relative = decodeURIComponent(url.slice(6)); // everything after /file/
-          let fileEntry = this.fileMap.get(relative);
-          if (!fileEntry) {
-            // fallback: try matching just the filename (for backwards compatibility)
-            const byName = this.files.find(f => f.relativePath === relative || f.fileName === relative);
-            if (!byName) {
-              res.writeHead(404);
-              res.end('File not found');
-              return;
-            }
-            fileEntry = byName;
+          // Serve the HTML index page
+          if (url === "/" || url === "") {
+            const html = buildDownloadPage(this.files);
+            res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+            res.end(html);
+            return;
           }
 
-          res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(fileEntry.fileName)}"`);
-          res.setHeader('Content-Type', 'application/octet-stream');
-          res.setHeader('Content-Length', fileEntry.fileSize);
-
-          const readStream = createReadStream(fileEntry.filePath);
-          this.emit('download-started', this.files.indexOf(fileEntry), fileEntry.fileName);
-
-          readStream.pipe(res);
-          readStream.on('error', (err) => {
-            if (!res.headersSent) {
-              res.writeHead(500);
-              res.end('File read error');
+          // Serve individual files: /file/ followed by the relative path
+          if (url.startsWith("/file/")) {
+            const relative = decodeURIComponent(url.slice(6)); // everything after /file/
+            let fileEntry = this.fileMap.get(relative);
+            if (!fileEntry) {
+              // fallback: try matching just the filename (for backwards compatibility)
+              const byName = this.files.find(
+                (f) => f.relativePath === relative || f.fileName === relative,
+              );
+              if (!byName) {
+                res.writeHead(404);
+                res.end("File not found");
+                return;
+              }
+              fileEntry = byName;
             }
-            console.error('Stream error:', err);
-          });
-          res.on('finish', () => {
-            this.emit('download-completed', this.files.indexOf(fileEntry!), fileEntry!.fileName);
-          });
-          return;
-        }
 
-        res.writeHead(404);
-        res.end('Not found');
-      });
+            res.setHeader(
+              "Content-Disposition",
+              `attachment; filename="${encodeURIComponent(fileEntry.fileName)}"`,
+            );
+            res.setHeader("Content-Type", "application/octet-stream");
+            res.setHeader("Content-Length", fileEntry.fileSize);
 
-      this.server.listen(this.port, '0.0.0.0', () => {
-        const usedIP = ip || '192.168.137.1';
+            const readStream = createReadStream(fileEntry.filePath);
+            this.emit(
+              "download-started",
+              this.files.indexOf(fileEntry),
+              fileEntry.fileName,
+            );
+
+            let bytesSent = 0;
+            readStream.on("data", (chunk: any) => {
+              const length = Buffer.isBuffer(chunk)
+                ? chunk.length
+                : Buffer.byteLength(chunk);
+              bytesSent += length;
+              const pct = Math.floor((bytesSent / fileEntry.fileSize) * 100);
+              this.emit("download-progress", fileEntry.fileName, pct);
+            });
+
+            readStream.pipe(res);
+            readStream.on("error", (err) => {
+              if (!res.headersSent) {
+                res.writeHead(500);
+                res.end("File read error");
+              }
+              console.error("Stream error:", err);
+            });
+            res.on("finish", () => {
+              this.emit(
+                "download-completed",
+                this.files.indexOf(fileEntry!),
+                fileEntry!.fileName,
+              );
+            });
+            return;
+          }
+
+          res.writeHead(404);
+          res.end("Not found");
+        },
+      );
+
+      this.server.listen(this.port, "0.0.0.0", () => {
+        const usedIP = ip || "192.168.137.1";
         resolve(`http://${usedIP}:${this.port}`);
       });
 
-      this.server.on('error', (err) => {
+      this.server.on("error", (err) => {
         this.server = null;
         reject(err);
       });
@@ -121,31 +148,37 @@ export class FileServer extends EventEmitter {
 // ─── Helpers ─────────────────────────────────────────────
 
 function formatBytes(b: number): string {
-  if (b === 0) return '0 B';
-  const k = 1024, sizes = ['B', 'KB', 'MB', 'GB'];
+  if (b === 0) return "0 B";
+  const k = 1024,
+    sizes = ["B", "KB", "MB", "GB"];
   const i = Math.floor(Math.log(b) / Math.log(k));
-  return parseFloat((b / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+  return parseFloat((b / Math.pow(k, i)).toFixed(1)) + " " + sizes[i];
 }
 
 function escapeHtml(str: string): string {
-  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }
 
 function getFileIcon(name: string): string {
-  const ext = name.split('.').pop()?.toLowerCase() || '';
-  if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg'].includes(ext)) return '🖼️';
-  if (['mp4', 'mkv', 'avi', 'mov', 'webm'].includes(ext)) return '🎬';
-  if (['mp3', 'wav', 'aac', 'flac', 'ogg'].includes(ext)) return '🎵';
-  if (['pdf'].includes(ext)) return '📕';
-  if (['doc', 'docx'].includes(ext)) return '📝';
-  if (['xls', 'xlsx'].includes(ext)) return '📊';
-  if (['ppt', 'pptx'].includes(ext)) return '📋';
-  if (['zip', 'rar', '7z', 'tar', 'gz'].includes(ext)) return '🗜️';
-  if (['exe', 'msi'].includes(ext)) return '⚙️';
-  if (['apk'].includes(ext)) return '📱';
-  if (['txt', 'md'].includes(ext)) return '📄';
-  if (['js', 'ts', 'py', 'java', 'cpp', 'c', 'cs'].includes(ext)) return '💻';
-  return '📁';
+  const ext = name.split(".").pop()?.toLowerCase() || "";
+  if (["jpg", "jpeg", "png", "gif", "webp", "bmp", "svg"].includes(ext))
+    return "🖼️";
+  if (["mp4", "mkv", "avi", "mov", "webm"].includes(ext)) return "🎬";
+  if (["mp3", "wav", "aac", "flac", "ogg"].includes(ext)) return "🎵";
+  if (["pdf"].includes(ext)) return "📕";
+  if (["doc", "docx"].includes(ext)) return "📝";
+  if (["xls", "xlsx"].includes(ext)) return "📊";
+  if (["ppt", "pptx"].includes(ext)) return "📋";
+  if (["zip", "rar", "7z", "tar", "gz"].includes(ext)) return "🗜️";
+  if (["exe", "msi"].includes(ext)) return "⚙️";
+  if (["apk"].includes(ext)) return "📱";
+  if (["txt", "md"].includes(ext)) return "📄";
+  if (["js", "ts", "py", "java", "cpp", "c", "cs"].includes(ext)) return "💻";
+  return "📁";
 }
 
 // ─── Tree Builder ────────────────────────────────────────
@@ -158,15 +191,15 @@ interface TreeNode {
 }
 
 function buildTree(files: SharedFile[]): TreeNode {
-  const root: TreeNode = { name: '/', isDir: true, children: [] };
+  const root: TreeNode = { name: "/", isDir: true, children: [] };
 
   for (const f of files) {
-    const parts = f.relativePath.split('/');
+    const parts = f.relativePath.split("/");
     let current = root;
     for (let i = 0; i < parts.length; i++) {
       const part = parts[i];
       const isLast = i === parts.length - 1;
-      let child = current.children?.find(c => c.name === part);
+      let child = current.children?.find((c) => c.name === part);
       if (!child) {
         child = {
           name: part,
@@ -185,8 +218,8 @@ function buildTree(files: SharedFile[]): TreeNode {
 function renderTree(node: TreeNode, depth: number = 0): string {
   if (node.isDir && node.children) {
     const childrenHtml = node.children
-      .map(child => renderTree(child, depth + 1))
-      .join('');
+      .map((child) => renderTree(child, depth + 1))
+      .join("");
     if (depth === 0) return childrenHtml; // root
     return `
       <li class="tree-dir">
@@ -210,11 +243,11 @@ function renderTree(node: TreeNode, depth: number = 0): string {
         </div>
       </li>`;
   }
-  return '';
+  return "";
 }
 
 function hasSubfolders(files: SharedFile[]): boolean {
-  return files.some(f => f.relativePath.includes('/'));
+  return files.some((f) => f.relativePath.includes("/"));
 }
 
 // ─── Download Page ───────────────────────────────────────
@@ -222,13 +255,15 @@ function hasSubfolders(files: SharedFile[]): boolean {
 function buildDownloadPage(files: SharedFile[]): string {
   const fileCount = files.length;
   const useTree = hasSubfolders(files);
-  let fileListHtml = '';
+  let fileListHtml = "";
 
   if (useTree) {
     const tree = buildTree(files);
     fileListHtml = `<ul class="file-tree">${renderTree(tree)}</ul>`;
   } else {
-    fileListHtml = files.map(f => `
+    fileListHtml = files
+      .map(
+        (f) => `
       <tr>
         <td class="name">
           <span class="icon">${getFileIcon(f.fileName)}</span>
@@ -238,7 +273,9 @@ function buildDownloadPage(files: SharedFile[]): string {
         <td class="action">
           <a href="/file/${encodeURIComponent(f.relativePath)}" download="${escapeHtml(f.fileName)}" class="download-btn">Download</a>
         </td>
-      </tr>`).join('');
+      </tr>`,
+      )
+      .join("");
   }
 
   const zipButtonHtml = `
@@ -300,18 +337,18 @@ function buildDownloadPage(files: SharedFile[]): string {
 <body>
   <div class="header">
     <div class="logo">🦅 MAYO Share</div>
-    <div class="subtitle">${fileCount === 1 ? '1 file' : `${fileCount} files`} shared with you</div>
+    <div class="subtitle">${fileCount === 1 ? "1 file" : `${fileCount} files`} shared with you</div>
   </div>
   <div class="card">
-    ${useTree ? '' : '<table>'}
+    ${useTree ? "" : "<table>"}
     ${fileListHtml}
-    ${useTree ? '' : '</table>'}
-    ${fileCount > 1 ? zipButtonHtml : ''}
+    ${useTree ? "" : "</table>"}
+    ${fileCount > 1 ? zipButtonHtml : ""}
   </div>
   <div class="footer">Shared via MAYO Share • Offline P2P File Transfer</div>
 
   <script>
-    const files = ${JSON.stringify(files.map(f => ({ r: f.relativePath, n: f.fileName })))};
+    const files = ${JSON.stringify(files.map((f) => ({ r: f.relativePath, n: f.fileName })))};
 
     async function downloadAllAsZip() {
       const btn = document.getElementById('downloadAllBtn');

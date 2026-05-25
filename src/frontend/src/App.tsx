@@ -39,13 +39,28 @@ const App: React.FC = () => {
   const [hotspotIP, setHotspotIP] = useState("");
   const [connectedDevicesCount, setConnectedDevicesCount] = useState(0);
   const [connectionLabel, setConnectionLabel] = useState<string | null>(null);
+  const [platform, setPlatform] = useState<string | null>(null);
 
-  // Check setup flags on mount
+  // Check setup flags and platform on mount
   useEffect(() => {
-    const done = localStorage.getItem("mayo-setup-complete");
-    const langDone = localStorage.getItem("mayo-language-set");
-    setSetupComplete(done === "true");
-    setLanguageSet(langDone === "true");
+    const init = async () => {
+      const done = localStorage.getItem("mayo-setup-complete");
+      const langDone = localStorage.getItem("mayo-language-set");
+      
+      // Detect platform
+      const plat = await window.electronAPI.getPlatform();
+      setPlatform(plat);
+
+      // On macOS, never show the hardware stepper
+      if (plat === "darwin") {
+        localStorage.setItem("mayo-setup-complete", "true");
+        setSetupComplete(true);
+      } else {
+        setSetupComplete(done === "true");
+      }
+      setLanguageSet(langDone === "true");
+    };
+    init();
   }, []);
 
   // Poll hotspot status every 5 seconds
@@ -94,7 +109,13 @@ const App: React.FC = () => {
 
   const resetSetup = () => {
     localStorage.removeItem("mayo-setup-complete");
-    setSetupComplete(false);
+    // On macOS, auto‑re‑complete setup so the stepper never shows
+    if (platform === "darwin") {
+      localStorage.setItem("mayo-setup-complete", "true");
+      setSetupComplete(true);
+    } else {
+      setSetupComplete(false);
+    }
     setScreen("home");
   };
 

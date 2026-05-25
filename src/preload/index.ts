@@ -16,6 +16,14 @@ contextBridge.exposeInMainWorld("electronAPI", {
   onDeviceNameChanged: (callback: (name: string) => void) => {
     ipcRenderer.on("device-name-changed", (_event, name) => callback(name));
   },
+  onDownloadProgress: (
+  callback: (data: { fileName: string; percent: number }) => void,
+) => {
+  ipcRenderer.on("download-progress", (_event, data) => callback(data));
+},
+  startFileServer: (files: (string | FolderFile)[], ip?: string, message?: string): Promise<string> =>
+  ipcRenderer.invoke("start-file-server", files, ip, message),
+  getPlatform: () => process.platform,
   submitRating: (data: any) => ipcRenderer.invoke("submit-rating", data),
   getTranslations: (lang: string) =>
     ipcRenderer.invoke("get-translations", lang),
@@ -70,9 +78,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
   ) => {
     ipcRenderer.on("sender-connected", (_event, data) => callback(data));
   },
-
-  startFileServer: (files: (string | FolderFile)[]): Promise<string> =>
-    ipcRenderer.invoke("start-file-server", files),
   stopFileServer: () => ipcRenderer.invoke("stop-file-server"),
   getFileSize: (filePath: string) =>
     ipcRenderer.invoke("get-file-size", filePath),

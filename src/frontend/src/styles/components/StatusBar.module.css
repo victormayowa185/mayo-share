@@ -2,12 +2,12 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background: #0d0d0d;
-  border-top: 1px solid #222;
+  background: var(--bg-statusbar);
+  border-top: 1px solid var(--border);
   padding: 4px 24px;
   height: 28px;
   font-size: 0.75rem;
-  color: #888;
+  color: var(--text-muted);
   position: fixed;
   bottom: 0;
   left: 0;
@@ -24,18 +24,18 @@
 }
 
 .hotspotOn {
-  color: #4caf50;
+  color: var(--success);
 }
 
 .hotspotOff {
-  color: #555;
+  color: var(--text-dim);
 }
 
 .transfer {
-  color: #b169e0;
+  color: var(--accent);
 }
 
 .version {
-  color: #555;
+  color: var(--text-dim);
   font-size: 0.7rem;
 }

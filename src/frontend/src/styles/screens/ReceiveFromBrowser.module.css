@@ -5,18 +5,18 @@
   width: 100%;
   padding: 10px 24px 20px 24px;
   min-height: 60vh;
-  background: #0a0a0a;
-  color: #ddd;
+  background: var(--bg-primary);
+  color: var(--text-primary);
 }
 
 .title {
   font-size: 1.6rem;
   margin-bottom: 8px;
-  color: #fff;
+  color: var(--text-inverse);
 }
 
 .subtitle {
-  color: #bbb;
+  color: var(--text-subtle);
   margin-bottom: 32px;
   text-align: center;
   max-width: 600px;
@@ -24,8 +24,8 @@
 
 .btn {
   padding: 12px 32px;
-  background: #b169e0;
-  color: #fff;
+  background: var(--accent);
+  color: var(--text-inverse);
   border: none;
   border-radius: 8px;
   font-size: 1rem;
@@ -33,7 +33,7 @@
 }
 
 .btn:hover {
-  background: #9a4fd4;
+  background: var(--accent-hover);
 }
 
 /* Spinner */
@@ -50,8 +50,7 @@
   }
 }
 
-/* ── Two‑column layout (exact match to Quick Share) ── */
-/* Centered single column – replaces the two‑column layout */
+/* Centered single column */
 .receivePanel {
   display: flex;
   flex-direction: column;
@@ -62,21 +61,19 @@
 }
 
 .columnTitle {
-  color: #aaa;
+  color: var(--text-column-title);
   font-size: 0.9rem;
   margin-bottom: 12px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
 
-
-
 .qr {
   width: 220px;
   height: 220px;
   border-radius: 12px;
-  border: 2px solid #b169e0;
-  background: #b169e0;
+  border: 2px solid var(--accent);
+  background: var(--accent);
   margin-bottom: 16px;
 }
 
@@ -84,11 +81,11 @@
   width: 220px;
   height: 220px;
   border-radius: 12px;
-  border: 2px dashed #333;
+  border: 2px dashed var(--border-light);
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #555;
+  color: var(--text-dim);
   margin-bottom: 16px;
 }
 
@@ -103,21 +100,21 @@
 
 .url {
   flex: 1;
-  background: #111;
-  border: 1px solid #333;
+  background: var(--bg-card);
+  border: 1px solid var(--border-light);
   border-radius: 6px;
   padding: 8px 12px;
   font-size: 0.8rem;
-  color: #ccc;
+  color: var(--text-secondary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .copyBtn {
-  background: #333;
+  background: var(--btn-copy-bg);
   border: none;
-  color: #ccc;
+  color: var(--text-secondary);
   padding: 8px 14px;
   border-radius: 6px;
   font-size: 0.85rem;
@@ -126,12 +123,12 @@
 }
 
 .copyBtn:hover {
-  background: #444;
-  color: #fff;
+  background: var(--btn-copy-hover-bg);
+  color: var(--text-inverse);
 }
 
 .hint {
-  color: #888;
+  color: var(--text-muted);
   font-size: 0.8rem;
   text-align: center;
   margin-bottom: 16px;
@@ -140,8 +137,8 @@
 
 .stopBtn {
   background: transparent;
-  border: 1px solid #f44336;
-  color: #f44336;
+  border: 1px solid var(--error);
+  color: var(--error);
   padding: 8px 24px;
   border-radius: 8px;
   cursor: pointer;
@@ -149,18 +146,18 @@
 }
 
 .stopBtn:hover {
-  background: #f44336;
-  color: #fff;
+  background: var(--error);
+  color: var(--text-inverse);
 }
 
 .waitingHint {
-  color: #666;
+  color: var(--text-placeholder);
   font-size: 0.9rem;
   text-align: center;
   margin-top: 16px;
 }
 
-/* ── Received / pending lists (keep your existing styles) ── */
+/* ── Received / pending lists ── */
 .receivedSection {
   margin-top: 24px;
   width: 100%;
@@ -176,8 +173,8 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  background: #111;
-  border: 1px solid #222;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
   border-radius: 8px;
   padding: 10px 14px;
   margin-bottom: 6px;
@@ -188,16 +185,16 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: #ddd;
+  color: var(--text-primary);
 }
 
 .fileTime {
-  color: #666;
+  color: var(--text-placeholder);
   font-size: 0.8rem;
 }
 
 .acceptBtn {
-  background: #4caf50;
+  background: var(--success);
   border: none;
   color: white;
   padding: 6px 12px;
@@ -207,11 +204,11 @@
 }
 
 .acceptBtn:hover {
-  background: #43a047;
+  background: var(--success-hover);
 }
 
 .declineBtn {
-  background: #f44336;
+  background: var(--error);
   border: none;
   color: white;
   padding: 6px 12px;
@@ -221,10 +218,8 @@
 }
 
 .declineBtn:hover {
-  background: #d32f2f;
+  background: var(--error-hover);
 }
-
-
 
 @media (max-width: 700px) {
   .receivePanel {

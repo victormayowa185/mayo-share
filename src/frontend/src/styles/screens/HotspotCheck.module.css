@@ -5,26 +5,26 @@
   width: 100%;
   padding: 20px 24px 48px 24px;
   min-height: calc(100vh - 60px);
-  background: #0a0a0a;
-  color: #ddd;
+  background: var(--bg-primary);
+  color: var(--text-primary);
 }
 
 .title {
   font-size: 1.6rem;
   margin-bottom: 8px;
-  color: #fff;
+  color: var(--text-inverse);
 }
 
 .subtitle {
-  color: #bbb;
+  color: var(--text-subtle);
   margin-bottom: 32px;
   text-align: center;
 }
 
 .btn {
   padding: 12px 32px;
-  background: #b169e0;
-  color: #fff;
+  background: var(--accent);
+  color: var(--text-inverse);
   border: none;
   border-radius: 8px;
   font-size: 1rem;
@@ -33,22 +33,22 @@
 }
 
 .btn:disabled {
-  background: #333;
-  color: #888;
+  background: var(--border-light);
+  color: var(--text-muted);
   cursor: not-allowed;
 }
 
 .btn:hover:not(:disabled) {
-  background: #b169e0;
+  background: var(--accent-hover);
 }
 
 .log {
-  background: #111;
-  border: 1px solid #222;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
   border-radius: 8px;
   padding: 16px;
   font-size: 0.8rem;
-  color: #aaa;
+  color: var(--text-log);
   width: 100%;
   max-width: 500px;
   max-height: 200px;
@@ -63,15 +63,15 @@
   flex-direction: column;
   align-items: center;
   gap: 16px;
-  background: #1a1a1a;
+  background: var(--bg-input);
   border-radius: 12px;
   padding: 24px;
   margin-top: 8px;
-  color: #fff;
+  color: var(--text-inverse);
 }
 
 .successMsg {
-  color: #b169e0;
+  color: var(--accent);
   font-size: 1.1rem;
 }
 
@@ -83,15 +83,15 @@
 }
 
 .networkName {
-  color: #4caf50;
+  color: var(--success);
   font-size: 1.2rem;
   font-weight: bold;
 }
 
 .ghostBtn {
   background: transparent;
-  border: 1px solid #333;
-  color: #ccc;
+  border: 1px solid var(--border-light);
+  color: var(--text-secondary);
   padding: 10px 24px;
   border-radius: 8px;
   cursor: pointer;
@@ -100,8 +100,8 @@
 }
 
 .ghostBtn:hover {
-  border-color: #555;
-  color: #fff;
+  border-color: var(--border-hover-light);
+  color: var(--text-inverse);
 }
 
 .spinnerContainer {
@@ -114,8 +114,8 @@
 .spinner {
   width: 14px;
   height: 14px;
-  border: 2px solid rgba(255, 255, 255, 0.3);
-  border-top-color: #fff;
+  border: 2px solid var(--spinner-border);
+  border-top-color: var(--spinner-top);
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }

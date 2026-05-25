@@ -30,6 +30,10 @@ declare global {
         output?: string;
         error?: string;
       }>;
+      onDownloadProgress: (
+        callback: (data: { fileName: string; percent: number }) => void,
+      ) => void;
+      getPlatform: () => Promise<string>;
       launchHardwareWizard: () => Promise<{ success: boolean; error?: string }>;
       submitRating: (data: {
         rating: number;
@@ -52,7 +56,11 @@ declare global {
         loopbackAdapterPresent: boolean;
         port3001Listening: boolean;
       }>;
-      startFileServer: (files: (string | FolderFile)[]) => Promise<string>;
+      startFileServer: (
+        files: (string | FolderFile)[],
+        ip?: string,
+        message?: string,
+      ) => Promise<string>;
       stopFileServer: () => Promise<void>;
       getFileSize: (filePath: string) => Promise<number>;
       onDownloadUpdate: (

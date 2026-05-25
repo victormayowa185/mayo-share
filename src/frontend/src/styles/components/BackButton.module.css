@@ -4,8 +4,8 @@
   align-self: flex-start;
   width: fit-content;
   background: transparent;
-  border: 1px solid #333;
-  color: #ccc;
+  border: 1px solid var(--border-light);
+  color: var(--text-secondary);
   padding: 8px 16px;
   border-radius: 8px;
   cursor: pointer;
@@ -14,6 +14,6 @@
 }
 
 .backBtn:hover {
-  border-color: #555;
-  color: #fff;
+  border-color: var(--border-hover-light);
+  color: var(--text-inverse);
 }

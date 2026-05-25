@@ -5,21 +5,37 @@
   width: 100%;
   padding: 70px 24px 28px 24px;
   min-height: 90vh;
-  background: #0a0a0a;
-  color: #ddd;
+  background: var(--bg-primary);
+  color: var(--text-primary);
 }
 
 .compactBack {
-  margin-bottom: 0;   /* optional, for tighter spacing */
+  margin-bottom: 0;
 }
 
 .logo {
-  font-size: 2rem;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: var(--text-inverse);
   margin-bottom: 8px;
 }
 
+.logoIcon {
+  display: flex;
+  align-items: center;
+}
+
+.logoText {
+  color: var(--text-inverse);
+  font-size: 1.4rem;
+  font-weight: 700;
+}
+
 .subtitle {
-  color: #888;
+  color: var(--text-muted);
   margin-bottom: 40px;
 }
 
@@ -37,8 +53,8 @@
 }
 
 .card {
-  background: #111;
-  border: 1px solid #222;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
   border-radius: 16px;
   padding: 32px;
   max-width: 480px;
@@ -47,7 +63,7 @@
 }
 
 .stepNumber {
-  color: #b169e0;               /* brand purple */
+  color: var(--accent);
   font-size: 0.85rem;
   margin-bottom: 8px;
   text-transform: uppercase;
@@ -57,16 +73,17 @@
 .title {
   margin: 0 0 16px;
   font-size: 1.3rem;
+  color: var(--text-primary);
 }
 
 .instruction {
-  color: #ccc;
+  color: var(--text-secondary);
   line-height: 1.6;
   margin-bottom: 12px;
 }
 
 .note {
-  color: #777;
+  color: var(--text-muted);
   font-size: 0.9rem;
   margin-bottom: 28px;
 }
@@ -74,8 +91,8 @@
 .btn {
   padding: 12px 28px;
   font-size: 16px;
-  background: #b169e0;          /* brand purple */
-  color: white;
+  background: var(--accent);
+  color: var(--text-inverse);
   border: none;
   border-radius: 8px;
   cursor: pointer;
@@ -83,12 +100,12 @@
 }
 
 .btn:hover {
-  background: #9a4fd4;          /* slightly darker purple */
+  background: var(--accent-hover);
 }
 
 .btn:disabled {
-  background: #333;
-  color: #888;
+  background: var(--border-light);
+  color: var(--text-muted);
   cursor: not-allowed;
 }
 
@@ -96,26 +113,26 @@
   padding: 12px 28px;
   font-size: 16px;
   background: transparent;
-  color: #888;
-  border: 1px solid #333;
+  color: var(--text-muted);
+  border: 1px solid var(--border-light);
   border-radius: 8px;
   cursor: pointer;
   transition: all 0.15s;
 }
 
 .ghostBtn:hover {
-  border-color: #b169e0;
-  color: #b169e0;
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 .successMsg {
-  color: #4CAF50;
+  color: var(--success);
   margin-top: 16px;
   font-size: 1.1rem;
 }
 
 .failMsg {
-  color: #f44336;
+  color: var(--error);
   margin-top: 16px;
   font-size: 0.95rem;
 }
@@ -124,25 +141,4 @@
   display: flex;
   gap: 16px;
   margin-top: 32px;
-}
-
-.logo {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 1.6rem;
-  font-weight: 700;
-  color: #fff;
-  margin-bottom: 8px;
-}
-
-.logoIcon {
-  display: flex;
-  align-items: center;
-}
-
-.logoText {
-  color: #fff;
-  font-size: 1.4rem;
-  font-weight: 700;
 }

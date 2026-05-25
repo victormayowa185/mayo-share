@@ -7,6 +7,8 @@ import { open, close, read, appendFileSync } from "fs";
 import { DiscoveryManager } from "./discovery";
 import { UploadServer, setReceiveDir } from "./uploadServer";
 import { saveRating } from "./firebase";
+import { startHotspot, stopHotspot, configureHotspot } from "./hotspot-mac";
+import { HOTSPOT_IP } from "./hotspot-mac";
 import { statSync } from "fs";
 
 import fs from "fs";
@@ -123,20 +125,25 @@ async function getBestIP(): Promise<string> {
   for (const iface of Object.values(interfaces)) {
     if (!iface) continue;
     for (const addr of iface) {
-      if (
-        addr.family === "IPv4" &&
-        !addr.internal &&
-        !addr.address.startsWith("192.168.137.") // exclude loopback hotspot
-      ) {
-        return addr.address;
-      }
+     if (
+  addr.family === "IPv4" &&
+  !addr.internal &&
+  !addr.address.startsWith("192.168.137.") &&
+  !addr.address.startsWith("192.168.2.")&&
+  !addr.address.startsWith("169.254.") 
+) {
+  return addr.address;
+}
     }
   }
   return currentHotspotIP; // fallback to loopback
 }
 
 // ---------- Activity logging ----------
-const ACTIVITY_LOG_PATH = path.join("C:\\mayo-received", "activity.json");
+const ACTIVITY_LOG_PATH = path.join(
+  process.platform === "win32" ? "C:\\mayo-received" : path.join(os.homedir(), "mayo-received"),
+  "activity.json"
+);
 
 function addActivity(entry: {
   type: "sent" | "received";
@@ -256,42 +263,58 @@ ipcMain.handle("set-language", async (_event, lang: string) => {
 
 // ---------- Hotspot ----------
 ipcMain.handle("start-hotspot", async (): Promise<string> => {
-  return new Promise((resolve) => {
-    const tempScriptPath = path.join(
-      os.tmpdir(),
-      `mayo-hotspot-${Date.now()}.ps1`,
-    );
+if (process.platform === "win32") {
+    return new Promise((resolve) => {
+      const tempScriptPath = path.join(
+        os.tmpdir(),
+        `mayo-hotspot-${Date.now()}.ps1`,
+      );
 
+      try {
+        fs.writeFileSync(tempScriptPath, HOTSPOT_SCRIPT, "utf8");
+      } catch (err) {
+        resolve(`ERROR: Could not write temp script: ${err}`);
+        return;
+      }
+
+      execFile(
+        "powershell.exe",
+        ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", tempScriptPath],
+        { timeout: 60000 },
+        (error, stdout, stderr) => {
+          try {
+            fs.unlinkSync(tempScriptPath);
+          } catch {}
+
+          let output = stdout || "";
+          if (stderr && !stdout) output += stderr;
+          if (error) output += "\n[EXIT CODE]: " + error.message;
+
+          // Extract the hotspot IP from the script's output
+          const ipMatch = output.match(/Hotspot IP \(for sharing\):\s*([\d.]+)/);
+          if (ipMatch && ipMatch[1]) {
+            currentHotspotIP = ipMatch[1];
+          }
+
+          resolve(output || "Script produced no output");
+        },
+      );
+    });
+} else if (process.platform === "darwin") {
+    // macOS
     try {
-      fs.writeFileSync(tempScriptPath, HOTSPOT_SCRIPT, "utf8");
+      // First, attempt to configure (safe to call multiple times)
+      await configureHotspot();
     } catch (err) {
-      resolve(`ERROR: Could not write temp script: ${err}`);
-      return;
+      // If configuration fails (e.g. user rejected sudo), propagate
+      throw new Error(`Hotspot setup failed: ${err}`);
     }
-
-    execFile(
-      "powershell.exe",
-      ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", tempScriptPath],
-      { timeout: 60000 },
-      (error, stdout, stderr) => {
-        try {
-          fs.unlinkSync(tempScriptPath);
-        } catch {}
-
-        let output = stdout || "";
-        if (stderr && !stdout) output += stderr;
-        if (error) output += "\n[EXIT CODE]: " + error.message;
-
-        // Extract the hotspot IP from the script's output
-        const ipMatch = output.match(/Hotspot IP \(for sharing\):\s*([\d.]+)/);
-        if (ipMatch && ipMatch[1]) {
-          currentHotspotIP = ipMatch[1];
-        }
-
-        resolve(output || "Script produced no output");
-      },
-    );
-  });
+    const ip = await startHotspot();
+    currentHotspotIP = ip; // update the global IP for later use
+    return `Hotspot started at ${ip}`;
+  } else {
+    throw new Error("Unsupported platform");
+  }
 });
 
 ipcMain.handle("submit-rating", async (_event, ratingData) => {
@@ -404,53 +427,76 @@ uploadServer.on(
   },
 );
 
+
+
 ipcMain.handle(
   "check-hotspot-status",
   async (): Promise<{ active: boolean; ip: string }> => {
-    return new Promise((resolve) => {
-      const script = `
-      try {
-        $adapter = Get-NetAdapter | Where-Object { $_.InterfaceDescription -like "*KM-TEST*" -or $_.InterfaceDescription -like "*Loopback*" } | Select-Object -First 1
-        if (-not $adapter) { Write-Output "OFF"; exit 0 }
-        $profile = [Windows.Networking.Connectivity.NetworkInformation,Windows.Networking.Connectivity,ContentType=WindowsRuntime]::GetConnectionProfiles() | Where-Object { $_.ProfileName -eq $adapter.Name }
-        if (-not $profile) { Write-Output "OFF"; exit 0 }
-        $tm = [Windows.Networking.NetworkOperators.NetworkOperatorTetheringManager,Windows.Networking.NetworkOperators,ContentType=WindowsRuntime]::CreateFromConnectionProfile($profile)
-        $state = $tm.TetheringOperationalState
-        if ($state -eq [Windows.Networking.NetworkOperators.TetheringOperationalState]::On) {
-          Write-Output "ON:${currentHotspotIP}"
-        } else {
-          Write-Output "OFF"
-        }
-      } catch {
-        Write-Output "OFF"
-      }
-    `;
-
-      const tempPath = path.join(os.tmpdir(), `mayo-check-${Date.now()}.ps1`);
-      try {
-        fs.writeFileSync(tempPath, script, "utf8");
-      } catch {
-        resolve({ active: false, ip: "" });
-        return;
-      }
-
-      execFile(
-        "powershell.exe",
-        ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", tempPath],
-        { timeout: 8000 },
-        (error, stdout) => {
+    if (process.platform === "win32") {
+      // ─── Existing Windows logic (unchanged) ───
+      return new Promise((resolve) => {
+        const script = `
           try {
-            fs.unlinkSync(tempPath);
-          } catch {}
-          const out = (stdout || "").trim();
-          if (out.startsWith("ON")) {
-            resolve({ active: true, ip: currentHotspotIP });
-          } else {
-            resolve({ active: false, ip: "" });
+            $adapter = Get-NetAdapter | Where-Object { $_.InterfaceDescription -like "*KM-TEST*" -or $_.InterfaceDescription -like "*Loopback*" } | Select-Object -First 1
+            if (-not $adapter) { Write-Output "OFF"; exit 0 }
+            $profile = [Windows.Networking.Connectivity.NetworkInformation,Windows.Networking.Connectivity,ContentType=WindowsRuntime]::GetConnectionProfiles() | Where-Object { $_.ProfileName -eq $adapter.Name }
+            if (-not $profile) { Write-Output "OFF"; exit 0 }
+            $tm = [Windows.Networking.NetworkOperators.NetworkOperatorTetheringManager,Windows.Networking.NetworkOperators,ContentType=WindowsRuntime]::CreateFromConnectionProfile($profile)
+            $state = $tm.TetheringOperationalState
+            if ($state -eq [Windows.Networking.NetworkOperators.TetheringOperationalState]::On) {
+              Write-Output "ON:${currentHotspotIP}"
+            } else {
+              Write-Output "OFF"
+            }
+          } catch {
+            Write-Output "OFF"
           }
-        },
-      );
-    });
+        `;
+        const tempPath = path.join(os.tmpdir(), `mayo-check-${Date.now()}.ps1`);
+        try {
+          fs.writeFileSync(tempPath, script, "utf8");
+        } catch {
+          resolve({ active: false, ip: "" });
+          return;
+        }
+        execFile(
+          "powershell.exe",
+          ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", tempPath],
+          { timeout: 8000 },
+          (error, stdout) => {
+            try { fs.unlinkSync(tempPath); } catch {}
+            const out = (stdout || "").trim();
+            if (out.startsWith("ON")) {
+              resolve({ active: true, ip: currentHotspotIP });
+            } else {
+              resolve({ active: false, ip: "" });
+            }
+          },
+        );
+      });
+    } else if (process.platform === "darwin") {
+      // ─── macOS branch ───
+      return new Promise((resolve) => {
+        execFile(
+          "launchctl",
+          ["list", "com.apple.InternetSharing"],
+          { timeout: 5000 },
+          (error, stdout) => {
+            if (error) {
+              resolve({ active: false, ip: "" });
+            } else {
+              const isActive = (stdout || "").includes("PID");
+              resolve({
+                active: isActive,
+                ip: isActive ? HOTSPOT_IP : "",
+              });
+            }
+          },
+        );
+      });
+    } else {
+      return { active: false, ip: "" };
+    }
   },
 );
 // HOST NAME
@@ -471,32 +517,50 @@ ipcMain.handle("get-local-ip", async (): Promise<string | null> => {
   for (const iface of Object.values(interfaces)) {
     if (!iface) continue;
     for (const addr of iface) {
-      // IPv4, not internal (loopback), not a virtual adapter like loopback/hotspot
       if (
         addr.family === "IPv4" &&
         !addr.internal &&
-        !addr.address.startsWith("192.168.137.") // Our hotspot range
+        !addr.address.startsWith("192.168.137.") &&
+        !addr.address.startsWith("192.168.2.")&&
+        !addr.address.startsWith("169.254.")
       ) {
         return addr.address;
       }
     }
   }
-  return null; // No suitable network found → need hotspot
+  return null;
 });
 
 ipcMain.handle("get-wifi-ssid", async (): Promise<string | null> => {
-  return new Promise((resolve) => {
-    execFile(
-      "netsh",
-      ["wlan", "show", "interfaces"],
-      { timeout: 5000 },
-      (error, stdout) => {
-        if (error) return resolve(null);
-        const match = stdout.match(/^\s*SSID\s*:\s*(.+)$/m);
-        resolve(match ? match[1].trim() : null);
-      },
-    );
-  });
+  if (process.platform === "win32") {
+    return new Promise((resolve) => {
+      execFile(
+        "netsh",
+        ["wlan", "show", "interfaces"],
+        { timeout: 5000 },
+        (error, stdout) => {
+          if (error) return resolve(null);
+          const match = stdout.match(/^\s*SSID\s*:\s*(.+)$/m);
+          resolve(match ? match[1].trim() : null);
+        },
+      );
+    });
+  } else if (process.platform === "darwin") {
+    return new Promise((resolve) => {
+      execFile(
+        "networksetup",
+        ["-getairportnetwork", "en0"],
+        { timeout: 5000 },
+        (error, stdout) => {
+          if (error) return resolve(null);
+          // Output: "Current Wi‑Fi Network: MySSID"
+          const match = stdout.match(/Current Wi-Fi Network: (.+)/);
+          resolve(match ? match[1].trim() : null);
+        },
+      );
+    });
+  }
+  return null;
 });
 
 // ---------- Folder selection ----------
@@ -706,41 +770,66 @@ ipcMain.handle(
 );
 
 ipcMain.handle("diagnose-network", async (): Promise<any> => {
-  return new Promise((resolve) => {
-    const psScript = `
-      $ssid = (netsh wlan show interfaces | Select-String "SSID" | Select-String -NotMatch "BSSID" | Select-Object -First 1).ToString().Split(':')[1].Trim()
-      $profile = Get-NetConnectionProfile | Where-Object { $_.InterfaceAlias -like "*Wi-Fi*" } | Select-Object -ExpandProperty NetworkCategory
-      $loopback = Get-NetAdapter | Where-Object { $_.InterfaceDescription -like "*KM-TEST*" } | Select-Object -First 1
-      $port3001 = netstat -ano | Select-String ":3001" | Select-String "LISTENING"
-      Write-Host $ssid
-      Write-Host $profile
-      Write-Host ($loopback -ne $null)
-      Write-Host ($port3001 -ne $null)
-    `;
-    execFile(
-      "powershell.exe",
-      ["-NoProfile", "-Command", psScript],
-      { timeout: 10000 },
-      (error, stdout, stderr) => {
-        if (error)
-          return resolve({
+  if (process.platform === "win32") {
+    return new Promise((resolve) => {
+      const psScript = `
+        $ssid = (netsh wlan show interfaces | Select-String "SSID" | Select-String -NotMatch "BSSID" | Select-Object -First 1).ToString().Split(':')[1].Trim()
+        $profile = Get-NetConnectionProfile | Where-Object { $_.InterfaceAlias -like "*Wi-Fi*" } | Select-Object -ExpandProperty NetworkCategory
+        $loopback = Get-NetAdapter | Where-Object { $_.InterfaceDescription -like "*KM-TEST*" } | Select-Object -First 1
+        $port3001 = netstat -ano | Select-String ":3001" | Select-String "LISTENING"
+        Write-Host $ssid
+        Write-Host $profile
+        Write-Host ($loopback -ne $null)
+        Write-Host ($port3001 -ne $null)
+      `;
+      execFile(
+        "powershell.exe",
+        ["-NoProfile", "-Command", psScript],
+        { timeout: 10000 },
+        (error, stdout, stderr) => {
+          if (error)
+            return resolve({
+              ssid: null,
+              profileCategory: null,
+              loopbackAdapterPresent: false,
+              port3001Listening: false,
+            });
+          const lines = (stdout || "").trim().split("\n");
+          resolve({
+            ssid: lines[0]?.trim() || null,
+            profileCategory: lines[1]?.trim() || null,
+            loopbackAdapterPresent: lines[2]?.trim() === "True",
+            port3001Listening: lines[3]?.trim() === "True",
+          });
+        },
+      );
+    });
+  } else if (process.platform === "darwin") {
+    return new Promise((resolve) => {
+      execFile(
+        "lsof",
+        ["-i", ":3001"],
+        { timeout: 5000 },
+        (error, stdout) => {
+          const portListening = stdout && stdout.includes("LISTEN");
+          resolve({
             ssid: null,
             profileCategory: null,
             loopbackAdapterPresent: false,
-            port3001Listening: false,
+            port3001Listening: portListening,
           });
-        const lines = (stdout || "").trim().split("\n");
-        resolve({
-          ssid: lines[0]?.trim() || null,
-          profileCategory: lines[1]?.trim() || null,
-          loopbackAdapterPresent: lines[2]?.trim() === "True",
-          port3001Listening: lines[3]?.trim() === "True",
-        });
-      },
-    );
-  });
+        },
+      );
+    });
+  }
+  // fallback
+  return {
+    ssid: null,
+    profileCategory: null,
+    loopbackAdapterPresent: false,
+    port3001Listening: false,
+  };
 });
-
 
 ipcMain.handle("launch-hardware-wizard", async (): Promise<{ success: boolean; error?: string }> => {
   return new Promise((resolve) => {
@@ -808,7 +897,8 @@ ipcMain.handle(
 );
 
 // ---------- Settings: save path ----------
-let currentSavePath = "C:\\mayo-received";
+const defaultSaveDir = process.platform === "win32" ? "C:\\mayo-received" : path.join(os.homedir(), "mayo-received");
+let currentSavePath = defaultSaveDir;
 
 // Load saved path when app starts
 async function loadSettings() {
@@ -967,7 +1057,11 @@ app.on("before-quit", () => {
   if (signalingServer) signalingServer.close();
   uploadServer.stop();
   fileServer.stop();
-  stopWindowsHotspot();
+  if (process.platform === "win32") {
+    stopWindowsHotspot();
+  } else if (process.platform === "darwin") {
+    stopHotspot().catch(() => {});
+  }
 });
 
 app.on("window-all-closed", () => {

@@ -5,19 +5,18 @@
   width: 100%;
   padding: 20px 24px 48px 24px;
   min-height: calc(100vh - 60px);
-  background: #0a0a0a;
-  color: #ddd;
+  background: var(--bg-primary);
+  color: var(--text-primary);
 }
-
 
 .title {
   font-size: 1.6rem;
   margin-bottom: 8px;
-  color: #fff;
+  color: var(--text-inverse);
 }
 
 .subtitle {
-  color: #bbb;
+  color: var(--text-subtle);
   margin-bottom: 32px;
   text-align: center;
   max-width: 600px;
@@ -34,8 +33,8 @@
 
 .btn {
   padding: 12px 32px;
-  background: #b169e0;
-  color: #fff;
+  background: var(--accent);
+  color: var(--text-inverse);
   border: none;
   border-radius: 8px;
   font-size: 1rem;
@@ -43,19 +42,19 @@
 }
 
 .btn:hover:not(:disabled) {
-  background: #9a4fd4;
+  background: var(--accent-hover);
 }
 
 .btn:disabled {
-  background: #333;
-  color: #888;
+  background: var(--border-light);
+  color: var(--text-muted);
   cursor: not-allowed;
 }
 
 .ghostBtn {
   background: transparent;
-  border: 1px solid #333;
-  color: #ccc;
+  border: 1px solid var(--border-light);
+  color: var(--text-secondary);
   padding: 10px 24px;
   border-radius: 8px;
   cursor: pointer;
@@ -63,17 +62,17 @@
 }
 
 .ghostBtn:hover {
-  border-color: #b169e0;
-  color: #b169e0;
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 .shareBtn {
   composes: btn;
-  background: #b169e0;
+  background: var(--accent);
 }
 
 .shareBtn:hover:not(:disabled) {
-  background: #9a4fd4;
+  background: var(--accent-hover);
 }
 
 /* File list */
@@ -87,8 +86,8 @@
   display: flex;
   align-items: center;
   gap: 12px;
-  background: #111;
-  border: 1px solid #222;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
   border-radius: 8px;
   padding: 10px 16px;
   margin-bottom: 8px;
@@ -100,11 +99,11 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: #ccc;
+  color: var(--text-secondary);
 }
 
 .fileRowSize {
-  color: #888;
+  color: var(--text-muted);
   white-space: nowrap;
 }
 
@@ -116,13 +115,13 @@
 .removeBtn {
   background: transparent;
   border: none;
-  color: #888;
+  color: var(--text-muted);
   cursor: pointer;
   padding: 4px;
 }
 
 .removeBtn:hover {
-  color: #f44336;
+  color: var(--error);
 }
 
 /* ── Collapsible folders ── */
@@ -133,9 +132,9 @@
 }
 
 .toggleAllBtn {
-  background: #1a1a1a;
-  border: 1px solid #333;
-  color: #ccc;
+  background: var(--bg-folder-header);
+  border: 1px solid var(--border-light);
+  color: var(--text-secondary);
   padding: 6px 14px;
   border-radius: 6px;
   font-size: 0.8rem;
@@ -145,8 +144,8 @@
 }
 
 .toggleAllBtn:hover {
-  border-color: #b169e0;
-  color: #b169e0;
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 .folderGroup {
@@ -157,8 +156,8 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  background: #1a1a1a;
-  border: 1px solid #2a2a2a;
+  background: var(--bg-folder-header);
+  border: 1px solid var(--border-light);
   border-radius: 8px;
   padding: 10px 14px;
   cursor: pointer;
@@ -167,18 +166,18 @@
 }
 
 .folderHeader:hover {
-  border-color: #b169e0;
+  border-color: var(--accent);
 }
 
 .folderArrow {
-  color: #b169e0;
+  color: var(--accent);
   width: 16px;
   text-align: center;
 }
 
 .folderName {
   flex: 1;
-  color: #ddd;
+  color: var(--text-primary);
   font-weight: 600;
   font-size: 0.9rem;
   overflow: hidden;
@@ -187,7 +186,7 @@
 }
 
 .folderMeta {
-  color: #888;
+  color: var(--text-muted);
   font-size: 0.8rem;
   white-space: nowrap;
 }
@@ -195,7 +194,6 @@
 .folderContent {
   overflow: hidden;
   padding-left: 24px;
-  /* Height and opacity are controlled by JS for animation */
 }
 
 /* Two‑column sharing layout */
@@ -216,7 +214,7 @@
 }
 
 .columnTitle {
-  color: #aaa;
+  color: var(--text-column-title);
   font-size: 0.9rem;
   margin-bottom: 12px;
   text-transform: uppercase;
@@ -235,8 +233,8 @@
   width: 220px;
   height: 220px;
   border-radius: 12px;
-  border: 2px solid #b169e0;
-  background: #0a0a0a;
+  border: 2px solid var(--accent);
+  background: var(--bg-primary);
   margin-bottom: 16px;
 }
 
@@ -244,13 +242,13 @@
   width: 220px;
   height: 220px;
   border-radius: 12px;
-  border: 2px dashed #333;
+  border: 2px dashed var(--border-light);
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  color: #555;
+  color: var(--text-dim);
   margin-bottom: 16px;
 }
 
@@ -265,21 +263,21 @@
 
 .url {
   flex: 1;
-  background: #111;
-  border: 1px solid #333;
+  background: var(--bg-card);
+  border: 1px solid var(--border-light);
   border-radius: 6px;
   padding: 8px 12px;
   font-size: 0.8rem;
-  color: #ccc;
+  color: var(--text-secondary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .copyBtn {
-  background: #333;
+  background: var(--btn-copy-bg);
   border: none;
-  color: #ccc;
+  color: var(--text-secondary);
   padding: 8px 14px;
   border-radius: 6px;
   font-size: 0.85rem;
@@ -288,12 +286,12 @@
 }
 
 .copyBtn:hover {
-  background: #444;
-  color: #fff;
+  background: var(--btn-copy-hover-bg);
+  color: var(--text-inverse);
 }
 
 .hint {
-  color: #888;
+  color: var(--text-muted);
   font-size: 0.8rem;
   text-align: center;
   margin-bottom: 16px;
@@ -302,8 +300,8 @@
 
 .stopBtn {
   background: transparent;
-  border: 1px solid #f44336;
-  color: #f44336;
+  border: 1px solid var(--error);
+  color: var(--error);
   padding: 8px 24px;
   border-radius: 8px;
   cursor: pointer;
@@ -311,8 +309,8 @@
 }
 
 .stopBtn:hover {
-  background: #f44336;
-  color: #fff;
+  background: var(--error);
+  color: var(--text-inverse);
 }
 
 /* Empty state */
@@ -321,12 +319,12 @@
   flex-direction: column;
   align-items: center;
   gap: 12px;
-  color: #555;
+  color: var(--text-dim);
   margin-top: 48px;
 }
 
 .emptyHint {
-  color: #666;
+  color: var(--text-placeholder);
   font-size: 0.85rem;
 }
 
@@ -334,8 +332,8 @@
 .miniSpinner {
   width: 16px;
   height: 16px;
-  border: 2px solid rgba(255, 255, 255, 0.3);
-  border-top-color: #b169e0;
+  border: 2px solid var(--mini-spinner-border);
+  border-top-color: var(--mini-spinner-top);
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
@@ -373,18 +371,17 @@
   }
 }
 
-
-
 /* Edit button for pasted text files */
 .editBtn {
   background: transparent;
   border: none;
-  color: #888;
+  color: var(--text-muted);
   cursor: pointer;
   padding: 4px;
 }
+
 .editBtn:hover {
-  color: #b169e0;
+  color: var(--accent);
 }
 
 /* Inline editor container */
@@ -397,10 +394,10 @@
 
 .editTextarea {
   width: 100%;
-  background: #1a1a1a;
-  border: 1px solid #333;
+  background: var(--bg-input);
+  border: 1px solid var(--border-light);
   border-radius: 6px;
-  color: #ccc;
+  color: var(--text-secondary);
   padding: 8px;
   font-size: 0.85rem;
   font-family: inherit;
@@ -411,9 +408,58 @@
   display: flex;
   gap: 8px;
   justify-content: flex-end;
-}  
+}
 
 .editTextarea:focus {
   outline: none;
-  border-color: #b169e0;
+  border-color: var(--accent);
+}
+
+/* Drop zone highlight */
+.container.dragOver {
+  border: 2px dashed var(--accent);
+  background: var(--drag-over-bg);
+  transition: background 0.2s, border 0.2s;
+}
+
+.progressRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.progressBar {
+  width: 80px;
+  height: 4px;
+  background: var(--progress-bar-bg);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.progressFill {
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.1s;
+}
+
+/* Message input */
+.messageRow {
+  width: 100%;
+  max-width: 700px;
+  margin-bottom: 24px;
+}
+
+.messageInput {
+  width: 100%;
+  padding: 12px 16px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+.messageInput:focus {
+  outline: none;
+  border-color: var(--accent);
 }

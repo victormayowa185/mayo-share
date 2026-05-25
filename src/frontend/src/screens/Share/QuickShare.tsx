@@ -29,6 +29,7 @@ interface FileEntry {
   relativePath: string;
   name: string;
   size: number;
+   downloadProgress?: number;
   downloadStatus: "idle" | "downloading" | "done";
 }
 
@@ -54,8 +55,11 @@ const QuickShare: React.FC<Props> = ({ onBack, shareIP }) => {
   const [editingFileId, setEditingFileId] = useState<string | null>(null);
   const [editContent, setEditContent] = useState("");
   const [isSharing, setIsSharing] = useState(false);
+  const [messageText, setMessageText] = useState('');
   const [copied, setCopied] = useState(false);
-  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
+  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(
+    new Set(),
+  );
   const [allExpanded, setAllExpanded] = useState(false);
 
   const shareLayoutRef = useRef<HTMLDivElement>(null);
@@ -75,7 +79,11 @@ const QuickShare: React.FC<Props> = ({ onBack, shareIP }) => {
       setFiles((prev) =>
         prev.map((f) =>
           f.name === data.fileName
-            ? { ...f, downloadStatus: data.event === "started" ? "downloading" : "done" }
+            ? {
+                ...f,
+                downloadStatus:
+                  data.event === "started" ? "downloading" : "done",
+              }
             : f,
         ),
       );
@@ -126,7 +134,10 @@ const QuickShare: React.FC<Props> = ({ onBack, shareIP }) => {
             const base64 = (reader.result as string).split(",")[1];
             const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
             const fileName = `screenshot-${timestamp}.png`;
-            const savedPath = await window.electronAPI.saveTempFile(fileName, base64);
+            const savedPath = await window.electronAPI.saveTempFile(
+              fileName,
+              base64,
+            );
             const size = blob.size;
             setFiles((prev) => [
               ...prev,
@@ -151,7 +162,10 @@ const QuickShare: React.FC<Props> = ({ onBack, shareIP }) => {
         const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
         const fileName = `pasted-text-${timestamp}.txt`;
         const base64 = btoa(unescape(encodeURIComponent(text)));
-        const savedPath = await window.electronAPI.saveTempFile(fileName, base64);
+        const savedPath = await window.electronAPI.saveTempFile(
+          fileName,
+          base64,
+        );
         const size = new Blob([text]).size;
         setFiles((prev) => [
           ...prev,
@@ -274,7 +288,9 @@ const QuickShare: React.FC<Props> = ({ onBack, shareIP }) => {
       setExpandedFolders(new Set());
       setAllExpanded(false);
     } else {
-      const allFolders = fileGroups.filter((g) => g.folderName !== "").map((g) => g.folderName);
+      const allFolders = fileGroups
+        .filter((g) => g.folderName !== "")
+        .map((g) => g.folderName);
       setExpandedFolders(new Set(allFolders));
       setAllExpanded(true);
     }
@@ -323,7 +339,11 @@ const QuickShare: React.FC<Props> = ({ onBack, shareIP }) => {
   useGSAP(
     () => {
       if (isSharing && shareLayoutRef.current) {
-        gsap.fromTo(shareLayoutRef.current, { opacity: 0, y: 20 }, { opacity: 1, y: 0, duration: 0.4, ease: "power2.out" });
+        gsap.fromTo(
+          shareLayoutRef.current,
+          { opacity: 0, y: 20 },
+          { opacity: 1, y: 0, duration: 0.4, ease: "power2.out" },
+        );
       }
     },
     { dependencies: [isSharing] },
@@ -335,7 +355,13 @@ const QuickShare: React.FC<Props> = ({ onBack, shareIP }) => {
         gsap.fromTo(
           fileListRef.current.querySelectorAll(`.${styles.fileRow}`),
           { opacity: 0, x: -20 },
-          { opacity: 1, x: 0, stagger: 0.03, duration: 0.3, ease: "power2.out" },
+          {
+            opacity: 1,
+            x: 0,
+            stagger: 0.03,
+            duration: 0.3,
+            ease: "power2.out",
+          },
         );
       }
     },
@@ -343,6 +369,55 @@ const QuickShare: React.FC<Props> = ({ onBack, shareIP }) => {
   );
 
   const folderContentRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+
+  const [isDragging, setIsDragging] = useState(false);
+
+  // Drag‑and‑drop handlers
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  };
+
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    if (isSharing) return;
+
+    const droppedFiles = e.dataTransfer.files;
+    if (!droppedFiles || droppedFiles.length === 0) return;
+
+    const newFiles: FileEntry[] = [];
+    for (let i = 0; i < droppedFiles.length; i++) {
+      const f = droppedFiles[i];
+      const filePath = (f as any).path; // Electron exposes the full path
+      if (filePath) {
+        const name = f.name || filePath.split("\\").pop() || filePath;
+        let size = f.size;
+        try {
+          size = await window.electronAPI.getFileSize(filePath);
+        } catch {}
+        newFiles.push({
+          id: Date.now().toString() + Math.random(),
+          path: filePath,
+          relativePath: name,
+          name,
+          size,
+          downloadStatus: "idle",
+        });
+      }
+    }
+    if (newFiles.length > 0) {
+      setFiles((prev) => [...prev, ...newFiles]);
+    }
+  };
 
   const handleFolderToggle = (folderName: string) => {
     const contentEl = folderContentRefs.current.get(folderName);
@@ -362,7 +437,16 @@ const QuickShare: React.FC<Props> = ({ onBack, shareIP }) => {
         const el = folderContentRefs.current.get(folderName);
         if (el) {
           const naturalHeight = el.scrollHeight;
-          gsap.fromTo(el, { height: 0, opacity: 0 }, { height: naturalHeight, opacity: 1, duration: 0.3, ease: "power2.out" });
+          gsap.fromTo(
+            el,
+            { height: 0, opacity: 0 },
+            {
+              height: naturalHeight,
+              opacity: 1,
+              duration: 0.3,
+              ease: "power2.out",
+            },
+          );
         }
       });
     }
@@ -384,7 +468,10 @@ const QuickShare: React.FC<Props> = ({ onBack, shareIP }) => {
             <button className={styles.btn} onClick={() => saveEditing(file)}>
               {t("save")}
             </button>
-            <button className={styles.ghostBtn} onClick={() => setEditingFileId(null)}>
+            <button
+              className={styles.ghostBtn}
+              onClick={() => setEditingFileId(null)}
+            >
               {t("cancel")}
             </button>
           </div>
@@ -395,17 +482,29 @@ const QuickShare: React.FC<Props> = ({ onBack, shareIP }) => {
           <span className={styles.fileRowSize}>{formatBytes(file.size)}</span>
           <span className={styles.fileRowStatus}>
             {file.downloadStatus === "idle" && ""}
-            {file.downloadStatus === "downloading" && <div className={styles.miniSpinner} />}
-            {file.downloadStatus === "done" && <FaCheckCircle color="#4CAF50" size={16} />}
+            {file.downloadStatus === "downloading" && (
+              <div className={styles.miniSpinner} />
+            )}
+            {file.downloadStatus === "done" && (
+              <FaCheckCircle color="#4CAF50" size={16} />
+            )}
           </span>
           {!isSharing && (
             <>
               {file.name.startsWith("pasted-text-") && (
-                <button className={styles.editBtn} onClick={() => startEditing(file)} title={t("editText")}>
+                <button
+                  className={styles.editBtn}
+                  onClick={() => startEditing(file)}
+                  title={t("editText")}
+                >
                   <FaPen size={14} />
                 </button>
               )}
-              <button className={styles.removeBtn} onClick={() => removeFile(file.id)} title={t("removeFile")}>
+              <button
+                className={styles.removeBtn}
+                onClick={() => removeFile(file.id)}
+                title={t("removeFile")}
+              >
                 <FaTimes size={14} />
               </button>
             </>
@@ -424,17 +523,28 @@ const QuickShare: React.FC<Props> = ({ onBack, shareIP }) => {
       const totalSize = group.files.reduce((sum, f) => sum + f.size, 0);
       return (
         <div key={group.folderName} className={styles.folderGroup}>
-          <div className={styles.folderHeader} onClick={() => handleFolderToggle(group.folderName)}>
-            <span className={styles.folderArrow}>{isExpanded ? <FaChevronDown /> : <FaChevronRight />}</span>
+          <div
+            className={styles.folderHeader}
+            onClick={() => handleFolderToggle(group.folderName)}
+          >
+            <span className={styles.folderArrow}>
+              {isExpanded ? <FaChevronDown /> : <FaChevronRight />}
+            </span>
             <span className={styles.folderName}>{group.folderName}</span>
             <span className={styles.folderMeta}>
-              {t("fileCount", { count: group.files.length })} · {formatBytes(totalSize)}
+              {t("fileCount", { count: group.files.length })} ·{" "}
+              {formatBytes(totalSize)}
             </span>
           </div>
           <div
-            ref={(el) => { if (el) folderContentRefs.current.set(group.folderName, el); }}
+            ref={(el) => {
+              if (el) folderContentRefs.current.set(group.folderName, el);
+            }}
             className={styles.folderContent}
-            style={{ height: isExpanded ? "auto" : 0, opacity: isExpanded ? 1 : 0 }}
+            style={{
+              height: isExpanded ? "auto" : 0,
+              opacity: isExpanded ? 1 : 0,
+            }}
           >
             {group.files.map((file) => renderFileRow(file))}
           </div>
@@ -444,8 +554,18 @@ const QuickShare: React.FC<Props> = ({ onBack, shareIP }) => {
   };
 
   return (
-    <div className={styles.container}>
-      <BackButton onClick={() => { stopSharing(); onBack(); }} />
+    <div
+      className={`${styles.container} ${isDragging ? styles.dragOver : ""}`}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
+      <BackButton
+        onClick={() => {
+          stopSharing();
+          onBack();
+        }}
+      />
       <h2 className={styles.title}>{t("quickShare")}</h2>
       <p className={styles.subtitle}>
         {isSharing ? t("shareLinkOrQR") : t("addFilesThenStart")}
@@ -469,11 +589,17 @@ const QuickShare: React.FC<Props> = ({ onBack, shareIP }) => {
       {/* Action buttons — before sharing */}
       {!isSharing && (
         <div className={styles.actionRow}>
-          <button className={styles.btn} onClick={addFiles}>{t("addFiles")}</button>
-          <button className={styles.ghostBtn} onClick={addFolder}>{t("addFolder")}</button>
+          <button className={styles.btn} onClick={addFiles}>
+            {t("addFiles")}
+          </button>
+          <button className={styles.ghostBtn} onClick={addFolder}>
+            {t("addFolder")}
+          </button>
           {files.length > 0 && (
             <button className={styles.shareBtn} onClick={startSharing}>
-              {t("startSharing")} ({files.length} {t("fileCount", { count: files.length })}) — {formatBytes(files.reduce((sum, f) => sum + f.size, 0))}
+              {t("startSharing")} ({files.length}{" "}
+              {t("fileCount", { count: files.length })}) —{" "}
+              {formatBytes(files.reduce((sum, f) => sum + f.size, 0))}
             </button>
           )}
         </div>
@@ -509,7 +635,12 @@ const QuickShare: React.FC<Props> = ({ onBack, shareIP }) => {
               <button className={styles.copyBtn} onClick={copyLink}>
                 {copied ? (
                   <>
-                    <FaCheckCircle style={{ marginRight: 4 }} color="#4CAF50" size={14} /> {t("copied")}
+                    <FaCheckCircle
+                      style={{ marginRight: 4 }}
+                      color="#4CAF50"
+                      size={14}
+                    />{" "}
+                    {t("copied")}
                   </>
                 ) : (
                   t("copyLink")
@@ -517,7 +648,9 @@ const QuickShare: React.FC<Props> = ({ onBack, shareIP }) => {
               </button>
             </div>
             <p className={styles.hint}>{t("tellReceiverToConnect")}</p>
-            <button className={styles.stopBtn} onClick={stopSharing}>{t("stopSharing")}</button>
+            <button className={styles.stopBtn} onClick={stopSharing}>
+              {t("stopSharing")}
+            </button>
           </div>
         </div>
       )}

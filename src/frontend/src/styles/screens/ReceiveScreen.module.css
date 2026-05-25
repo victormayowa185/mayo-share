@@ -5,13 +5,14 @@
   width: 100%;
   padding: 20px 24px 48px 24px;
   min-height: calc(100vh - 60px);
-  background: #0a0a0a;
-  color: #ddd;
+  background: var(--bg-primary);
+  color: var(--text-primary);
 }
 
 .title {
   font-size: 1.6rem;
   margin-bottom: 32px;
+  color: var(--text-inverse);
 }
 
 .modeCards {
@@ -23,8 +24,8 @@
 }
 
 .modeCard {
-  background: #111;
-  border: 1px solid #222;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
   border-radius: 16px;
   padding: 28px 24px;
   width: 220px;
@@ -34,8 +35,9 @@
     border-color 0.2s,
     transform 0.15s;
 }
+
 .modeCard:hover {
-  border-color: #b169e0;
+  border-color: var(--accent);
   transform: translateY(-3px);
 }
 
@@ -43,13 +45,16 @@
   font-size: 2.5rem;
   margin-bottom: 12px;
 }
+
 .cardTitle {
   font-size: 1rem;
   font-weight: bold;
   margin-bottom: 8px;
+  color: var(--text-primary);
 }
+
 .cardDesc {
-  color: #888;
+  color: var(--text-muted);
   font-size: 0.85rem;
   line-height: 1.5;
 }
@@ -64,17 +69,17 @@
 }
 
 .label {
-  color: #888;
+  color: var(--text-muted);
   font-size: 0.9rem;
   align-self: flex-start;
 }
 
 .codeBox {
   width: 100%;
-  background: #111;
-  border: 1px solid #333;
+  background: var(--bg-card);
+  border: 1px solid var(--border-light);
   border-radius: 8px;
-  color: #ccc;
+  color: var(--text-secondary);
   padding: 12px;
   font-size: 0.78rem;
   font-family: monospace;
@@ -84,31 +89,32 @@
 
 .urlInput {
   width: 100%;
-  background: #111;
-  border: 1px solid #333;
+  background: var(--bg-card);
+  border: 1px solid var(--border-light);
   border-radius: 8px;
-  color: #ccc;
+  color: var(--text-secondary);
   padding: 12px;
   font-size: 0.95rem;
 }
 
 .btn {
   padding: 12px 28px;
-  background: #b169e0;
+  background: var(--accent);
   color: white;
   border: none;
   border-radius: 8px;
   font-size: 1rem;
   cursor: pointer;
 }
+
 .btn:hover {
-  background: #b169e0;
+  background: var(--accent-hover);
 }
 
 .copyBtn {
-  background: #222;
-  border: 1px solid #333;
-  color: #ccc;
+  background: var(--bg-copy-btn);
+  border: 1px solid var(--border-light);
+  color: var(--text-secondary);
   padding: 8px 20px;
   border-radius: 8px;
   cursor: pointer;
@@ -116,9 +122,9 @@
 }
 
 .connectedBadge {
-  background: #0a1a0a;
-  border: 1px solid #4caf50;
-  color: #4caf50;
+  background: var(--connected-badge-bg);
+  border: 1px solid var(--success);
+  color: var(--success);
   padding: 8px 20px;
   border-radius: 20px;
   font-size: 0.9rem;
@@ -130,8 +136,8 @@
   align-items: center;
   gap: 12px;
   width: 100%;
-  background: #111;
-  border: 1px solid #222;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
   border-radius: 8px;
   padding: 10px 14px;
 }
@@ -142,30 +148,34 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  color: var(--text-secondary);
 }
+
 .progress {
   flex: 1;
   height: 6px;
-  accent-color: #b169e0;
+  accent-color: var(--accent);
 }
+
 .pct {
-  color: #b169e0;
+  color: var(--accent);
   font-size: 0.85rem;
   white-space: nowrap;
 }
 
 .hint {
-  color: #555;
+  color: var(--text-dim);
   font-size: 0.85rem;
   text-align: center;
 }
 
 .status {
   margin-top: 20px;
-  color: #4caf50;
+  color: var(--success);
   font-size: 0.95rem;
   text-align: center;
 }
+
 .error {
-  color: #f44336;
+  color: var(--error);
 }

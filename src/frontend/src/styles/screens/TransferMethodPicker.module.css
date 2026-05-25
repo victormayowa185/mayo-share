@@ -5,17 +5,18 @@
   width: 100%;
   padding: 20px 24px 48px 24px;
   min-height: calc(100vh - 60px);
-  background: #0a0a0a;
-  color: #ddd;
+  background: var(--bg-primary);
+  color: var(--text-primary);
 }
 
 .heading {
   font-size: 1.6rem;
   margin-bottom: 8px;
+  color: var(--text-primary);
 }
 
 .subtitle {
-  color: #888;
+  color: var(--text-muted);
   margin-bottom: 40px;
 }
 
@@ -27,8 +28,8 @@
 }
 
 .card {
-  background: #111;
-  border: 1px solid #222;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
   border-radius: 16px;
   padding: 32px 28px;
   width: 240px;
@@ -52,10 +53,11 @@
   font-size: 1.1rem;
   font-weight: bold;
   margin-bottom: 10px;
+  color: var(--text-primary);
 }
 
 .cardDesc {
-  color: #888;
+  color: var(--text-muted);
   font-size: 0.88rem;
   line-height: 1.6;
 }
