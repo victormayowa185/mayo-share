@@ -4,7 +4,7 @@
   align-items: center;
   width: 100%;
   padding: 70px 24px 28px 24px;
-  min-height: 90vh;
+  min-height: calc(100vh - 60px);
   background: var(--bg-primary);
   color: var(--text-primary);
 }
@@ -29,7 +29,7 @@
 }
 
 .logoText {
-  color: var(--text-inverse);
+  color: var(--setup-logo-color);
   font-size: 1.4rem;
   font-weight: 700;
 }
@@ -88,11 +88,17 @@
   margin-bottom: 28px;
 }
 
+.logoText {
+  color: var(--setup-logo-color);
+  font-size: 1.4rem;
+  font-weight: 700;
+}
+
 .btn {
   padding: 12px 28px;
   font-size: 16px;
   background: var(--accent);
-  color: var(--text-inverse);
+  color: var(--setup-btn-text);
   border: none;
   border-radius: 8px;
   cursor: pointer;
@@ -113,16 +119,17 @@
   padding: 12px 28px;
   font-size: 16px;
   background: transparent;
-  color: var(--text-muted);
-  border: 1px solid var(--border-light);
+  color: var(--setup-ghost-text);
+  border: 1px solid var(--setup-ghost-border);
   border-radius: 8px;
   cursor: pointer;
   transition: all 0.15s;
 }
 
 .ghostBtn:hover {
-  border-color: var(--accent);
-  color: var(--accent);
+  background-color: var(--setup-ghost-hover-bg);
+  border-color: var(--setup-ghost-hover-bg);
+  color: var(--setup-ghost-hover-text);
 }
 
 .successMsg {

@@ -11,7 +11,7 @@
 .title {
   font-size: 1.6rem;
   margin-bottom: 24px;
-  color: var(--text-inverse);
+  color: var(--settings-title-color);
 }
 
 .card {
@@ -31,9 +31,10 @@
   margin-bottom: 12px;
 }
 
-.cardHeader h3 {
-  color: var(--text-inverse);
+.card h3 {
+  color: var(--settings-header-color);
   font-size: 1.1rem;
+  margin-bottom: 8px;
 }
 
 .cardDesc {
@@ -155,4 +156,34 @@
 
 .supportLink:hover {
   text-decoration: underline;
+}
+
+.themeButtons {
+  display: flex;
+  gap: 12px;
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+
+.themeBtn {
+  flex: 1;
+  padding: 8px 12px;
+  background: var(--bg-input);
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.2s;
+  text-align: center;
+}
+
+.themeBtn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.themeBtn.active {
+  background: var(--accent);
+  color: white;
+  border-color: var(--accent);
 }

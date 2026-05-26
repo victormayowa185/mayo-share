@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from "react";
-import { FaArrowLeft, FaCheckCircle, FaCopy, FaSpinner } from "react-icons/fa";
+import { FaCheckCircle, FaCopy, FaSpinner } from "react-icons/fa";
 import { FaDesktop, FaMobileAlt, FaTabletAlt } from "react-icons/fa";
 import QRCode from "qrcode";
-import { useTranslation } from "react-i18next"; // ← import the hook
+import { useTranslation } from "react-i18next";
 import BackButton from "../../components/BackButton";
 import styles from "../../styles/screens/ReceiveFromBrowser.module.css";
 
@@ -30,12 +30,18 @@ const getDeviceIcon = (deviceType: string) => {
   }
 };
 
+const getQrLightColor = () => {
+  const isDarkMode =
+    document.documentElement.getAttribute("data-theme") === "dark";
+  return isDarkMode ? "#000000" : "#FFFFFF";
+};
+
 const ReceiveFromBrowser: React.FC<Props> = ({
   onBack,
   onSenderApproved,
   onStopReceiving,
 }) => {
-  const { t } = useTranslation(); // ← get the t function
+  const { t } = useTranslation();
   const [shareUrl, setShareUrl] = useState("");
   const [qrDataUrl, setQrDataUrl] = useState("");
   const [isReceiving, setIsReceiving] = useState(false);
@@ -50,7 +56,6 @@ const ReceiveFromBrowser: React.FC<Props> = ({
     { sessionId: string; senderName: string; deviceType: string }[]
   >([]);
 
-  // FIXED: Listen for file-received events and remove sender from uploading list
   useEffect(() => {
     window.electronAPI.onUploadUpdate((data) => {
       if (data.event === "received") {
@@ -61,7 +66,6 @@ const ReceiveFromBrowser: React.FC<Props> = ({
         };
         setReceivedFiles((prev) => [...prev, newFile]);
 
-        // FIXED: Remove sender from approvedSenders after file is received
         setApprovedSenders((prev) =>
           prev.filter((s) => s.senderName !== data.senderName),
         );
@@ -87,6 +91,31 @@ const ReceiveFromBrowser: React.FC<Props> = ({
     );
   }, []);
 
+  // Regenerate QR when theme changes while receiving
+  useEffect(() => {
+    if (!isReceiving || !shareUrl) return;
+
+    const observer = new MutationObserver(async () => {
+      try {
+        const qrData = await QRCode.toDataURL(shareUrl, {
+          width: 200,
+          margin: 2,
+          color: { dark: "#b169e0", light: getQrLightColor() },
+        });
+        setQrDataUrl(qrData);
+      } catch (err) {
+        console.error("QR regeneration failed", err);
+      }
+    });
+
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["data-theme"],
+    });
+
+    return () => observer.disconnect();
+  }, [isReceiving, shareUrl]);
+
   const startReceiving = async () => {
     onStopReceiving?.();
     try {
@@ -105,7 +134,7 @@ const ReceiveFromBrowser: React.FC<Props> = ({
         const qrData = await QRCode.toDataURL(url, {
           width: 200,
           margin: 2,
-          color: { dark: "#b169e0", light: "#0A0A0A" },
+          color: { dark: "#b169e0", light: getQrLightColor() },
         });
         setQrDataUrl(qrData);
         return;
@@ -137,7 +166,7 @@ const ReceiveFromBrowser: React.FC<Props> = ({
       const qrData = await QRCode.toDataURL(url, {
         width: 200,
         margin: 2,
-        color: { dark: "#b169e0", light: "#0A0A0A" },
+        color: { dark: "#b169e0", light: getQrLightColor() },
       });
       setQrDataUrl(qrData);
     } catch (err: any) {
@@ -177,7 +206,6 @@ const ReceiveFromBrowser: React.FC<Props> = ({
         {isReceiving ? t("askSenderToOpenLink") : t("startReceivingDesc")}
       </p>
 
-      {/* Show hotspot progress */}
       {startingHotspot && (
         <div
           style={{
@@ -201,16 +229,19 @@ const ReceiveFromBrowser: React.FC<Props> = ({
 
       {isReceiving && (
         <div className={styles.receivePanel}>
-          {/* QR Code */}
           {qrDataUrl ? (
-            <img src={qrDataUrl} alt="QR Code" className={styles.qr} />
+            <img
+              key={qrDataUrl}
+              src={qrDataUrl}
+              alt="QR Code"
+              className={styles.qr}
+            />
           ) : (
             <div className={styles.qrPlaceholder}>
               <span>{t("generatingQR")}</span>
             </div>
           )}
 
-          {/* URL + Copy */}
           <div className={styles.urlRow}>
             <span className={styles.url}>{shareUrl}</span>
             <button className={styles.copyBtn} onClick={copyLink}>
@@ -238,7 +269,6 @@ const ReceiveFromBrowser: React.FC<Props> = ({
             {t("stopReceiving")}
           </button>
 
-          {/* Pending Senders */}
           {pendingSenders.length > 0 && (
             <div className={styles.receivedSection}>
               <h3 className={styles.receivedTitle}>{t("pendingSenders")}</h3>
@@ -259,7 +289,10 @@ const ReceiveFromBrowser: React.FC<Props> = ({
                           );
                           setApprovedSenders((prev) => [
                             ...prev,
-                            { sessionId: s.sessionId, senderName: s.senderName || "Unknown" },
+                            {
+                              sessionId: s.sessionId,
+                              senderName: s.senderName || "Unknown",
+                            },
                           ]);
                           onSenderApproved?.();
                         }}
@@ -302,7 +335,6 @@ const ReceiveFromBrowser: React.FC<Props> = ({
             </div>
           )}
 
-          {/* Received files list */}
           {receivedFiles.length > 0 && (
             <div className={styles.receivedSection}>
               <h3 className={styles.receivedTitle}>{t("receivedFiles")}</h3>

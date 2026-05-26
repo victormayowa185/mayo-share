@@ -24,11 +24,19 @@
 }
 
 .hotspotOn {
-  color: var(--success);
+  color: var(--status-connected-text);
+}
+
+.hotspotOn svg {
+  fill: var(--status-connected-dot);
 }
 
 .hotspotOff {
-  color: var(--text-dim);
+  color: var(--status-off-text);
+}
+
+.hotspotOff svg {
+  fill: var(--status-off-dot);
 }
 
 .transfer {

@@ -6,11 +6,14 @@
   box-sizing: border-box;
 }
 
+html, body, #root {
+  background: var(--bg-primary);
+  min-height: 100vh;
+}
+
 body {
   font-family: 'Mulish', Arial, sans-serif;
-  background: var(--bg-primary);
   color: var(--text-primary);
-  min-height: 100vh;
 }
 
 /* Utility classes */

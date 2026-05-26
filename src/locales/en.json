@@ -154,7 +154,7 @@
   "deviceConnect": "Device Connect",
   "deviceConnectDesc": "Full P2P session — queue multiple files, cancel anytime, resume transfers. Requires MAYO Share on both devices.",
   "getSupport": "Get Support",
- "supportDescription": "If you're stuck, replay the setup guide, contact us to report a bug, or share your feedback about the app – we'd love to hear from you.",
+  "supportDescription": "If you're stuck, replay the setup guide, contact us to report a bug, or share your feedback about the app – we'd love to hear from you.",
   "replayOnboarding": "Replay Onboarding",
   "troubleshoot": "Troubleshoot",
   "troubleshootSubtitle": "Diagnose and fix common connection issues.",
@@ -223,5 +223,10 @@
   "step3Note": "The adapter will be installed automatically once you click Finish.",
 
   "chooseLanguage": "Choose your language",
-  "continue": "Continue"
+  "continue": "Continue",
+  "theme": "Theme",
+  "themeDesc": "Choose how the app looks.",
+  "system": "System",
+  "light": "Light",
+  "dark": "Dark"
 }

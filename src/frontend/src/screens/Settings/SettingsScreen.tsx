@@ -24,6 +24,50 @@ const SettingsScreen: React.FC<Props> = ({ onBack }) => {
   const [editDeviceName, setEditDeviceName] = useState("");
   const [editingDevice, setEditingDevice] = useState(false);
 
+  // Theme state
+  const [themeMode, setThemeMode] = useState<"system" | "light" | "dark">("system");
+  let systemThemeListener: ((e: MediaQueryListEvent) => void) | null = null;
+
+  // Apply theme based on mode
+  const applyTheme = (mode: "system" | "light" | "dark") => {
+    // Clean up previous listener
+    if (systemThemeListener) {
+      const mql = window.matchMedia("(prefers-color-scheme: dark)");
+      mql.removeEventListener("change", systemThemeListener);
+      systemThemeListener = null;
+    }
+
+    if (mode === "system") {
+      const mql = window.matchMedia("(prefers-color-scheme: dark)");
+      const theme = mql.matches ? "dark" : "light";
+      document.documentElement.setAttribute("data-theme", theme);
+      // Listen for system changes
+      systemThemeListener = (e: MediaQueryListEvent) => {
+        document.documentElement.setAttribute("data-theme", e.matches ? "dark" : "light");
+      };
+      mql.addEventListener("change", systemThemeListener);
+    } else {
+      document.documentElement.setAttribute("data-theme", mode);
+    }
+  };
+
+  // Load saved theme from localStorage
+  useEffect(() => {
+    const saved = localStorage.getItem("theme-mode") as "system" | "light" | "dark" | null;
+    if (saved && ["system", "light", "dark"].includes(saved)) {
+      setThemeMode(saved);
+      applyTheme(saved);
+    } else {
+      applyTheme("system");
+    }
+  }, []);
+
+  const handleThemeChange = (mode: "system" | "light" | "dark") => {
+    setThemeMode(mode);
+    localStorage.setItem("theme-mode", mode);
+    applyTheme(mode);
+  };
+
   // Ref for GSAP animation
   const cardsRef = useRef<HTMLDivElement>(null);
 
@@ -176,6 +220,32 @@ const SettingsScreen: React.FC<Props> = ({ onBack }) => {
             <option value="ur">Urdu</option>
             <option value="zh">Chinese</option>
           </select>
+        </div>
+
+        {/* Theme Card */}
+        <div className={styles.card}>
+          <h3>{t("theme")}</h3>
+          <p className={styles.cardDesc}>{t("themeDesc")}</p>
+          <div className={styles.themeButtons}>
+            <button
+              className={`${styles.themeBtn} ${themeMode === "system" ? styles.active : ""}`}
+              onClick={() => handleThemeChange("system")}
+            >
+              {t("system")}
+            </button>
+            <button
+              className={`${styles.themeBtn} ${themeMode === "light" ? styles.active : ""}`}
+              onClick={() => handleThemeChange("light")}
+            >
+              {t("light")}
+            </button>
+            <button
+              className={`${styles.themeBtn} ${themeMode === "dark" ? styles.active : ""}`}
+              onClick={() => handleThemeChange("dark")}
+            >
+              {t("dark")}
+            </button>
+          </div>
         </div>
 
         {/* Save Folder Card */}

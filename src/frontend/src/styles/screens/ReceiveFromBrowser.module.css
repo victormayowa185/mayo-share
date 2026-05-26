@@ -12,7 +12,7 @@
 .title {
   font-size: 1.6rem;
   margin-bottom: 8px;
-  color: var(--text-inverse);
+  color: var(--rfb-title-color);
 }
 
 .subtitle {
@@ -73,7 +73,7 @@
   height: 220px;
   border-radius: 12px;
   border: 2px solid var(--accent);
-  background: var(--accent);
+  background: transparent;
   margin-bottom: 16px;
 }
 
@@ -112,19 +112,20 @@
 }
 
 .copyBtn {
-  background: var(--btn-copy-bg);
+  background: var(--rfb-copy-btn-bg);
   border: none;
-  color: var(--text-secondary);
+  color: var(--rfb-copy-btn-text);
   padding: 8px 14px;
   border-radius: 6px;
   font-size: 0.85rem;
   cursor: pointer;
   white-space: nowrap;
+  transition: background 0.2s ease;
 }
 
 .copyBtn:hover {
-  background: var(--btn-copy-hover-bg);
-  color: var(--text-inverse);
+  background: var(--rfb-copy-btn-hover-bg);
+  color: var(--rfb-copy-btn-text);
 }
 
 .hint {

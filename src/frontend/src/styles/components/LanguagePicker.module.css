@@ -78,7 +78,7 @@
 
 .option:hover {
   background: var(--bg-hover);
-  color: var(--text-inverse);
+  color: var(--accent);
 }
 
 .selected {

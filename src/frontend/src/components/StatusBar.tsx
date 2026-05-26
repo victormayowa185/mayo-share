@@ -45,7 +45,7 @@ const StatusBar: React.FC<Props> = ({
       <div className={styles.left}>
         {connectionLabel ? (
           <span className={styles.hotspotOn}>
-            <FaCircle size={8} color="#4caf50" style={{ marginRight: 6 }} />
+           <FaCircle size={8} style={{ marginRight: 6 }} />
             {connectionLabel}
           </span>
         ) : hotspotActive ? (
@@ -55,7 +55,7 @@ const StatusBar: React.FC<Props> = ({
           </span>
         ) : (
           <span className={styles.hotspotOff}>
-            <FaCircle size={8} color="#555" style={{ marginRight: 6 }} />
+           <FaCircle size={8} style={{ marginRight: 6 }} />
             {t("noNetwork")}
           </span>
         )}

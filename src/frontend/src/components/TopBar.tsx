@@ -4,7 +4,6 @@ import { FaHistory, FaQuestionCircle, FaStar, FaCog } from "react-icons/fa";
 import { CgProfile } from "react-icons/cg";
 import gsap from "gsap";
 import { useGSAP } from "@gsap/react";
-import LightModeToggle from "./LightModeToggle";
 import styles from "../styles/components/TopBar.module.css";
 
 gsap.registerPlugin(useGSAP);
@@ -57,7 +56,6 @@ const TopBar: React.FC<Props> = ({ onNavigate }) => {
       </div>
 
       <div className={styles.actions}>
-        <LightModeToggle />
         <div className={styles.dropdownWrapper}>
           <button
             className={styles.iconBtn}

@@ -12,7 +12,7 @@
 .title {
   font-size: 1.6rem;
   margin-bottom: 32px;
-  color: var(--text-inverse);
+  color: var(--receive-title-color);
 }
 
 .modeCards {

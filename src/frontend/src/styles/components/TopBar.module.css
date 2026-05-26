@@ -12,7 +12,7 @@
   top: 0;
   z-index: 100;
 }
-
+x
 .logo {
   display: flex;
   align-items: center;
@@ -81,7 +81,7 @@
 .iconBtn {
   background: transparent;
   border: none;
-  color: var(--text-inverse);
+  color: var(--topbar-icon-color);
   font-size: 1.1rem;
   cursor: pointer;
   padding: 8px;
@@ -94,6 +94,7 @@
 
 .iconBtn:hover {
   background: var(--accent);
+  color: var(--topbar-icon-hover-color);
 }
 
 /* --- dropdown styles --- */
