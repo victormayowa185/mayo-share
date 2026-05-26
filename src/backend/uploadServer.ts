@@ -136,7 +136,6 @@ export class UploadServer extends EventEmitter {
           }
 
           // ─── SSE endpoint for approval / decline ───
-          // ─── SSE endpoint for approval / decline ───
           if (method === "GET" && url?.startsWith("/events")) {
             const parsedUrl = new URL(url!, `http://localhost:${PORT}`);
             const sessionId = parsedUrl.searchParams.get("sessionId");
@@ -311,6 +310,40 @@ export class UploadServer extends EventEmitter {
             return;
           }
 
+          // ─── Serve local JS libraries from node_modules (offline) ───
+          if (method === "GET" && url === "/jszip.min.js") {
+            const filePath = path.join(
+              process.cwd(),
+              "node_modules/jszip/dist/jszip.min.js",
+            );
+            try {
+              const data = await fs.readFile(filePath);
+              res.writeHead(200, { "Content-Type": "application/javascript" });
+              res.end(data);
+            } catch {
+              res.writeHead(404);
+              res.end();
+            }
+            return;
+          }
+
+          if (method === "GET" && url === "/resumable.min.js") {
+            // Resumable.js doesn't have a minified version; use the normal one
+            const filePath = path.join(
+              process.cwd(),
+              "node_modules/resumablejs/resumable.js",
+            );
+            try {
+              const data = await fs.readFile(filePath);
+              res.writeHead(200, { "Content-Type": "application/javascript" });
+              res.end(data);
+            } catch {
+              res.writeHead(404);
+              res.end();
+            }
+            return;
+          }
+
           res.writeHead(404);
           res.end("Not found");
         },
@@ -415,8 +448,9 @@ function getUploadHTML(): string {
     <div id="status"></div>
   </div>
 
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/resumable.js/1.1.0/resumable.min.js"></script>
+  <!-- LOCAL libraries (served from node_modules) for offline use -->
+  <script src="/jszip.min.js"></script>
+  <script src="/resumable.min.js"></script>
   <script>
     const addFilesBtn = document.getElementById('addFilesBtn');
     const addFolderBtn = document.getElementById('addFolderBtn');
@@ -482,10 +516,13 @@ function getUploadHTML(): string {
     fileInput.addEventListener('change', () => addFilesFromInput(fileInput));
     folderInput.addEventListener('change', () => addFilesFromInput(folderInput));
 
+    // Improved paste handler: supports both images and text
     pasteArea.addEventListener('paste', (e) => {
       const items = e.clipboardData?.items;
       if (!items) return;
+
       for (const item of items) {
+        // Handle image paste
         if (item.type.startsWith('image/')) {
           e.preventDefault();
           const blob = item.getAsFile();
@@ -500,6 +537,13 @@ function getUploadHTML(): string {
           reader.readAsDataURL(blob);
           return;
         }
+      }
+
+      // If we reach here, it's text. Prevent default and insert manually.
+      e.preventDefault();
+      const text = e.clipboardData?.getData('text/plain');
+      if (text) {
+        document.execCommand('insertText', false, text);
       }
     });
 
@@ -539,8 +583,8 @@ function getUploadHTML(): string {
     });
 
     sendBtn.addEventListener('click', async () => {
-     const text = pasteArea.innerText.trim();
-        if (fileEntries.length === 0 && !pastedImageData && !text) {
+      const text = pasteArea.innerText.trim();
+      if (fileEntries.length === 0 && !pastedImageData && !text) {
         status.textContent = 'Please add files or paste something first.';
         return;
       }
@@ -549,8 +593,40 @@ function getUploadHTML(): string {
       progressBar.style.display = 'block';
       progressFill.style.width = '0%';
 
-         try {
-        // Create a zip blob containing all files + pasted content
+      try {
+        // 1. Single file (no text, no image)
+        if (fileEntries.length === 1 && !pastedImageData && !text) {
+          const entry = fileEntries[0];
+          resumable.addFile(entry.file);
+          resumable.upload();
+          status.textContent = 'Starting upload...';
+          return;
+        }
+
+        // 2. Only text (no files, no image)
+        if (fileEntries.length === 0 && text && !pastedImageData) {
+          const blob = new Blob([text], { type: 'text/plain' });
+          const txtName = 'pasted-' + new Date().toISOString().replace(/[:.]/g, '-') + '.txt';
+          const file = new File([blob], txtName, { type: 'text/plain' });
+          resumable.addFile(file);
+          resumable.upload();
+          status.textContent = 'Starting upload...';
+          return;
+        }
+
+        // 3. Only pasted image (no files, no text)
+        if (fileEntries.length === 0 && pastedImageData && !text) {
+          const response = await fetch(pastedImageData);
+          const blob = await response.blob();
+          const imgName = 'screenshot-' + new Date().toISOString().replace(/[:.]/g, '-') + '.png';
+          const file = new File([blob], imgName, { type: 'image/png' });
+          resumable.addFile(file);
+          resumable.upload();
+          status.textContent = 'Starting upload...';
+          return;
+        }
+
+        // 4. Mixed content (multiple files, or files+text, or files+image) → ZIP
         const zip = new JSZip();
         for (const entry of fileEntries) {
           zip.file(entry.relativePath, entry.file);
@@ -560,20 +636,42 @@ function getUploadHTML(): string {
           const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
           zip.file('screenshot-' + timestamp + '.png', base64, { base64: true });
         }
-        const text = pasteArea.innerText.trim();
         if (text) {
           const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
           zip.file('pasted-' + timestamp + '.txt', text);
         }
 
         const blob = await zip.generateAsync({ type: 'blob' });
-        const zipName = 'mayo-share-' + new Date().toISOString().replace(/[:.]/g, '-') + '.zip';
 
-        // Wrap blob in a File so Resumable.js can read its name
+        // Try to use folder name for the zip file if all files share the same top folder
+        let folderName = null;
+        if (fileEntries.length > 0) {
+          const firstPath = fileEntries[0].relativePath;
+          const parts = firstPath.split('/');
+          if (parts.length > 1) {
+            folderName = parts[0];
+            let sameFolder = true;
+            for (const entry of fileEntries) {
+              const entryParts = entry.relativePath.split('/');
+              if (entryParts.length < 2 || entryParts[0] !== folderName) {
+                sameFolder = false;
+                break;
+              }
+            }
+            if (!sameFolder) folderName = null;
+          }
+        }
+
+        let zipName;
+        if (folderName) {
+          zipName = folderName + '-' + new Date().toISOString().replace(/[:.]/g, '-') + '.zip';
+        } else {
+          zipName = 'mayo-share-' + new Date().toISOString().replace(/[:.]/g, '-') + '.zip';
+        }
+
         const file = new File([blob], zipName, { type: 'application/zip' });
         resumable.addFile(file);
         resumable.upload();
-
         status.textContent = 'Starting upload...';
       } catch (err) {
         status.textContent = 'Preparation error: ' + err.message;
