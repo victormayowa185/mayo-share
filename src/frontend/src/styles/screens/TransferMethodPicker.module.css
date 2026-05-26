@@ -28,36 +28,35 @@
 }
 
 .card {
-  background: var(--bg-card);
-  border: 1px solid var(--border);
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
   border-radius: 16px;
   padding: 32px 28px;
   width: 240px;
   cursor: pointer;
   text-align: center;
-  transition:
-    border-color 0.2s,
-    transform 0.15s;
+  transition: transform 0.2s ease, border-color 0.2s ease; 
 }
 
 .card:hover {
-  transform: translateY(-3px);
+  transform: translateY(-4px);
 }
 
 .cardEmoji {
   font-size: 2.8rem;
   margin-bottom: 16px;
+  color: var(--card-icon);
 }
 
 .cardTitle {
   font-size: 1.1rem;
   font-weight: bold;
   margin-bottom: 10px;
-  color: var(--text-primary);
+  color: var(--card-text);
 }
 
 .cardDesc {
-  color: var(--text-muted);
+  color: var(--card-desc);
   font-size: 0.88rem;
   line-height: 1.6;
 }

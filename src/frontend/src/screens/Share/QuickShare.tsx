@@ -29,7 +29,7 @@ interface FileEntry {
   relativePath: string;
   name: string;
   size: number;
-   downloadProgress?: number;
+  downloadProgress?: number;
   downloadStatus: "idle" | "downloading" | "done";
 }
 
@@ -55,7 +55,7 @@ const QuickShare: React.FC<Props> = ({ onBack, shareIP }) => {
   const [editingFileId, setEditingFileId] = useState<string | null>(null);
   const [editContent, setEditContent] = useState("");
   const [isSharing, setIsSharing] = useState(false);
-  const [messageText, setMessageText] = useState('');
+  const [messageText, setMessageText] = useState("");
   const [copied, setCopied] = useState(false);
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(
     new Set(),
@@ -308,10 +308,14 @@ const QuickShare: React.FC<Props> = ({ onBack, shareIP }) => {
       setShareUrl(url);
       setIsSharing(true);
 
+      // Directly detect theme from data-theme attribute (reliable fix)
+      const isDarkMode = document.documentElement.getAttribute('data-theme') === 'dark';
+      const qrLightColor = isDarkMode ? '#0A0A0A' : '#FFFFFF';
+
       const qrData = await QRCode.toDataURL(url, {
         width: 220,
         margin: 2,
-        color: { dark: "#b169e0", light: "#0A0A0A" },
+        color: { dark: "#b169e0", light: qrLightColor },
       });
       setQrDataUrl(qrData);
     } catch (err: any) {

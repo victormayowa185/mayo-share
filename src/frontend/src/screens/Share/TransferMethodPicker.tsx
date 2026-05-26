@@ -26,8 +26,9 @@ const TransferMethodPicker: React.FC<Props> = ({
   // Entrance animation – cards stagger in from below
   useGSAP(() => {
     if (cardsRef.current) {
+      const cards = cardsRef.current.querySelectorAll(`.${styles.card}`);
       gsap.fromTo(
-        cardsRef.current.querySelectorAll(`.${styles.card}`),
+        cards,
         { opacity: 0, y: 20 },
         {
           opacity: 1,
@@ -35,7 +36,11 @@ const TransferMethodPicker: React.FC<Props> = ({
           duration: 0.4,
           stagger: 0.1,
           ease: "power2.out",
-        }
+          onComplete: () => {
+            // Remove the inline transform so CSS hover can take over
+            gsap.set(cards, { clearProps: "transform" });
+          },
+        },
       );
     }
   }, []);
@@ -51,14 +56,12 @@ const TransferMethodPicker: React.FC<Props> = ({
           icon={<VscGlobe size={40} />}
           title={t("quickShare")}
           description={t("quickShareDesc")}
-          color="#b169e0"
           onClick={onSelectQuick}
         />
         <MethodCard
           icon={<FaLink size={36} />}
           title={t("deviceConnect")}
           description={t("deviceConnectDesc")}
-          color="#b169e0"
           onClick={onSelectP2P}
         />
       </div>
@@ -70,7 +73,6 @@ interface CardProps {
   icon: React.ReactNode;
   title: string;
   description: string;
-  color: string;
   onClick: () => void;
 }
 
@@ -78,19 +80,9 @@ const MethodCard: React.FC<CardProps> = ({
   icon,
   title,
   description,
-  color,
   onClick,
 }) => (
-  <div
-    className={styles.card}
-    onClick={onClick}
-    onMouseEnter={(e) =>
-      ((e.currentTarget as HTMLDivElement).style.borderColor = color)
-    }
-    onMouseLeave={(e) =>
-      ((e.currentTarget as HTMLDivElement).style.borderColor = "#222")
-    }
-  >
+  <div className={styles.card} onClick={onClick}>
     <div className={styles.cardEmoji}>{icon}</div>
     <div className={styles.cardTitle}>{title}</div>
     <div className={styles.cardDesc}>{description}</div>

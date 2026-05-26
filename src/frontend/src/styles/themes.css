@@ -51,21 +51,67 @@
   --mini-spinner-border: rgba(255, 255, 255, 0.3);
   --mini-spinner-top: #b169e0;
 
-  /* Home cards – dark mode */
+  /* Component‑specific variables – dark mode */
   --home-card-bg: var(--bg-card);
   --home-card-text: var(--text-primary);
   --home-card-text-desc: var(--text-muted);
   --home-card-icon: var(--text-primary);
   --home-card-hover-border: var(--accent);
   --home-card-border: 1px solid transparent;
-  --home-card-hover-border: var(--accent);
-    --topbar-share-color: #fff;   /* white */
+  --topbar-share-color: #fff;
+
+  --title-color: var(--text-inverse);
+  --ghost-text-color: var(--text-secondary);
+  --ghost-text: var(--text-secondary);
+  --ghost-hover-text: #000000;
+  --title-light: var(--text-inverse);
+  --btn-text: var(--text-inverse);
+
+  --back-btn-bg: transparent;
+  --back-btn-hover-bg: transparent;
+  --back-btn-text: var(--text-secondary);
+  --back-btn-hover-text: var(--text-inverse);
+
+  --card-bg: var(--bg-card);
+  --card-border: var(--border);
+  --card-text: var(--text-primary);
+  --card-desc: var(--text-muted);
+  --card-icon: var(--text-primary);
+
+  --qs-title-color: var(--text-inverse);
+  --qs-ghost-border: var(--border-light);
+  --qs-ghost-text: var(--text-secondary);
+  --qs-ghost-hover-bg: var(--accent);
+  --qs-ghost-hover-text: var(--text-inverse);
+  --qr-light-color: #0a0a0a;
+  --remove-btn-color: var(--text-muted);
+  --folder-header-border: var(--border-light);
+  --file-row-border-subtle: var(--border);
+  --toggle-all-hover-color: var(--accent);
+  --copy-btn-bg: var(--btn-copy-bg);
+  --copy-btn-text: var(--text-secondary);
+  --copy-btn-hover-bg: var(--btn-copy-hover-bg);
+  --p2p-title-color: var(--text-inverse); /* white in dark mode */
+  --p2p-ghost-border: var(--border-light); /* light gray border */
+  --p2p-ghost-text: var(--text-secondary); /* light gray text */
+  --p2p-ghost-hover-bg: var(--accent); /* purple on hover */
+  --p2p-ghost-hover-text: var(--text-inverse); /* white on hover */
 }
 
 [data-theme="light"] {
-    --topbar-share-color: #242222;   /* black */
-  --home-card-border: none; /* no border at all */
-  --home-card-hover-border: none; 
+  --p2p-title-color: #000000; /* black title */
+  --p2p-ghost-border: #000000; /* black border */
+  --p2p-ghost-text: #000000; /* black text */
+  --p2p-ghost-hover-bg: var(--accent); /* purple background on hover */
+  --p2p-ghost-hover-text: #ffffff; /* white text on hover */
+  --copy-btn-bg: #000000;
+  --copy-btn-text: #ffffff;
+  --copy-btn-hover-bg: #1a1a1a;
+  --folder-header-border: #000000;
+  --file-row-border-subtle: #333333;
+  --toggle-all-hover-color: #000000;
+  --remove-btn-color: #000000;
+  --qr-light-color: #ffffff; /* white background for QR in light mode */
   --bg-primary: #f5f5f5;
   --bg-card: #ffffff;
   --bg-hover: #e8e8e8;
@@ -117,10 +163,36 @@
   --mini-spinner-border: rgba(0, 0, 0, 0.15);
   --mini-spinner-top: #b169e0;
 
-  /* Home cards – light mode */
+  /* Component‑specific variables – light mode */
   --home-card-bg: var(--accent);
   --home-card-text: #000;
   --home-card-text-desc: rgba(0, 0, 0, 0.75);
-  --home-card-icon: #000; /* black icons */
-  --home-card-hover-border: var(--accent); /* optional purple hover */
+  --home-card-icon: #000;
+  --home-card-hover-border: var(--accent);
+  --home-card-border: none;
+  --topbar-share-color: #242222;
+
+  --title-color: #000000;
+  --ghost-text-color: #000000;
+  --ghost-text: #000000;
+  --ghost-hover-text: #000000; /* same as dark but explicit */
+  --title-light: #000000;
+  --btn-text: #000000;
+
+  --back-btn-bg: #000000;
+  --back-btn-hover-bg: #1a1a1a;
+  --back-btn-text: #ffffff;
+  --back-btn-hover-text: #ffffff;
+
+  --card-bg: var(--accent);
+  --card-border: transparent;
+  --card-text: #000000;
+  --card-desc: #000000;
+  --card-icon: #000000;
+
+  --qs-title-color: #000000;
+  --qs-ghost-border: #000000;
+  --qs-ghost-text: #000000;
+  --qs-ghost-hover-bg: var(--accent);
+  --qs-ghost-hover-text: #ffffff;
 }

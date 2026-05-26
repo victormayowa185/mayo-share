@@ -3,8 +3,8 @@
   flex-direction: column;
   align-items: center;
   width: 100%;
-  padding: 10px 24px 48px 24px;
-  min-height: 60vh;
+  padding: 20px 24px 48px 24px;      /* consistent with other pages */
+  min-height: calc(100vh - 60px);    /* fill full viewport minus top bar */
   background: var(--bg-primary);
   color: var(--text-primary);
 }
@@ -22,9 +22,8 @@
 .title {
   font-size: 1.6rem;
   margin-bottom: 32px;
-  color: var(--text-inverse);
+  color: var(--p2p-title-color); /* uses new variable */
 }
-
 .modeRow {
   display: flex;
   gap: 16px;
@@ -161,16 +160,18 @@
 .ghostBtn {
   padding: 12px 28px;
   background: transparent;
-  color: var(--text-secondary);
-  border: 1px solid var(--border-light);
+  color: var(--p2p-ghost-text);
+  border: 1px solid var(--p2p-ghost-border);
   border-radius: 8px;
   font-size: 1rem;
   cursor: pointer;
+  transition: all 0.2s ease;
 }
 
 .ghostBtn:hover {
-  border-color: var(--accent);
-  color: var(--accent);
+  border-color: var(--p2p-ghost-hover-bg);
+  background-color: var(--p2p-ghost-hover-bg);
+  color: var(--p2p-ghost-hover-text);
 }
 
 /* Code panel used by join mode */

@@ -12,7 +12,7 @@
 .title {
   font-size: 1.6rem;
   margin-bottom: 8px;
-  color: var(--text-inverse);
+  color: var(--qs-title-color);
 }
 
 .subtitle {
@@ -53,17 +53,19 @@
 
 .ghostBtn {
   background: transparent;
-  border: 1px solid var(--border-light);
-  color: var(--text-secondary);
+  border: 1px solid var(--qs-ghost-border);
+  color: var(--qs-ghost-text);
   padding: 10px 24px;
   border-radius: 8px;
   cursor: pointer;
   font-size: 0.9rem;
+  transition: all 0.2s ease;
 }
 
 .ghostBtn:hover {
-  border-color: var(--accent);
-  color: var(--accent);
+  background-color: var(--qs-ghost-hover-bg);
+  border-color: var(--qs-ghost-hover-bg);
+  color: var(--qs-ghost-hover-text);
 }
 
 .shareBtn {
@@ -87,11 +89,23 @@
   align-items: center;
   gap: 12px;
   background: var(--bg-card);
-  border: 1px solid var(--border);
+  border: 1px solid var(--file-row-border-subtle);
   border-radius: 8px;
   padding: 10px 16px;
   margin-bottom: 8px;
   font-size: 0.9rem;
+}
+
+.removeBtn {
+  background: transparent;
+  border: none;
+  color: var(--remove-btn-color);
+  cursor: pointer;
+  padding: 4px;
+}
+
+.removeBtn:hover {
+  color: var(--error); /* red on hover in both themes */
 }
 
 .fileRowName {
@@ -141,11 +155,12 @@
   cursor: pointer;
   display: flex;
   align-items: center;
+  transition: all 0.2s ease;
 }
 
 .toggleAllBtn:hover {
-  border-color: var(--accent);
-  color: var(--accent);
+  border-color: var(--toggle-all-hover-color);
+  color: var(--toggle-all-hover-color);
 }
 
 .folderGroup {
@@ -157,7 +172,7 @@
   align-items: center;
   gap: 10px;
   background: var(--bg-folder-header);
-  border: 1px solid var(--border-light);
+  border: 1px solid var(--folder-header-border);
   border-radius: 8px;
   padding: 10px 14px;
   cursor: pointer;
@@ -166,7 +181,7 @@
 }
 
 .folderHeader:hover {
-  border-color: var(--accent);
+  border-color: var(--accent); /* unchanged – purple on hover in both themes */
 }
 
 .folderArrow {
@@ -234,7 +249,7 @@
   height: 220px;
   border-radius: 12px;
   border: 2px solid var(--accent);
-  background: var(--bg-primary);
+  background: transparent;
   margin-bottom: 16px;
 }
 
@@ -275,19 +290,20 @@
 }
 
 .copyBtn {
-  background: var(--btn-copy-bg);
+  background: var(--copy-btn-bg);
   border: none;
-  color: var(--text-secondary);
+  color: var(--copy-btn-text);
   padding: 8px 14px;
   border-radius: 6px;
   font-size: 0.85rem;
   cursor: pointer;
   white-space: nowrap;
+  transition: background 0.2s ease;
 }
 
 .copyBtn:hover {
-  background: var(--btn-copy-hover-bg);
-  color: var(--text-inverse);
+  background: var(--copy-btn-hover-bg);
+  color: var(--copy-btn-text);
 }
 
 .hint {
@@ -419,7 +435,9 @@
 .container.dragOver {
   border: 2px dashed var(--accent);
   background: var(--drag-over-bg);
-  transition: background 0.2s, border 0.2s;
+  transition:
+    background 0.2s,
+    border 0.2s;
 }
 
 .progressRow {

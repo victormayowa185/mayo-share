@@ -24,40 +24,39 @@
 }
 
 .modeCard {
-  background: var(--bg-card);
-  border: 1px solid var(--border);
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
   border-radius: 16px;
   padding: 28px 24px;
   width: 220px;
   cursor: pointer;
   text-align: center;
-  transition:
-    border-color 0.2s,
-    transform 0.15s;
+  transition: transform 0.2s ease, border-color 0.2s ease;
 }
 
 .modeCard:hover {
-  border-color: var(--accent);
   transform: translateY(-3px);
 }
 
 .cardEmoji {
   font-size: 2.5rem;
   margin-bottom: 12px;
+  color: var(--card-icon);
 }
 
 .cardTitle {
   font-size: 1rem;
   font-weight: bold;
   margin-bottom: 8px;
-  color: var(--text-primary);
+  color: var(--card-text);
 }
 
 .cardDesc {
-  color: var(--text-muted);
+  color: var(--card-desc);
   font-size: 0.85rem;
   line-height: 1.5;
 }
+
 
 .panel {
   display: flex;

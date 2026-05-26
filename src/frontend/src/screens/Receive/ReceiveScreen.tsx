@@ -23,20 +23,27 @@ const ReceiveScreen: React.FC<Props> = ({ onBack }) => {
   const cardsRef = useRef<HTMLDivElement>(null);
 
   // Entrance animation – only when mode is "choose" (the mode chooser is visible)
-  useGSAP(
-    () => {
-      if (mode === "choose" && cardsRef.current) {
-        // Fade in the whole card section
-        gsap.fromTo(
-          cardsRef.current,
-          { opacity: 0, y: 20 },
-          { opacity: 1, y: 0, duration: 0.4, ease: "power2.out" }
-        );
-      }
-    },
-    { dependencies: [mode] }
-  );
-
+useGSAP(
+  () => {
+    if (mode === "choose" && cardsRef.current) {
+      const cards = cardsRef.current.querySelectorAll(`.${styles.modeCard}`);
+      gsap.fromTo(
+        cards,
+        { opacity: 0, y: 20 },
+        {
+          opacity: 1,
+          y: 0,
+          duration: 0.4,
+          ease: "power2.out",
+          onComplete: () => {
+            gsap.set(cards, { clearProps: "transform" });
+          }
+        }
+      );
+    }
+  },
+  { dependencies: [mode] }
+);
   return (
     <div className={styles.container}>
       {/* Outer back arrow – hidden when P2P or browser mode is active */}

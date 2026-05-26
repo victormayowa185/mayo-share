@@ -260,8 +260,15 @@ export class UploadServer extends EventEmitter {
                 getField(fields.resumableTotalChunks) || "0",
                 10,
               );
-              const originalFilename =
+              let originalFilename =
                 getField(fields.resumableFilename) || "uploaded-file";
+
+              // FIXED: Sanitize filename - remove invalid characters for Windows paths
+              originalFilename = originalFilename
+                .replace(/[<>:"|?*]/g, "_") // Replace invalid Windows chars
+                .replace(/\.{2,}/g, ".") // Prevent double dots
+                .replace(/\s+/g, " ") // Normalize spaces
+                .trim();
 
               const chunkDir = path.join(RECEIVE_DIR, "chunks", identifier);
               await fs.mkdir(chunkDir, { recursive: true });
@@ -516,34 +523,59 @@ function getUploadHTML(): string {
     fileInput.addEventListener('change', () => addFilesFromInput(fileInput));
     folderInput.addEventListener('change', () => addFilesFromInput(folderInput));
 
-    // Improved paste handler: supports both images and text
+    // FIXED: Improved paste handler - supports both images and text
     pasteArea.addEventListener('paste', (e) => {
       const items = e.clipboardData?.items;
-      if (!items) return;
+      if (!items || items.length === 0) {
+        // If items is empty, let the browser handle text paste naturally
+        return;
+      }
 
+      let handled = false;
+
+      // First pass: Handle image paste
       for (const item of items) {
-        // Handle image paste
         if (item.type.startsWith('image/')) {
           e.preventDefault();
+          handled = true;
           const blob = item.getAsFile();
-          const reader = new FileReader();
-          reader.onload = () => {
-            pastedImageData = reader.result;
-            const img = document.createElement('img');
-            img.src = reader.result;
-            thumbs.innerHTML = '';
-            thumbs.appendChild(img);
-          };
-          reader.readAsDataURL(blob);
+          if (blob) {
+            const reader = new FileReader();
+            reader.onload = () => {
+              pastedImageData = reader.result;
+              const img = document.createElement('img');
+              img.src = reader.result;
+              thumbs.innerHTML = '';
+              thumbs.appendChild(img);
+            };
+            reader.readAsDataURL(blob);
+          }
           return;
         }
       }
 
-      // If we reach here, it's text. Prevent default and insert manually.
-      e.preventDefault();
-      const text = e.clipboardData?.getData('text/plain');
-      if (text) {
-        document.execCommand('insertText', false, text);
+      // Second pass: Handle text paste
+      for (const item of items) {
+        if (item.type === 'text/plain' || item.kind === 'string') {
+          e.preventDefault();
+          handled = true;
+          item.getAsString((text) => {
+            if (text) {
+              const currentText = pasteArea.innerText;
+              pasteArea.innerText = currentText + text;
+            }
+          });
+          return;
+        }
+      }
+
+      // If nothing was handled, let default paste behavior work
+      if (!handled) {
+        e.preventDefault();
+        const text = e.clipboardData?.getData('text/plain');
+        if (text) {
+          document.execCommand('insertText', false, text);
+        }
       }
     });
 

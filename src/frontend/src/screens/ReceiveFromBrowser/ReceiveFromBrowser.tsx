@@ -42,12 +42,15 @@ const ReceiveFromBrowser: React.FC<Props> = ({
   const [copied, setCopied] = useState(false);
   const [startingHotspot, setStartingHotspot] = useState(false);
   const [hotspotStatus, setHotspotStatus] = useState("");
-  const [approvedSenders, setApprovedSenders] = useState<string[]>([]);
+  const [approvedSenders, setApprovedSenders] = useState<
+    { sessionId: string; senderName: string }[]
+  >([]);
   const [receivedFiles, setReceivedFiles] = useState<ReceivedFile[]>([]);
   const [pendingSenders, setPendingSenders] = useState<
     { sessionId: string; senderName: string; deviceType: string }[]
   >([]);
 
+  // FIXED: Listen for file-received events and remove sender from uploading list
   useEffect(() => {
     window.electronAPI.onUploadUpdate((data) => {
       if (data.event === "received") {
@@ -57,9 +60,15 @@ const ReceiveFromBrowser: React.FC<Props> = ({
           time: new Date().toLocaleTimeString(),
         };
         setReceivedFiles((prev) => [...prev, newFile]);
+
+        // FIXED: Remove sender from approvedSenders after file is received
+        setApprovedSenders((prev) =>
+          prev.filter((s) => s.senderName !== data.senderName),
+        );
       }
     });
   }, []);
+
   useEffect(() => {
     window.electronAPI.onSenderConnected(
       (data: { sessionId: string; senderName: string; deviceType: string }) => {
@@ -250,7 +259,7 @@ const ReceiveFromBrowser: React.FC<Props> = ({
                           );
                           setApprovedSenders((prev) => [
                             ...prev,
-                            s.senderName || "Unknown",
+                            { sessionId: s.sessionId, senderName: s.senderName || "Unknown" },
                           ]);
                           onSenderApproved?.();
                         }}
@@ -279,13 +288,13 @@ const ReceiveFromBrowser: React.FC<Props> = ({
             <div className={styles.receivedSection}>
               <h3 className={styles.receivedTitle}>Uploading from</h3>
               <ul className={styles.fileList}>
-                {approvedSenders.map((name, i) => (
-                  <li key={i} className={styles.fileItem}>
+                {approvedSenders.map((sender) => (
+                  <li key={sender.sessionId} className={styles.fileItem}>
                     <div
                       className={styles.miniSpinner}
                       style={{ marginRight: 8 }}
                     />
-                    <span className={styles.fileName}>{name}</span>
+                    <span className={styles.fileName}>{sender.senderName}</span>
                     <span className={styles.fileTime}>Uploading…</span>
                   </li>
                 ))}

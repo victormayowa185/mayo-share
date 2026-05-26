@@ -12,7 +12,7 @@
 .title {
   font-size: 1.6rem;
   margin-bottom: 8px;
-  color: var(--text-inverse);
+  color: var(--title-light);
 }
 
 .subtitle {
@@ -24,7 +24,7 @@
 .btn {
   padding: 12px 32px;
   background: var(--accent);
-  color: var(--text-inverse);
+  color: var(--btn-text);
   border: none;
   border-radius: 8px;
   font-size: 1rem;
@@ -91,17 +91,19 @@
 .ghostBtn {
   background: transparent;
   border: 1px solid var(--border-light);
-  color: var(--text-secondary);
+  color: var(--ghost-text);
   padding: 10px 24px;
   border-radius: 8px;
   cursor: pointer;
   font-size: 0.9rem;
   margin-top: 12px;
+  transition: all 0.2s ease;
 }
 
 .ghostBtn:hover {
-  border-color: var(--border-hover-light);
-  color: var(--text-inverse);
+  background-color: var(--accent);
+  border-color: var(--accent);
+  color: var(--ghost-hover-text);
 }
 
 .spinnerContainer {
