@@ -216,5 +216,10 @@
   "activity": "Atividade",
   "activityDescription": "Suas transferências recentes de arquivos aparecerão aqui.",
   "noRecentActivity": "Nenhuma atividade recente.",
-  "clearHistory": "Limpar histórico"
+  "clearHistory": "Limpar histórico",
+  "theme": "Tema",
+  "themeDesc": "Escolha a aparência do aplicativo.",
+  "system": "Sistema",
+  "light": "Claro",
+  "dark": "Escuro"
 }

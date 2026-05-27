@@ -216,5 +216,10 @@
   "activity": "活动",
   "activityDescription": "您最近的文件传输记录将显示在这里。",
   "noRecentActivity": "暂无活动。",
-  "clearHistory": "清除历史"
+  "clearHistory": "清除历史",
+  "theme": "主题",
+  "themeDesc": "选择应用的外观。",
+  "system": "系统",
+  "light": "亮色",
+  "dark": "暗色"
 }

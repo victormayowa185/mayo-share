@@ -216,5 +216,10 @@
   "activity": "गतिविधि",
   "activityDescription": "आपके हाल के फ़ाइल स्थानांतरण यहाँ दिखाई देंगे।",
   "noRecentActivity": "कोई हालिया गतिविधि नहीं।",
-  "clearHistory": "इतिहास साफ़ करें"
+  "clearHistory": "इतिहास साफ़ करें",
+  "theme": "थीम",
+  "themeDesc": "ऐप कैसा दिखे, यह चुनें।",
+  "system": "सिस्टम",
+  "light": "हल्का",
+  "dark": "गहरा"
 }

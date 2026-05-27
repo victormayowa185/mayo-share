@@ -116,13 +116,13 @@
   --status-off-dot: #555; /* dark gray */
   --topbar-icon-color: var(--text-inverse); /* white */
   --topbar-icon-hover-color: var(--text-inverse); /* white */
-  --settings-title-color: var(--text-inverse);   /* white */
---settings-header-color: var(--text-inverse);  /* white */
+  --settings-title-color: var(--text-inverse); /* white */
+  --settings-header-color: var(--text-inverse); /* white */
 }
 
 [data-theme="light"] {
-  --settings-title-color: #000000;               /* black */
---settings-header-color: #000000;              /* black */
+  --settings-title-color: #000000; /* black */
+  --settings-header-color: #000000; /* black */
   --topbar-icon-color: #000000; /* black */
   --topbar-icon-hover-color: #000000; /* black */
   --status-connected-text: #000000; /* black */

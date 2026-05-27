@@ -225,5 +225,10 @@
   "activity": "سرگرمی",
   "activityDescription": "آپ کی حالیہ فائل ٹرانسفر یہاں ظاہر ہوں گی۔",
   "noRecentActivity": "کوئی حالیہ سرگرمی نہیں۔",
-  "clearHistory": "تاریخ صاف کریں"
+  "clearHistory": "تاریخ صاف کریں",
+  "theme": "تھیم",
+  "themeDesc": "انتخاب کریں کہ ایپ کیسا دکھائی دے۔",
+  "system": "سسٹم",
+  "light": "ہلکا",
+  "dark": "گہرا"
 }

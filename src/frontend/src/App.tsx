@@ -41,17 +41,18 @@ const App: React.FC = () => {
   const [connectionLabel, setConnectionLabel] = useState<string | null>(null);
   const [platform, setPlatform] = useState<string | null>(null);
 
+  // ❌ Theme logic completely removed – now handled by main.tsx (initTheme) and index.html inline script.
+  // ❌ No applyTheme function, no theme useEffect here.
+
   // Check setup flags and platform on mount
   useEffect(() => {
     const init = async () => {
       const done = localStorage.getItem("mayo-setup-complete");
       const langDone = localStorage.getItem("mayo-language-set");
-      
-      // Detect platform
+
       const plat = await window.electronAPI.getPlatform();
       setPlatform(plat);
 
-      // On macOS, never show the hardware stepper
       if (plat === "darwin") {
         localStorage.setItem("mayo-setup-complete", "true");
         setSetupComplete(true);
@@ -109,7 +110,6 @@ const App: React.FC = () => {
 
   const resetSetup = () => {
     localStorage.removeItem("mayo-setup-complete");
-    // On macOS, auto‑re‑complete setup so the stepper never shows
     if (platform === "darwin") {
       localStorage.setItem("mayo-setup-complete", "true");
       setSetupComplete(true);
@@ -129,7 +129,7 @@ const App: React.FC = () => {
     return (
       <div
         style={{
-          background: "#0A0A0A",
+          background: "var(--bg-primary)",
           minHeight: "100vh",
           display: "flex",
           alignItems: "center",
@@ -163,7 +163,7 @@ const App: React.FC = () => {
         display: "flex",
         flexDirection: "column",
         minHeight: "100vh",
-        background: "#0A0A0A",
+        background: "var(--bg-primary)",
       }}
     >
       <div style={{ flex: 1 }}>
@@ -175,7 +175,6 @@ const App: React.FC = () => {
             onHelpClick={resetSetup}
           />
         )}
-
         {screen === "share-hotspot-check" && (
           <HotspotCheck
             onReady={() => setScreen("share-method-picker")}
@@ -187,7 +186,6 @@ const App: React.FC = () => {
             onConnectionChange={(label: string) => setConnectionLabel(label)}
           />
         )}
-
         {screen === "share-method-picker" && (
           <TransferMethodPicker
             onSelectP2P={() => setScreen("share-p2p")}
@@ -195,22 +193,18 @@ const App: React.FC = () => {
             onBack={() => setScreen("share-hotspot-check")}
           />
         )}
-
         {screen === "share-quick" && (
           <QuickShare
             onBack={() => setScreen("share-method-picker")}
             shareIP={hotspotIP}
           />
         )}
-
         {screen === "share-p2p" && (
           <P2PSession onBack={() => setScreen("share-method-picker")} />
         )}
-
         {screen === "receive" && (
           <ReceiveScreen onBack={() => setScreen("home")} />
         )}
-
         {screen === "receive-browser" && (
           <ReceiveFromBrowser
             onBack={() => setScreen("home")}
@@ -220,11 +214,9 @@ const App: React.FC = () => {
             onStopReceiving={() => setConnectedDevicesCount(0)}
           />
         )}
-
         {screen === "activity" && (
           <ActivityScreen onBack={() => setScreen("home")} />
         )}
-
         {screen === "support" && (
           <SupportScreen
             onBack={() => setScreen("home")}
@@ -232,15 +224,12 @@ const App: React.FC = () => {
             onNavigateTo={setScreen}
           />
         )}
-
         {screen === "settings" && (
           <SettingsScreen onBack={() => setScreen("home")} />
         )}
-
         {screen === "troubleshoot" && (
           <TroubleshootScreen onBack={() => setScreen("support")} />
         )}
-
         {screen === "rate" && <RateUsScreen onBack={() => setScreen("home")} />}
       </div>
 

@@ -191,5 +191,10 @@
   "activity": "Akisimila",
   "activityDescription": "Àwọn gbigbe faili rẹ tuntun yoo hàn nibi.",
   "noRecentActivity": "Kò sí akisimila tuntun.",
-  "clearHistory": "Mú Ìtàn Kúrò"
+  "clearHistory": "Mú Ìtàn Kúrò",
+"theme": "Akori",
+"themeDesc": "Yan bi app yoo ṣe ri.",
+"system": "Eto",
+"light": "Imọlẹ",
+"dark": "Òkunkun"
 }

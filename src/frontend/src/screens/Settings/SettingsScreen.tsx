@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import i18next from "i18next";
 import gsap from "gsap";
 import { useGSAP } from "@gsap/react";
+import { getTheme, applyTheme } from "../../themeInit";
 import styles from "../../styles/screens/SettingsScreen.module.css";
 
 gsap.registerPlugin(useGSAP);
@@ -23,55 +24,10 @@ const SettingsScreen: React.FC<Props> = ({ onBack }) => {
   const [deviceName, setDeviceName] = useState("");
   const [editDeviceName, setEditDeviceName] = useState("");
   const [editingDevice, setEditingDevice] = useState(false);
-
-  // Theme state
   const [themeMode, setThemeMode] = useState<"system" | "light" | "dark">("system");
-  let systemThemeListener: ((e: MediaQueryListEvent) => void) | null = null;
 
-  // Apply theme based on mode
-  const applyTheme = (mode: "system" | "light" | "dark") => {
-    // Clean up previous listener
-    if (systemThemeListener) {
-      const mql = window.matchMedia("(prefers-color-scheme: dark)");
-      mql.removeEventListener("change", systemThemeListener);
-      systemThemeListener = null;
-    }
-
-    if (mode === "system") {
-      const mql = window.matchMedia("(prefers-color-scheme: dark)");
-      const theme = mql.matches ? "dark" : "light";
-      document.documentElement.setAttribute("data-theme", theme);
-      // Listen for system changes
-      systemThemeListener = (e: MediaQueryListEvent) => {
-        document.documentElement.setAttribute("data-theme", e.matches ? "dark" : "light");
-      };
-      mql.addEventListener("change", systemThemeListener);
-    } else {
-      document.documentElement.setAttribute("data-theme", mode);
-    }
-  };
-
-  // Load saved theme from localStorage
-  useEffect(() => {
-    const saved = localStorage.getItem("theme-mode") as "system" | "light" | "dark" | null;
-    if (saved && ["system", "light", "dark"].includes(saved)) {
-      setThemeMode(saved);
-      applyTheme(saved);
-    } else {
-      applyTheme("system");
-    }
-  }, []);
-
-  const handleThemeChange = (mode: "system" | "light" | "dark") => {
-    setThemeMode(mode);
-    localStorage.setItem("theme-mode", mode);
-    applyTheme(mode);
-  };
-
-  // Ref for GSAP animation
   const cardsRef = useRef<HTMLDivElement>(null);
 
-  // GSAP entrance animation – stagger each card into view
   useGSAP(() => {
     if (cardsRef.current) {
       const cards = cardsRef.current.querySelectorAll(`.${styles.card}`);
@@ -88,6 +44,18 @@ const SettingsScreen: React.FC<Props> = ({ onBack }) => {
       );
     }
   }, []);
+
+  // Load saved theme mode from localStorage (single source of truth)
+  useEffect(() => {
+    const saved = getTheme(); // uses the shared function
+    setThemeMode(saved);
+  }, []);
+
+  // Handle theme change – uses the shared applyTheme
+  const handleThemeChange = (mode: "system" | "light" | "dark") => {
+    setThemeMode(mode);
+    applyTheme(mode); // updates localStorage and data-theme attribute
+  };
 
   useEffect(() => {
     (async () => {
@@ -141,7 +109,6 @@ const SettingsScreen: React.FC<Props> = ({ onBack }) => {
       <BackButton onClick={onBack} />
       <h2 className={styles.title}>{t("settings")}</h2>
 
-      {/* All cards are wrapped in this div so GSAP can animate them */}
       <div ref={cardsRef} style={{ width: "100%", display: "contents" }}>
         {/* Device Name Card */}
         <div className={styles.card}>
@@ -199,8 +166,7 @@ const SettingsScreen: React.FC<Props> = ({ onBack }) => {
             onChange={async (e) => {
               const lang = e.target.value;
               await window.electronAPI.setLanguage(lang);
-              const newTranslations =
-                await window.electronAPI.getTranslations(lang);
+              const newTranslations = await window.electronAPI.getTranslations(lang);
               i18next.addResourceBundle(lang, "translation", newTranslations);
               await i18next.changeLanguage(lang);
               setCurrentLang(lang);
