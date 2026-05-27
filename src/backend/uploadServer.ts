@@ -1,8 +1,19 @@
 import { createServer, Server, IncomingMessage, ServerResponse } from "http";
-import { promises as fs } from "fs";
+import { promises as fs, statfs } from "fs";
 import path from "path";
 import { EventEmitter } from "events";
 import { formidable } from "formidable";
+import { promisify } from "util";
+
+const statfsAsync = promisify(statfs);
+
+function formatBytesServer(bytes: number): string {
+  if (bytes === 0) return "0 B";
+  const k = 1024;
+  const sizes = ["B", "KB", "MB", "GB"];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i];
+}
 
 interface Session {
   id: string;
@@ -263,11 +274,31 @@ export class UploadServer extends EventEmitter {
               let originalFilename =
                 getField(fields.resumableFilename) || "uploaded-file";
 
-              // FIXED: Sanitize filename - remove invalid characters for Windows paths
+              // ----- DISK SPACE CHECK (only on first chunk) -----
+              if (chunkNumber === "1") {
+                const totalSize = parseInt(
+                  getField(fields.resumableTotalSize) || "0",
+                  10,
+                );
+                if (totalSize > 0) {
+                  const stats = await statfsAsync(RECEIVE_DIR);
+                  const freeBytes = stats.bfree * stats.bsize;
+                  const safetyMargin = 100 * 1024 * 1024; // 100 MB
+                  if (freeBytes < totalSize + safetyMargin) {
+                    res.writeHead(507, { "Content-Type": "text/plain" });
+                    res.end(
+                      `Insufficient disk space. Need at least ${formatBytesServer(totalSize + safetyMargin)} free.`,
+                    );
+                    return;
+                  }
+                }
+              }
+
+              // Sanitize filename
               originalFilename = originalFilename
-                .replace(/[<>:"|?*]/g, "_") // Replace invalid Windows chars
-                .replace(/\.{2,}/g, ".") // Prevent double dots
-                .replace(/\s+/g, " ") // Normalize spaces
+                .replace(/[<>:"|?*]/g, "_")
+                .replace(/\.{2,}/g, ".")
+                .replace(/\s+/g, " ")
                 .trim();
 
               const chunkDir = path.join(RECEIVE_DIR, "chunks", identifier);
@@ -292,7 +323,6 @@ export class UploadServer extends EventEmitter {
                   writeStream.on("finish", resolve);
                   writeStream.on("error", reject);
                   (async () => {
-                    // Resumable.js chunk numbers start at 1, not 0
                     for (let i = 1; i <= totalChunks; i++) {
                       const chunkPath = path.join(chunkDir, i.toString());
                       const data = await fs.readFile(chunkPath);
@@ -480,6 +510,11 @@ function getUploadHTML(): string {
 
     let fileEntries = [];
     let pastedImageData = null;
+    // Speed tracking variables
+    let lastBytes = 0;
+    let lastTime = Date.now();
+    let currentSpeed = 0;
+    let totalSize = 0;
 
     const sessionId = new URLSearchParams(location.search).get('sessionId');
 
@@ -580,13 +615,13 @@ function getUploadHTML(): string {
     });
 
     // Resumable configuration
-    const resumable = new Resumable({
-      target: '/upload-chunk?sessionId=' + sessionId,
-      chunkSize: 1 * 1024 * 1024,  // 1 MB chunks
-      simultaneousUploads: 3,
-      testChunks: true,            // allow resume
-      query: { sessionId: sessionId },
-    });
+   const resumable = new Resumable({
+  target: '/upload-chunk?sessionId=' + sessionId,
+  chunkSize: 10 * 1024 * 1024,  // 10 MB chunks (faster uploads)
+  simultaneousUploads: 8,        // more parallel uploads
+  testChunks: true,              // allow resume
+  query: { sessionId: sessionId },
+});
 
     resumable.on('fileAdded', (file) => {
       // file is already in resumable's queue; we don't need to do anything
@@ -595,7 +630,20 @@ function getUploadHTML(): string {
     resumable.on('progress', () => {
       const pct = Math.floor(resumable.progress() * 100);
       progressFill.style.width = pct + '%';
-      status.textContent = 'Uploading... ' + pct + '%';
+
+      // Calculate speed (MB/s)
+      const now = Date.now();
+      const elapsed = (now - lastTime) / 1000;
+      if (totalSize === 0) totalSize = resumable.getSize();
+      const bytesUploaded = totalSize * resumable.progress();
+      const deltaBytes = bytesUploaded - lastBytes;
+      if (elapsed >= 0.5) {
+        currentSpeed = deltaBytes / elapsed / (1024 * 1024);
+        lastBytes = bytesUploaded;
+        lastTime = now;
+      }
+      const speedText = currentSpeed > 0 ? ' – ' + currentSpeed.toFixed(1) + ' MB/s' : '';
+      status.textContent = 'Uploading... ' + pct + '%' + speedText;
     });
 
     resumable.on('complete', () => {
@@ -607,6 +655,11 @@ function getUploadHTML(): string {
       thumbs.innerHTML = '';
       pastedImageData = null;
       sendBtn.disabled = false;
+      // Reset speed tracking for next upload
+      lastBytes = 0;
+      currentSpeed = 0;
+      totalSize = 0;
+      lastTime = Date.now();
     });
 
     resumable.on('error', (message, file) => {
@@ -624,6 +677,11 @@ function getUploadHTML(): string {
       status.textContent = 'Preparing...';
       progressBar.style.display = 'block';
       progressFill.style.width = '0%';
+      // Reset speed tracking for this transfer
+      lastBytes = 0;
+      lastTime = Date.now();
+      currentSpeed = 0;
+      totalSize = 0;
 
       try {
         // 1. Single file (no text, no image)

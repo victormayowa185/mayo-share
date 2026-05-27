@@ -1,4 +1,10 @@
-import { app, BrowserWindow, ipcMain, dialog } from "electron";
+import {
+  app,
+  BrowserWindow,
+  ipcMain,
+  dialog,
+  powerSaveBlocker,
+} from "electron";
 import path from "path";
 import { execFile } from "child_process";
 import { FileServer } from "./fileServer";
@@ -15,6 +21,7 @@ import fs from "fs";
 import os from "os";
 
 let mainWindow: BrowserWindow | null = null;
+let powerSaveBlockerId: number | null = null;
 let currentHotspotIP = "192.168.137.1";
 
 const STOP_HOTSPOT_SCRIPT = `
@@ -125,15 +132,15 @@ async function getBestIP(): Promise<string> {
   for (const iface of Object.values(interfaces)) {
     if (!iface) continue;
     for (const addr of iface) {
-     if (
-  addr.family === "IPv4" &&
-  !addr.internal &&
-  !addr.address.startsWith("192.168.137.") &&
-  !addr.address.startsWith("192.168.2.")&&
-  !addr.address.startsWith("169.254.") 
-) {
-  return addr.address;
-}
+      if (
+        addr.family === "IPv4" &&
+        !addr.internal &&
+        !addr.address.startsWith("192.168.137.") &&
+        !addr.address.startsWith("192.168.2.") &&
+        !addr.address.startsWith("169.254.")
+      ) {
+        return addr.address;
+      }
     }
   }
   return currentHotspotIP; // fallback to loopback
@@ -141,8 +148,10 @@ async function getBestIP(): Promise<string> {
 
 // ---------- Activity logging ----------
 const ACTIVITY_LOG_PATH = path.join(
-  process.platform === "win32" ? "C:\\mayo-received" : path.join(os.homedir(), "mayo-received"),
-  "activity.json"
+  process.platform === "win32"
+    ? "C:\\mayo-received"
+    : path.join(os.homedir(), "mayo-received"),
+  "activity.json",
 );
 
 function addActivity(entry: {
@@ -263,7 +272,7 @@ ipcMain.handle("set-language", async (_event, lang: string) => {
 
 // ---------- Hotspot ----------
 ipcMain.handle("start-hotspot", async (): Promise<string> => {
-if (process.platform === "win32") {
+  if (process.platform === "win32") {
     return new Promise((resolve) => {
       const tempScriptPath = path.join(
         os.tmpdir(),
@@ -291,7 +300,9 @@ if (process.platform === "win32") {
           if (error) output += "\n[EXIT CODE]: " + error.message;
 
           // Extract the hotspot IP from the script's output
-          const ipMatch = output.match(/Hotspot IP \(for sharing\):\s*([\d.]+)/);
+          const ipMatch = output.match(
+            /Hotspot IP \(for sharing\):\s*([\d.]+)/,
+          );
           if (ipMatch && ipMatch[1]) {
             currentHotspotIP = ipMatch[1];
           }
@@ -300,7 +311,7 @@ if (process.platform === "win32") {
         },
       );
     });
-} else if (process.platform === "darwin") {
+  } else if (process.platform === "darwin") {
     // macOS
     try {
       // First, attempt to configure (safe to call multiple times)
@@ -427,8 +438,6 @@ uploadServer.on(
   },
 );
 
-
-
 ipcMain.handle(
   "check-hotspot-status",
   async (): Promise<{ active: boolean; ip: string }> => {
@@ -464,7 +473,9 @@ ipcMain.handle(
           ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", tempPath],
           { timeout: 8000 },
           (error, stdout) => {
-            try { fs.unlinkSync(tempPath); } catch {}
+            try {
+              fs.unlinkSync(tempPath);
+            } catch {}
             const out = (stdout || "").trim();
             if (out.startsWith("ON")) {
               resolve({ active: true, ip: currentHotspotIP });
@@ -521,7 +532,7 @@ ipcMain.handle("get-local-ip", async (): Promise<string | null> => {
         addr.family === "IPv4" &&
         !addr.internal &&
         !addr.address.startsWith("192.168.137.") &&
-        !addr.address.startsWith("192.168.2.")&&
+        !addr.address.startsWith("192.168.2.") &&
         !addr.address.startsWith("169.254.")
       ) {
         return addr.address;
@@ -806,20 +817,15 @@ ipcMain.handle("diagnose-network", async (): Promise<any> => {
     });
   } else if (process.platform === "darwin") {
     return new Promise((resolve) => {
-      execFile(
-        "lsof",
-        ["-i", ":3001"],
-        { timeout: 5000 },
-        (error, stdout) => {
-          const portListening = stdout && stdout.includes("LISTEN");
-          resolve({
-            ssid: null,
-            profileCategory: null,
-            loopbackAdapterPresent: false,
-            port3001Listening: portListening,
-          });
-        },
-      );
+      execFile("lsof", ["-i", ":3001"], { timeout: 5000 }, (error, stdout) => {
+        const portListening = stdout && stdout.includes("LISTEN");
+        resolve({
+          ssid: null,
+          profileCategory: null,
+          loopbackAdapterPresent: false,
+          port3001Listening: portListening,
+        });
+      });
     });
   }
   // fallback
@@ -831,24 +837,25 @@ ipcMain.handle("diagnose-network", async (): Promise<any> => {
   };
 });
 
-ipcMain.handle("launch-hardware-wizard", async (): Promise<{ success: boolean; error?: string }> => {
-  return new Promise((resolve) => {
-    execFile(
-      "rundll32.exe",
-      ["shell32.dll,Control_RunDLL", "hdwwiz.cpl"],
-      { timeout: 10000 },
-      (error) => {
-        if (error) {
-          resolve({ success: false, error: error.message });
-        } else {
-          resolve({ success: true });
-        }
-      }
-    );
-  });
-});
-
-
+ipcMain.handle(
+  "launch-hardware-wizard",
+  async (): Promise<{ success: boolean; error?: string }> => {
+    return new Promise((resolve) => {
+      execFile(
+        "rundll32.exe",
+        ["shell32.dll,Control_RunDLL", "hdwwiz.cpl"],
+        { timeout: 10000 },
+        (error) => {
+          if (error) {
+            resolve({ success: false, error: error.message });
+          } else {
+            resolve({ success: true });
+          }
+        },
+      );
+    });
+  },
+);
 
 // Read a text file and return its content
 ipcMain.handle(
@@ -897,7 +904,10 @@ ipcMain.handle(
 );
 
 // ---------- Settings: save path ----------
-const defaultSaveDir = process.platform === "win32" ? "C:\\mayo-received" : path.join(os.homedir(), "mayo-received");
+const defaultSaveDir =
+  process.platform === "win32"
+    ? "C:\\mayo-received"
+    : path.join(os.homedir(), "mayo-received");
 let currentSavePath = defaultSaveDir;
 
 // Load saved path when app starts
@@ -1049,11 +1059,16 @@ discoveryManager.on("answer-received", (answerSDP: string) => {
 // ---------- App startup ----------
 app.whenReady().then(async () => {
   await loadSettings();
+  powerSaveBlockerId = powerSaveBlocker.start("prevent-app-suspension");
   createWindow();
 });
 
 app.on("before-quit", () => {
   discoveryManager.stop();
+  if (powerSaveBlockerId !== null) {
+    powerSaveBlocker.stop(powerSaveBlockerId);
+    powerSaveBlockerId = null;
+  }
   if (signalingServer) signalingServer.close();
   uploadServer.stop();
   fileServer.stop();

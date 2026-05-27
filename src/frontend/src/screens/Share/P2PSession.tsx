@@ -57,14 +57,20 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
   const [signalingPort, setSignalingPort] = useState<number | null>(null);
   const [showAnswerCode, setShowAnswerCode] = useState(false);
   const [isSending, setIsSending] = useState(false);
-  const [receiveMap, setReceiveMap] = useState<Record<string, ReceiveEntry>>(
-    {},
-  );
+  const [receiveMap, setReceiveMap] = useState<Record<string, ReceiveEntry>>({});
+
+  // Speed tracking for sending
+  const [sendSpeeds, setSendSpeeds] = useState<Record<string, number>>({});
+  const lastSendBytesRef = useRef<Record<string, number>>({});
+  const lastSendTimeRef = useRef<Record<string, number>>({});
+
+  // Speed tracking for receiving
+  const [receiveSpeeds, setReceiveSpeeds] = useState<Record<string, number>>({});
+  const lastRecvBytesRef = useRef<Record<string, number>>({});
+  const lastRecvTimeRef = useRef<Record<string, number>>({});
 
   // Auto‑retry states
-  const [waitingMessage, setWaitingMessage] = useState(
-    t("lookingForDevices")
-  );
+  const [waitingMessage, setWaitingMessage] = useState(t("lookingForDevices"));
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const localPC = useRef<RTCPeerConnection | null>(null);
@@ -120,6 +126,17 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
         return { ...prev, [id]: { ...entry, received: newReceived } };
       });
       await window.electronAPI.saveResumeState(id, newReceived, path);
+
+      // Update receive speed
+      const now = Date.now();
+      const elapsed = (now - (lastRecvTimeRef.current[id] || now)) / 1000;
+      const deltaBytes = newReceived - (lastRecvBytesRef.current[id] || 0);
+      if (elapsed >= 0.5) {
+        const speedMBps = (deltaBytes / elapsed) / (1024 * 1024);
+        setReceiveSpeeds((prev) => ({ ...prev, [id]: speedMBps }));
+        lastRecvBytesRef.current[id] = newReceived;
+        lastRecvTimeRef.current[id] = now;
+      }
     }
 
     if (msg.type === "file-end") {
@@ -132,6 +149,10 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
         delete n[id];
         return n;
       });
+      // Cleanup speed tracking
+      delete receiveSpeeds[id];
+      delete lastRecvBytesRef.current[id];
+      delete lastRecvTimeRef.current[id];
     }
   };
 
@@ -443,15 +464,29 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
           }),
         );
 
-        const CHUNK = 64 * 1024;
+        const CHUNK = 512 * 1024; // 512KB chunks
         let offset = startOffset;
+        let pendingChunks = 0;
+        const MAX_PENDING = 15;
+
+        // Initialize speed tracking for this file
+        lastSendBytesRef.current[file.id] = offset;
+        lastSendTimeRef.current[file.id] = Date.now();
+        setSendSpeeds((prev) => ({ ...prev, [file.id]: 0 }));
+
         while (offset < file.size) {
+          while (pendingChunks >= MAX_PENDING) {
+            await new Promise((resolve) => setTimeout(resolve, 50));
+          }
+
           const chunkSize = Math.min(CHUNK, file.size - offset);
           const base64 = await window.electronAPI.readFileChunk(
             file.path,
             offset,
             chunkSize,
           );
+
+          pendingChunks++;
           localDC.current.send(
             JSON.stringify({
               type: "file-chunk",
@@ -461,15 +496,38 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
               totalSize: file.size,
             }),
           );
+
           offset += chunkSize;
           const progress = Math.round((offset / file.size) * 100);
           setFileQueue((prev) =>
             prev.map((f) => (f.id === file.id ? { ...f, progress } : f)),
           );
+
+          // Calculate send speed
+          const now = Date.now();
+          const elapsed = (now - lastSendTimeRef.current[file.id]) / 1000;
+          const totalSent = offset;
+          const deltaBytes = totalSent - (lastSendBytesRef.current[file.id] || 0);
+          if (elapsed >= 0.5) {
+            const speedMBps = (deltaBytes / elapsed) / (1024 * 1024);
+            setSendSpeeds((prev) => ({ ...prev, [file.id]: speedMBps }));
+            lastSendBytesRef.current[file.id] = totalSent;
+            lastSendTimeRef.current[file.id] = now;
+          }
+
           await new Promise((r) => setTimeout(r, 1));
         }
+
+        while (pendingChunks > 0) {
+          await new Promise((resolve) => setTimeout(resolve, 100));
+        }
+
         localDC.current.send(JSON.stringify({ type: "file-end", id: file.id }));
         await window.electronAPI.clearResumeState(file.id);
+        // Cleanup speed tracking
+        delete sendSpeeds[file.id];
+        delete lastSendBytesRef.current[file.id];
+        delete lastSendTimeRef.current[file.id];
       }
 
       setFileQueue((prev) =>
@@ -482,21 +540,19 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
   };
 
   // ── GSAP animations ─────────────────────────────────
-  // Fade in the mode‑chooser when first shown
   useGSAP(
     () => {
       if (mode === "choose" && modeChooserRef.current) {
         gsap.fromTo(
           modeChooserRef.current,
           { opacity: 0, y: 20 },
-          { opacity: 1, y: 0, duration: 0.35, ease: "power2.out" }
+          { opacity: 1, y: 0, duration: 0.35, ease: "power2.out" },
         );
       }
     },
-    { dependencies: [mode] }
+    { dependencies: [mode] },
   );
 
-  // Existing animations for create & join panels
   useGSAP(
     () => {
       if (mode === "create" && createLayoutRef.current) {
@@ -553,7 +609,6 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
         </div>
       )}
 
-      {/* ── Create Session – pure discovery mode ── */}
       {mode === "create" && !connected && (
         <div className={styles.createPanel} ref={createLayoutRef}>
           <div className={styles.spinner} />
@@ -574,7 +629,6 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
         </div>
       )}
 
-      {/* ── Join Session – purple theme, spinner, GSAP ── */}
       {mode === "join" && !connected && (
         <div className={styles.codePanel} ref={joinLayoutRef}>
           <p className={styles.label}>
@@ -644,7 +698,9 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
                         body: compactAnswer,
                       });
                     } catch (err: any) {
-                      setSessionStatus(t("errorOccurred", { message: err.message }));
+                      setSessionStatus(
+                        t("errorOccurred", { message: err.message }),
+                      );
                     }
                   }}
                 >
@@ -743,7 +799,7 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
                   </span>
                   <span className={styles.queueStatus}>
                     {f.status === "transferring"
-                      ? `${f.progress}%`
+                      ? `${f.progress}% ${sendSpeeds[f.id] ? `(${sendSpeeds[f.id].toFixed(1)} MB/s)` : ""}`
                       : t(`queueStatus_${f.status}`)}
                   </span>
                   {f.status !== "transferring" && f.status !== "done" && (
@@ -772,6 +828,7 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
                   />
                   <span className={styles.queueStatus}>
                     {Math.round((entry.received / entry.size) * 100)}%
+                    {receiveSpeeds[id] ? ` – ${receiveSpeeds[id].toFixed(1)} MB/s` : ""}
                   </span>
                 </div>
               ))}

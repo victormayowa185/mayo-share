@@ -1,6 +1,7 @@
 ﻿import { createServer, Server, IncomingMessage, ServerResponse } from "http";
 import { promises as fs, createReadStream, statSync } from "fs";
 import path from "path";
+import zlib from "zlib";
 import { EventEmitter } from "events";
 
 interface SharedFile {
@@ -61,10 +62,9 @@ export class FileServer extends EventEmitter {
 
           // Serve individual files: /file/ followed by the relative path
           if (url.startsWith("/file/")) {
-            const relative = decodeURIComponent(url.slice(6)); // everything after /file/
+            const relative = decodeURIComponent(url.slice(6));
             let fileEntry = this.fileMap.get(relative);
             if (!fileEntry) {
-              // fallback: try matching just the filename (for backwards compatibility)
               const byName = this.files.find(
                 (f) => f.relativePath === relative || f.fileName === relative,
               );
@@ -76,32 +76,117 @@ export class FileServer extends EventEmitter {
               fileEntry = byName;
             }
 
+            const stats = statSync(fileEntry.filePath);
+            const fileSize = stats.size;
+            const etag = `"${fileSize}-${stats.mtimeMs}"`;
+
+            // Conditional request (caching)
+            if (req.headers["if-none-match"] === etag) {
+              res.writeHead(304);
+              res.end();
+              return;
+            }
+
+            // Parse Range header for resumable downloads
+            const rangeHeader = req.headers.range;
+            let start = 0;
+            let end = fileSize - 1;
+            let isPartial = false;
+
+            if (rangeHeader) {
+              const match = rangeHeader.match(/bytes=(\d+)-(\d*)/);
+              if (match) {
+                start = parseInt(match[1], 10);
+                if (match[2]) end = parseInt(match[2], 10);
+                if (start < fileSize && end < fileSize && start <= end) {
+                  isPartial = true;
+                }
+              }
+            }
+
+            // Common headers
             res.setHeader(
               "Content-Disposition",
               `attachment; filename="${encodeURIComponent(fileEntry.fileName)}"`,
             );
-            res.setHeader("Content-Type", "application/octet-stream");
-            res.setHeader("Content-Length", fileEntry.fileSize);
+            res.setHeader("ETag", etag);
+            res.setHeader("Cache-Control", "no-cache, max-age=0");
+            res.setHeader("Accept-Ranges", "bytes");
 
-            const readStream = createReadStream(fileEntry.filePath);
-            this.emit(
-              "download-started",
-              this.files.indexOf(fileEntry),
-              fileEntry.fileName,
+            // Handle partial request (range)
+            if (isPartial) {
+              const contentLength = end - start + 1;
+              res.writeHead(206, {
+                "Content-Range": `bytes ${start}-${end}/${fileSize}`,
+                "Content-Length": contentLength,
+                "Content-Type": "application/octet-stream",
+              });
+              const stream = createReadStream(fileEntry.filePath, {
+                start,
+                end,
+                highWaterMark: 1024 * 1024,
+              });
+              const fileIndex = this.files.indexOf(fileEntry);
+              this.emit("download-started", fileIndex, fileEntry.fileName);
+              let bytesSent = 0;
+              stream.on("data", (chunk: any) => {
+                const length = Buffer.isBuffer(chunk)
+                  ? chunk.length
+                  : Buffer.byteLength(chunk);
+                bytesSent += length;
+                const totalSent = start + bytesSent;
+                const pct = Math.floor((totalSent / fileSize) * 100);
+                this.emit("download-progress", fileEntry.fileName, pct);
+              });
+              stream.pipe(res);
+              stream.on("error", (err) => {
+                if (!res.headersSent) {
+                  res.writeHead(500);
+                  res.end("File read error");
+                }
+                console.error("Stream error:", err);
+              });
+              res.on("finish", () => {
+                this.emit("download-completed", fileIndex, fileEntry.fileName);
+              });
+              return;
+            }
+
+            // Full file request with optional gzip
+            const acceptEncoding =
+              (req.headers["accept-encoding"] as string) || "";
+            let stream: import("stream").Readable = createReadStream(
+              fileEntry.filePath,
+              {
+                highWaterMark: 1024 * 1024,
+              },
             );
 
+            if (acceptEncoding.includes("gzip")) {
+              res.setHeader("Content-Encoding", "gzip");
+              res.setHeader("Content-Type", "application/gzip");
+              stream = stream.pipe(zlib.createGzip({ level: 1 }));
+              // Content-Length omitted because compressed size is unknown
+            } else {
+              res.setHeader("Content-Type", "application/octet-stream");
+              res.setHeader("Content-Length", fileSize);
+            }
+
+            const fileIndex = this.files.indexOf(fileEntry);
+            this.emit("download-started", fileIndex, fileEntry.fileName);
+
             let bytesSent = 0;
-            readStream.on("data", (chunk: any) => {
+            stream.on("data", (chunk: any) => {
               const length = Buffer.isBuffer(chunk)
                 ? chunk.length
                 : Buffer.byteLength(chunk);
               bytesSent += length;
-              const pct = Math.floor((bytesSent / fileEntry.fileSize) * 100);
+              const pct = Math.floor((bytesSent / fileSize) * 100);
               this.emit("download-progress", fileEntry.fileName, pct);
             });
 
-            readStream.pipe(res);
-            readStream.on("error", (err) => {
+            stream.pipe(res);
+            stream.on("error", (err) => {
               if (!res.headersSent) {
                 res.writeHead(500);
                 res.end("File read error");
@@ -109,11 +194,7 @@ export class FileServer extends EventEmitter {
               console.error("Stream error:", err);
             });
             res.on("finish", () => {
-              this.emit(
-                "download-completed",
-                this.files.indexOf(fileEntry!),
-                fileEntry!.fileName,
-              );
+              this.emit("download-completed", fileIndex, fileEntry.fileName);
             });
             return;
           }
@@ -145,8 +226,7 @@ export class FileServer extends EventEmitter {
   }
 }
 
-// ─── Helpers ─────────────────────────────────────────────
-
+// ─── Helpers (rest unchanged – keep your existing helpers) ───
 function formatBytes(b: number): string {
   if (b === 0) return "0 B";
   const k = 1024,
@@ -181,8 +261,7 @@ function getFileIcon(name: string): string {
   return "📁";
 }
 
-// ─── Tree Builder ────────────────────────────────────────
-
+// ─── Tree Builder (keep your existing implementation) ───
 interface TreeNode {
   name: string;
   isDir: boolean;
@@ -250,37 +329,94 @@ function hasSubfolders(files: SharedFile[]): boolean {
   return files.some((f) => f.relativePath.includes("/"));
 }
 
-// ─── Download Page ───────────────────────────────────────
 
+
+// ─── Download Page with collapsible folders and theme toggle ───
 function buildDownloadPage(files: SharedFile[]): string {
   const fileCount = files.length;
   const useTree = hasSubfolders(files);
   let fileListHtml = "";
 
+  // Calculate total size for ZIP button
+  const totalSize = files.reduce((sum, f) => sum + f.fileSize, 0);
+
   if (useTree) {
     const tree = buildTree(files);
-    fileListHtml = `<ul class="file-tree">${renderTree(tree)}</ul>`;
+    let folderCounter = 0;
+    function renderInteractiveTree(node: TreeNode, depth: number = 0): string {
+      if (node.isDir && node.children) {
+        const folderId = `folder-${folderCounter++}`;
+        const childrenHtml = node.children
+          .map((child) => renderInteractiveTree(child, depth + 1))
+          .join("");
+        return `
+          <li class="tree-dir" data-folder-id="${folderId}">
+            <div class="folder-header">
+              <span class="chevron">▼</span>
+              <span class="folder-icon">
+                <svg class="folder-svg" viewBox="0 0 512 512" width="18" height="18" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="32">
+                  <path d="M440 432H72a40 40 0 01-40-40V120a40 40 0 0140-40h75.89a40 40 0 0122.19 6.72l27.84 18.56a40 40 0 0022.19 6.72H440a40 40 0 0140 40v240a40 40 0 01-40 40zM32 192h448"/>
+                </svg>
+              </span>
+              <span class="folder-name">${escapeHtml(node.name)}</span>
+            </div>
+            <ul class="folder-content" id="${folderId}">${childrenHtml}</ul>
+          </li>`;
+      }
+      if (node.file) {
+        const f = node.file;
+        return `
+          <li class="tree-file">
+            <div class="tree-file-row">
+              <span class="name" title="${escapeHtml(f.fileName)}">
+                <span class="file-icon">
+                  <svg class="file-svg" viewBox="0 0 512 512" width="16" height="16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="32">
+                    <path d="M440 432H72a40 40 0 01-40-40V120a40 40 0 0140-40h75.89a40 40 0 0122.19 6.72l27.84 18.56a40 40 0 0022.19 6.72H440a40 40 0 0140 40v240a40 40 0 01-40 40zM32 192h448"/>
+                  </svg>
+                </span>
+                <span class="file-name">${escapeHtml(f.fileName)}</span>
+              </span>
+              <span class="size">${formatBytes(f.fileSize)}</span>
+              <span class="action">
+                <a href="/file/${encodeURIComponent(f.relativePath)}" download="${escapeHtml(f.fileName)}" class="download-btn">Download</a>
+              </span>
+            </div>
+          </li>`;
+      }
+      return "";
+    }
+    fileListHtml = `<ul class="file-tree">${renderInteractiveTree(tree)}</ul>`;
   } else {
+    // Flat list – table with ellipsis on name
     fileListHtml = files
       .map(
         (f) => `
       <tr>
-        <td class="name">
-          <span class="icon">${getFileIcon(f.fileName)}</span>
-          ${escapeHtml(f.fileName)}
+        <td class="name" title="${escapeHtml(f.fileName)}">
+          <span class="file-icon">
+            <svg class="file-svg" viewBox="0 0 512 512" width="16" height="16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="32">
+              <path d="M440 432H72a40 40 0 01-40-40V120a40 40 0 0140-40h75.89a40 40 0 0122.19 6.72l27.84 18.56a40 40 0 0022.19 6.72H440a40 40 0 0140 40v240a40 40 0 01-40 40zM32 192h448"/>
+            </svg>
+          </span>
+          <span class="file-name">${escapeHtml(f.fileName)}</span>
         </td>
         <td class="size">${formatBytes(f.fileSize)}</td>
         <td class="action">
           <a href="/file/${encodeURIComponent(f.relativePath)}" download="${escapeHtml(f.fileName)}" class="download-btn">Download</a>
         </td>
-      </tr>`,
+      </table>`,
       )
       .join("");
   }
 
   const zipButtonHtml = `
-    <button id="downloadAllBtn" class="zip-btn" onclick="downloadAllAsZip()">
-      ⬇️ Download All as ZIP
+    <button id="downloadAllBtn" class="zip-btn" title="Download all as ZIP">
+      <svg xmlns="http://www.w3.org/2000/svg" class="download-all-icon" viewBox="0 0 512 512" width="24" height="24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="32">
+        <path d="M176 262.62L256 342l80-79.38M256 330.97V170"/>
+        <path d="M256 64C150 64 64 150 64 256s86 192 192 192 192-86 192-192S362 64 256 64z" fill="none" stroke="currentColor" stroke-miterlimit="10" stroke-width="32"/>
+      </svg>
+      <span id="zipBtnLabel">Download All as ZIP</span>
+      <span class="zip-total-size">(${formatBytes(totalSize)})</span>
     </button>
   `;
 
@@ -291,69 +427,335 @@ function buildDownloadPage(files: SharedFile[]): string {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>MAYO Share</title>
   <style>
+    /* Theme variables - dark (default) */
+    :root {
+      --bg-body: #0A0A0A;
+      --text-color: #fff;
+      --share-color: #fff;
+      --subtitle-color: #888;
+      --card-bg: #111;
+      --border-color: #222;
+      --row-border: #1a1a1a;
+      --row-hover: #161616;
+      --name-color: #ddd;
+      --size-color: #666;
+      --download-bg: #b169e0;
+      --download-hover: #9a4fd4;
+      --download-text: #fff;
+      --zip-bg: #4CAF50;
+      --zip-hover: #43a047;
+      --folder-header-bg: #151515;
+      --folder-name-color: #fff;
+      --tree-file-row-bg: #111;
+      --footer-color: #444;
+      --folder-header-hover-border: #b169e0;
+    }
+
+    /* Light theme */
+    [data-theme="light"] {
+      --bg-body: #f5f5f5;
+      --text-color: #222;
+      --share-color: #000;
+      --subtitle-color: #555;
+      --card-bg: #ffffff;
+      --border-color: #ddd;
+      --row-border: #e0e0e0;
+      --row-hover: #f0f0f0;
+      --name-color: #222;
+      --size-color: #666;
+      --download-bg: #b169e0;
+      --download-hover: #9a4fd4;
+      --download-text: #000;
+      --zip-bg: #4CAF50;
+      --zip-hover: #43a047;
+      --folder-header-bg: #e8e8e8;
+      --folder-name-color: #222;
+      --tree-file-row-bg: #ffffff;
+      --footer-color: #aaa;
+      --folder-header-hover-border: #b169e0;
+    }
+
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { background: #0A0A0A; color: white; font-family: Arial, sans-serif; min-height: 100vh; padding: 40px 20px; }
-    .header { text-align: center; margin-bottom: 40px; }
-    .logo { font-size: 2rem; font-weight: bold; color: #b169e0; margin-bottom: 8px; }
-    .subtitle { color: #888; font-size: 1rem; }
-    .card { background: #111; border: 1px solid #222; border-radius: 16px; max-width: 600px; margin: 0 auto; overflow: hidden; }
+    body {
+      background: var(--bg-body);
+      color: var(--text-color);
+      font-family: Arial, sans-serif;
+      min-height: 100vh;
+      padding: 40px 20px;
+      transition: background 0.2s, color 0.2s;
+    }
+    .header { text-align: center; margin-bottom: 40px; display: flex; flex-direction: column; align-items: center; }
+    .logo {
+      display: flex;
+      gap: 4px;
+      justify-content: center;
+      align-items: baseline;
+      font-size: 2rem;
+      font-weight: bold;
+    }
+    .logo-mayo {
+      color: #b169e0;
+    }
+    .logo-share {
+      color: var(--share-color);
+    }
+    .subtitle { color: var(--subtitle-color); font-size: 1rem; }
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 16px;
+      max-width: 800px;
+      margin: 0 auto;
+      overflow: hidden;
+    }
     table { width: 100%; border-collapse: collapse; }
-    tr { border-bottom: 1px solid #1a1a1a; transition: background 0.15s; }
+    tr { border-bottom: 1px solid var(--row-border); transition: background 0.15s; }
     tr:last-child { border-bottom: none; }
-    tr:hover { background: #161616; }
+    tr:hover { background: var(--row-hover); }
     td { padding: 16px 20px; vertical-align: middle; }
-    .name { display: flex; align-items: center; gap: 10px; color: #ddd; font-size: 0.95rem; word-break: break-all; }
-    .icon { font-size: 1.2rem; flex-shrink: 0; }
-    .size { color: #666; font-size: 0.85rem; white-space: nowrap; text-align: right; padding-right: 16px; }
+    .name {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--name-color);
+      font-size: 0.95rem;
+      word-break: break-all;
+      max-width: 300px;
+    }
+    .name .file-name {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .file-icon, .folder-icon { display: inline-flex; align-items: center; }
+    .file-svg, .folder-svg { stroke: var(--text-color); fill: none; }
+    .size { color: var(--size-color); font-size: 0.85rem; white-space: nowrap; text-align: right; padding-right: 16px; }
     .action { text-align: right; white-space: nowrap; }
     .download-btn {
       display: inline-block; padding: 8px 20px;
-      background: #b169e0; color: white; text-decoration: none;
-      border-radius: 8px; font-size: 0.88rem; font-weight: bold;
+      background: var(--download-bg);
+      color: var(--download-text);
+      text-decoration: none;
+      border-radius: 8px;
+      font-size: 0.88rem;
+      font-weight: bold;
       transition: background 0.2s;
     }
-    .download-btn:hover { background: #9a4fd4; }
-    .footer { text-align: center; margin-top: 32px; color: #444; font-size: 0.8rem; }
+    .download-btn:hover { background: var(--download-hover); }
+    .footer { text-align: center; margin-top: 32px; color: var(--footer-color); font-size: 0.8rem; }
 
     /* Tree styles */
     .file-tree { list-style: none; padding: 0; margin: 0; }
-    .file-tree ul { list-style: none; padding-left: 24px; }
+    .file-tree ul { list-style: none; padding-left: 24px; margin: 0; }
     .tree-dir { margin: 8px 0; }
-    .folder-name { font-weight: bold; display: block; padding: 8px 16px; background: #151515; border-radius: 4px; }
+    .folder-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 16px;
+      background: var(--folder-header-bg);
+      border-radius: 4px;
+      cursor: pointer;
+      font-weight: bold;
+      color: var(--folder-name-color);
+      transition: border 0.2s;
+      border: 1px solid transparent;
+    }
+    .folder-header:hover {
+      border-color: var(--folder-header-hover-border);
+    }
+    .chevron {
+      font-size: 0.8rem;
+      width: 16px;
+      text-align: center;
+      transition: transform 0.2s;
+    }
+    .folder-content {
+      overflow: hidden;
+      transition: max-height 0.2s ease-out;
+    }
+    .folder-content.collapsed {
+      display: none;
+    }
     .tree-file { margin: 4px 0; padding: 8px 16px 8px 0; }
     .tree-file-row {
-      display: flex; align-items: center; justify-content: space-between;
-      padding: 8px 16px; background: #111; border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 16px;
+      background: var(--tree-file-row-bg);
+      border-radius: 6px;
+    }
+    .tree-file-row .name {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex: 1;
+      max-width: 60%;
+      overflow: hidden;
+    }
+    .tree-file-row .name .file-name {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
     .zip-btn {
-      display: block; margin: 20px auto; padding: 12px 24px;
-      background: #4CAF50; color: white; border: none; border-radius: 8px;
-      font-size: 1rem; cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      margin: 20px auto;
+      padding: 12px 24px;
+      background: var(--zip-bg);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 1rem;
+      cursor: pointer;
+      transition: background 0.2s;
     }
-    .zip-btn:hover { background: #43a047; }
+    .zip-btn:hover { background: var(--zip-hover); }
+    .download-all-icon {
+      width: 20px;
+      height: 20px;
+      stroke: white;
+      fill: none;
+    }
+    .zip-total-size {
+      font-size: 0.85rem;
+      opacity: 0.8;
+    }
+
+    /* Theme toggle button */
+    .theme-toggle {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      background: var(--card-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 50%;
+      width: 40px;
+      height: 40px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+      transition: background 0.2s;
+    }
+    .theme-toggle svg {
+      width: 22px;
+      height: 22px;
+      stroke: var(--text-color);
+      fill: none;
+    }
+    .theme-toggle:hover {
+      background: var(--row-hover);
+    }
   </style>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 </head>
 <body>
+  <button class="theme-toggle" id="themeToggle">
+    <!-- Sun icon (for DARK mode) – initially visible -->
+    <svg id="sunIcon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+      <path fill="none" stroke="currentColor" stroke-linecap="round" stroke-miterlimit="10" stroke-width="32" d="M256 48v48M256 416v48M403.08 108.92l-33.94 33.94M142.86 369.14l-33.94 33.94M464 256h-48M96 256H48M403.08 403.08l-33.94-33.94M142.86 142.86l-33.94-33.94"/>
+      <circle cx="256" cy="256" r="80" fill="none" stroke="currentColor" stroke-linecap="round" stroke-miterlimit="10" stroke-width="32"/>
+    </svg>
+    <!-- Moon icon (for LIGHT mode) – initially hidden -->
+    <svg id="moonIcon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" style="display: none;">
+      <path d="M160 136c0-30.62 4.51-61.61 16-88C99.57 81.27 48 159.32 48 248c0 119.29 96.71 216 216 216 88.68 0 166.73-51.57 200-128-26.39 11.49-57.38 16-88 16-119.29 0-216-96.71-216-216z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="32"/>
+    </svg>
+  </button>
   <div class="header">
-    <div class="logo">🦅 MAYO Share</div>
+    <div class="logo">
+      <span class="logo-mayo">MAYO</span>
+      <span class="logo-share">Share</span>
+    </div>
     <div class="subtitle">${fileCount === 1 ? "1 file" : `${fileCount} files`} shared with you</div>
   </div>
   <div class="card">
     ${useTree ? "" : "<table>"}
     ${fileListHtml}
-    ${useTree ? "" : "</table>"}
+    ${useTree ? "" : "</td>"}
     ${fileCount > 1 ? zipButtonHtml : ""}
   </div>
   <div class="footer">Shared via MAYO Share • Offline P2P File Transfer</div>
 
   <script>
+    // --- Theme management with dual icons (swapped) ---
+    const themeToggle = document.getElementById('themeToggle');
+    const sunIcon = document.getElementById('sunIcon');
+    const moonIcon = document.getElementById('moonIcon');
+
+    function getStoredTheme() {
+      return localStorage.getItem('mayo-download-theme');
+    }
+    function setTheme(theme) {
+      if (theme === 'light') {
+        document.documentElement.setAttribute('data-theme', 'light');
+        localStorage.setItem('mayo-download-theme', 'light');
+        sunIcon.style.display = 'none';
+        moonIcon.style.display = 'block';
+      } else {
+        document.documentElement.removeAttribute('data-theme');
+        localStorage.setItem('mayo-download-theme', 'dark');
+        sunIcon.style.display = 'block';
+        moonIcon.style.display = 'none';
+      }
+    }
+    function applyStoredTheme() {
+      const stored = getStoredTheme();
+      if (stored === 'light') {
+        document.documentElement.setAttribute('data-theme', 'light');
+        sunIcon.style.display = 'none';
+        moonIcon.style.display = 'block';
+      } else {
+        document.documentElement.removeAttribute('data-theme');
+        sunIcon.style.display = 'block';
+        moonIcon.style.display = 'none';
+      }
+    }
+    applyStoredTheme();
+    themeToggle.addEventListener('click', () => {
+      const isLight = document.documentElement.getAttribute('data-theme') === 'light';
+      setTheme(isLight ? 'dark' : 'light');
+    });
+
+    // --- Collapsible folders ---
+    function initCollapsibleFolders() {
+      const folders = document.querySelectorAll('.tree-dir');
+      folders.forEach(folder => {
+        const header = folder.querySelector('.folder-header');
+        const content = folder.querySelector('.folder-content');
+        if (!header || !content) return;
+        content.classList.remove('collapsed');
+        const chevron = header.querySelector('.chevron');
+        if (chevron) chevron.textContent = '▼';
+        header.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const isCollapsed = content.classList.toggle('collapsed');
+          if (chevron) {
+            chevron.textContent = isCollapsed ? '▶' : '▼';
+          }
+        });
+      });
+    }
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', initCollapsibleFolders);
+    } else {
+      initCollapsibleFolders();
+    }
+
+    // --- Download all as ZIP (keeps SVG icon) ---
     const files = ${JSON.stringify(files.map((f) => ({ r: f.relativePath, n: f.fileName })))};
 
     async function downloadAllAsZip() {
       const btn = document.getElementById('downloadAllBtn');
+      const label = document.getElementById('zipBtnLabel');
+      if (!btn || !label) return;
       btn.disabled = true;
-      btn.textContent = 'Building ZIP...';
+      label.textContent = 'Building ZIP...';
       const zip = new JSZip();
       for (const file of files) {
         const resp = await fetch('/file/' + encodeURIComponent(file.r));
@@ -370,7 +772,7 @@ function buildDownloadPage(files: SharedFile[]): string {
       a.remove();
       URL.revokeObjectURL(url);
       btn.disabled = false;
-      btn.textContent = '⬇️ Download All as ZIP';
+      label.textContent = 'Download All as ZIP';
     }
   </script>
 </body>
