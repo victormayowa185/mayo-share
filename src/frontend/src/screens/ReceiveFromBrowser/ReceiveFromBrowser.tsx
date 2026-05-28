@@ -195,7 +195,6 @@ const ReceiveFromBrowser: React.FC<Props> = ({
   return (
     <div className={styles.container}>
       <BackButton
-        className={styles.compactBack}
         onClick={() => {
           if (isReceiving) stopReceiving();
           onBack();

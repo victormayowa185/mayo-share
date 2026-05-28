@@ -27,7 +27,6 @@ interface SSEClient {
   id: string;
   res: ServerResponse;
 }
-// This will be set dynamically when the server starts
 let RECEIVE_DIR = "C:\\mayo-received";
 export function setReceiveDir(path: string) {
   RECEIVE_DIR = path;
@@ -68,10 +67,7 @@ export class UploadServer extends EventEmitter {
   async start(ip?: string): Promise<string> {
     await fs.mkdir(RECEIVE_DIR, { recursive: true });
     await fs.mkdir(path.join(RECEIVE_DIR, "chunks"), { recursive: true });
-
-    // 1. Kill any previous server still holding the port
     this.stop();
-    // 2. Give the OS a moment to release the port
     await new Promise((r) => setTimeout(r, 100));
 
     return new Promise((resolve, reject) => {
@@ -97,7 +93,6 @@ export class UploadServer extends EventEmitter {
           ) {
             const parsedUrl = new URL(url!, `http://localhost:${PORT}`);
             let sessionId = parsedUrl.searchParams.get("sessionId");
-
             if (!sessionId) {
               sessionId =
                 Date.now().toString(36) +
@@ -106,7 +101,6 @@ export class UploadServer extends EventEmitter {
               res.end();
               return;
             }
-
             let session = this.sessions.get(sessionId);
             if (!session) {
               const saveDir = path.join(RECEIVE_DIR, `Sender-${sessionId}`);
@@ -120,7 +114,6 @@ export class UploadServer extends EventEmitter {
               this.sessions.set(sessionId, session);
               this.emit("sender-connected", sessionId, session.senderName);
             }
-
             if (session.status === "pending") {
               res.writeHead(200, {
                 "Content-Type": "text/html; charset=utf-8",
@@ -128,7 +121,6 @@ export class UploadServer extends EventEmitter {
               res.end(getWaitingHTML(session.senderName || "Unknown"));
               return;
             }
-
             if (session.status === "approved") {
               res.writeHead(200, {
                 "Content-Type": "text/html; charset=utf-8",
@@ -136,7 +128,6 @@ export class UploadServer extends EventEmitter {
               res.end(getUploadHTML());
               return;
             }
-
             if (session.status === "declined") {
               res.writeHead(200, {
                 "Content-Type": "text/html; charset=utf-8",
@@ -163,9 +154,7 @@ export class UploadServer extends EventEmitter {
             });
             res.write(":ok\n\n");
             this.sseClients.set(sessionId, { id: sessionId, res });
-            req.on("close", () => {
-              this.sseClients.delete(sessionId);
-            });
+            req.on("close", () => this.sseClients.delete(sessionId));
             return;
           }
 
@@ -197,6 +186,37 @@ export class UploadServer extends EventEmitter {
               } catch {
                 res.writeHead(400);
                 res.end();
+              }
+            });
+            return;
+          }
+
+          // ─── Simple text/image upload endpoint (bypasses Resumable) ───
+          if (method === "POST" && url?.startsWith("/upload-simple")) {
+            const parsedUrl = new URL(url!, `http://localhost:${PORT}`);
+            const sessionId = parsedUrl.searchParams.get("sessionId");
+            const session = this.sessions.get(sessionId || "");
+            if (!session || session.status !== "approved") {
+              res.writeHead(403);
+              res.end("Not approved");
+              return;
+            }
+            let body = "";
+            req.on("data", (chunk) => (body += chunk));
+            req.on("end", async () => {
+              try {
+                const { content, filename } = JSON.parse(body);
+                const buffer = Buffer.from(content, "base64");
+                await fs.mkdir(session.saveDir, { recursive: true });
+                const savePath = path.join(session.saveDir, filename);
+                await fs.writeFile(savePath, buffer);
+                this.emit("file-received", filename);
+                res.writeHead(200);
+                res.end("OK");
+              } catch (err) {
+                console.error("Simple upload error:", err);
+                res.writeHead(500);
+                res.end("Error saving file");
               }
             });
             return;
@@ -255,8 +275,6 @@ export class UploadServer extends EventEmitter {
               });
 
               const [fields, files] = await form.parse(req);
-
-              // Safely get the uploaded chunk file
               const rawFile = files.file;
               const chunkFile = Array.isArray(rawFile) ? rawFile[0] : rawFile;
               if (!chunkFile) {
@@ -274,7 +292,6 @@ export class UploadServer extends EventEmitter {
               let originalFilename =
                 getField(fields.resumableFilename) || "uploaded-file";
 
-              // ----- DISK SPACE CHECK (only on first chunk) -----
               if (chunkNumber === "1") {
                 const totalSize = parseInt(
                   getField(fields.resumableTotalSize) || "0",
@@ -283,7 +300,7 @@ export class UploadServer extends EventEmitter {
                 if (totalSize > 0) {
                   const stats = await statfsAsync(RECEIVE_DIR);
                   const freeBytes = stats.bfree * stats.bsize;
-                  const safetyMargin = 100 * 1024 * 1024; // 100 MB
+                  const safetyMargin = 100 * 1024 * 1024;
                   if (freeBytes < totalSize + safetyMargin) {
                     res.writeHead(507, { "Content-Type": "text/plain" });
                     res.end(
@@ -294,7 +311,6 @@ export class UploadServer extends EventEmitter {
                 }
               }
 
-              // Sanitize filename
               originalFilename = originalFilename
                 .replace(/[<>:"|?*]/g, "_")
                 .replace(/\.{2,}/g, ".")
@@ -309,11 +325,7 @@ export class UploadServer extends EventEmitter {
               console.log(
                 `Chunk ${chunkNumber}/${totalChunks} saved. File: ${originalFilename}`,
               );
-
               const existingChunks = await fs.readdir(chunkDir);
-              console.log(
-                `Chunks on disk: ${existingChunks.length}, need: ${totalChunks}`,
-              );
               if (existingChunks.length === totalChunks) {
                 await fs.mkdir(session.saveDir, { recursive: true });
                 const finalPath = path.join(session.saveDir, originalFilename);
@@ -365,7 +377,6 @@ export class UploadServer extends EventEmitter {
           }
 
           if (method === "GET" && url === "/resumable.min.js") {
-            // Resumable.js doesn't have a minified version; use the normal one
             const filePath = path.join(
               process.cwd(),
               "node_modules/resumablejs/resumable.js",
@@ -390,7 +401,6 @@ export class UploadServer extends EventEmitter {
         const usedIP = ip || "192.168.137.1";
         resolve(`http://${usedIP}:${PORT}`);
       });
-
       this.server.on("error", (err) => {
         this.server = null;
         reject(err);
@@ -435,8 +445,7 @@ function getUploadHTML(): string {
     .paste-toggle { display: flex; align-items: center; justify-content: space-between; color: #888; font-size: 0.85rem; margin-bottom: 8px; cursor: pointer; }
     .paste-toggle svg { width: 14px; height: 14px; transition: transform 0.2s; }
     .paste-toggle.open svg { transform: rotate(90deg); }
-    .paste-area { width: 100%; min-height: 80px; background: #1a1a1a; border: 1px solid #333; border-radius: 8px; color: #ccc; padding: 12px; font-size: 0.9rem; text-align: left; outline: none; display: none; }
-    .paste-area.open { display: block; }
+    .paste-area { width: 100%; min-height: 80px; background: #1a1a1a; border: 1px solid #333; border-radius: 8px; color: #ccc; padding: 12px; font-size: 0.9rem; text-align: left; outline: none; display: block; }
     .btn { width: auto; padding: 14px 32px; background: #b169e0; color: white; border: none; border-radius: 30px; font-size: 1rem; display: inline-block; cursor: pointer; margin-top: 16px; }
     .btn:hover { opacity: 0.9; }
     .btn:disabled { opacity: 0.5; cursor: not-allowed; }
@@ -447,20 +456,22 @@ function getUploadHTML(): string {
     .progress-bar { width: 100%; background: #333; border-radius: 8px; height: 8px; margin: 12px 0; overflow: hidden; display: none; }
     .progress-bar .fill { height: 100%; background: #b169e0; width: 0%; transition: width 0.2s; }
     .mayo-text { color: #b169e0; }
-.share-text { color: #fff; }
+    .share-text { color: #fff; }
+    .action-buttons-row { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
+    .small-icon-btn { background: transparent; border: none; cursor: pointer; padding: 4px; display: inline-flex; align-items: center; color: #ccc; }
+    .small-icon-btn:hover { color: #b169e0; }
+    .inline-edit { display: flex; flex-direction: column; gap: 8px; width: 100%; }
+    .inline-edit textarea { background: #111; border: 1px solid #333; color: #ccc; padding: 8px; border-radius: 6px; font-family: monospace; font-size: 0.85rem; resize: vertical; }
+    .inline-edit-actions { display: flex; gap: 8px; justify-content: flex-end; }
   </style>
 </head>
 <body>
   <div class="logo">
-  <svg viewBox="0 0 400 354.74" xmlns="http://www.w3.org/2000/svg">
-    <circle cx="200" cy="177" r="150" fill="currentColor"/>
-  </svg>
-  <span class="mayo-text">MAYO</span>
-  <span class="share-text">Share</span>
-</div>
+    <svg viewBox="0 0 400 354.74" xmlns="http://www.w3.org/2000/svg"><circle cx="200" cy="177" r="150" fill="currentColor"/></svg>
+    <span class="mayo-text">MAYO</span><span class="share-text">Share</span>
+  </div>
   <div class="subtitle">Send files to this laptop</div>
   <div class="card">
-    <!-- File selection -->
     <div class="file-section">
       <label>Add files or folders:</label>
       <div class="file-row">
@@ -469,26 +480,25 @@ function getUploadHTML(): string {
       </div>
       <ul class="file-list" id="fileList"></ul>
     </div>
-
-    <!-- Paste section -->
-  <!-- Paste section -->
-<div class="file-section">
-  <label>Paste text or image (Ctrl+V):</label>
-  <div class="paste-area open" id="pasteArea" contenteditable="true" style="display:block;" placeholder="Paste text here, or paste an image"></div>
-  <div id="thumbs"></div>
-</div>
-
-    <button class="btn" id="sendBtn">Send</button>
-    <div class="progress-bar" id="progressBar">
-      <div class="fill" id="progressFill"></div>
+    <div class="file-section">
+      <label>Paste text or image (Ctrl+V):</label>
+      <div class="paste-area" id="pasteArea" contenteditable="true" placeholder="Paste text here, or paste an image"></div>
+      <div class="action-buttons-row">
+        <button class="small-icon-btn" id="addTextAsFileBtn" title="Add text as file">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+        </button>
+        <span style="color:#555; font-size:0.8rem;">Add as file</span>
+      </div>
+      <div id="thumbs"></div>
     </div>
+    <button class="btn" id="sendBtn">Send</button>
+    <div class="progress-bar" id="progressBar"><div class="fill" id="progressFill"></div></div>
     <div id="status"></div>
   </div>
-
-  <!-- LOCAL libraries (served from node_modules) for offline use -->
   <script src="/jszip.min.js"></script>
   <script src="/resumable.min.js"></script>
   <script>
+    console.log("=== Upload page loaded ===");
     const addFilesBtn = document.getElementById('addFilesBtn');
     const addFolderBtn = document.getElementById('addFolderBtn');
     const fileListEl = document.getElementById('fileList');
@@ -498,11 +508,11 @@ function getUploadHTML(): string {
     const thumbs = document.getElementById('thumbs');
     const progressBar = document.getElementById('progressBar');
     const progressFill = document.getElementById('progressFill');
+    const addTextAsFileBtn = document.getElementById('addTextAsFileBtn');
 
     const fileInput = document.createElement('input');
     fileInput.type = 'file';
     fileInput.multiple = true;
-
     const folderInput = document.createElement('input');
     folderInput.type = 'file';
     folderInput.multiple = true;
@@ -510,44 +520,68 @@ function getUploadHTML(): string {
 
     let fileEntries = [];
     let pastedImageData = null;
-    // Speed tracking variables
-    let lastBytes = 0;
-    let lastTime = Date.now();
-    let currentSpeed = 0;
-    let totalSize = 0;
-
+    let lastBytes = 0, lastTime = Date.now(), currentSpeed = 0, totalSize = 0;
+    let editingFileId = null, editContent = '';
     const sessionId = new URLSearchParams(location.search).get('sessionId');
+    console.log("Session ID:", sessionId);
+
+    function sanitizeId(id) { return id.replace(/\\./g, '_'); }
+    function escapeHtml(str) { return str.replace(/[&<>]/g, m => m === '&' ? '&amp;' : m === '<' ? '&lt;' : '&gt;'); }
+    function formatBytes(bytes) { if (bytes===0) return '0 B'; const k=1024,sizes=['B','KB','MB','GB']; const i=Math.floor(Math.log(bytes)/Math.log(k)); return parseFloat((bytes/Math.pow(k,i)).toFixed(1))+' '+sizes[i]; }
 
     function renderFileList() {
       fileListEl.innerHTML = '';
-      fileEntries.forEach((entry, idx) => {
+      fileEntries.forEach(entry => {
         const li = document.createElement('li');
         li.className = 'file-item';
-        li.innerHTML = '<span class="name">' + entry.name + '</span>' +
-          '<span class="size">' + formatBytes(entry.file.size) + '</span>' +
-          '<button class="remove-btn" data-index="' + idx + '">\u2715</button>';
-        fileListEl.appendChild(li);
+        if (editingFileId === entry.id) {
+          const safeId = sanitizeId(entry.id);
+          li.innerHTML = \`
+            <div class="inline-edit">
+              <textarea id="edit-textarea-\${safeId}" rows="3">\${escapeHtml(editContent)}</textarea>
+              <div class="inline-edit-actions">
+                <button class="small-icon-btn save-edit-btn" data-id="\${entry.id}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg></button>
+                <button class="small-icon-btn cancel-edit-btn" data-id="\${entry.id}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+              </div>
+            </div>\`;
+          fileListEl.appendChild(li);
+          const textarea = li.querySelector('#edit-textarea-'+safeId);
+          textarea.addEventListener('input', e => { editContent = e.target.value; });
+          li.querySelector('.save-edit-btn').addEventListener('click', () => saveEditedText(entry.id));
+          li.querySelector('.cancel-edit-btn').addEventListener('click', () => { editingFileId = null; renderFileList(); });
+        } else {
+          li.innerHTML = '<span class="name">'+escapeHtml(entry.name)+'</span><span class="size">'+formatBytes(entry.file.size)+'</span>' +
+            (entry.name.startsWith('pasted-') && entry.name.endsWith('.txt') ?
+              '<button class="edit-btn small-icon-btn" data-id="'+entry.id+'"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3l4 4-7 7H10v-4l7-7z M15 8l-6 6M21 21H3"/></svg></button>' : '') +
+            '<button class="remove-btn" data-id="'+entry.id+'">✕</button>';
+          fileListEl.appendChild(li);
+        }
       });
-      document.querySelectorAll('.remove-btn').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-          const index = parseInt(e.target.dataset.index);
-          fileEntries.splice(index, 1);
+      document.querySelectorAll('.remove-btn').forEach(btn => btn.addEventListener('click', () => { fileEntries = fileEntries.filter(f => f.id !== btn.dataset.id); renderFileList(); }));
+      document.querySelectorAll('.edit-btn').forEach(btn => btn.addEventListener('click', async () => {
+        const entry = fileEntries.find(f => f.id === btn.dataset.id);
+        if (entry && entry.name.endsWith('.txt')) {
+          editContent = await entry.file.text();
+          editingFileId = entry.id;
           renderFileList();
-        });
-      });
+        }
+      }));
     }
 
-    function formatBytes(bytes) {
-      if (bytes === 0) return '0 B';
-      const k = 1024, sizes = ['B', 'KB', 'MB', 'GB'];
-      const i = Math.floor(Math.log(bytes) / Math.log(k));
-      return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+    async function saveEditedText(fileId) {
+      const entry = fileEntries.find(f => f.id === fileId);
+      if (!entry) return;
+      const newBlob = new Blob([editContent], { type: 'text/plain' });
+      const newFile = new File([newBlob], entry.name, { type: 'text/plain' });
+      entry.file = newFile;
+      entry.size = newFile.size;
+      editingFileId = null;
+      renderFileList();
     }
 
     function addFilesFromInput(input) {
       for (const file of input.files) {
-        const relativePath = file.webkitRelativePath || file.name;
-        fileEntries.push({ name: relativePath, file, relativePath });
+        fileEntries.push({ name: file.webkitRelativePath || file.name, file, relativePath: file.webkitRelativePath || file.name, id: Date.now().toString()+Math.random(), size: file.size });
       }
       renderFileList();
       input.value = '';
@@ -558,165 +592,188 @@ function getUploadHTML(): string {
     fileInput.addEventListener('change', () => addFilesFromInput(fileInput));
     folderInput.addEventListener('change', () => addFilesFromInput(folderInput));
 
-    // FIXED: Improved paste handler - supports both images and text
-    pasteArea.addEventListener('paste', (e) => {
+    function addTextAsFile() {
+      const text = pasteArea.innerText.trim();
+      if (!text) return;
+      const blob = new Blob([text], { type: 'text/plain' });
+      const txtName = 'pasted-'+new Date().toISOString().replace(/[:.]/g, '-')+'.txt';
+      const file = new File([blob], txtName, { type: 'text/plain' });
+      fileEntries.push({ id: Date.now().toString()+Math.random(), name: txtName, file, relativePath: txtName, size: blob.size });
+      pasteArea.innerHTML = '';
+      renderFileList();
+    }
+    addTextAsFileBtn.addEventListener('click', addTextAsFile);
+
+    pasteArea.addEventListener('paste', async (e) => {
       const items = e.clipboardData?.items;
-      if (!items || items.length === 0) {
-        // If items is empty, let the browser handle text paste naturally
-        return;
+      if (!items) return;
+      for (const item of items) {
+        if (item.kind === 'file') {
+          e.preventDefault();
+          const file = item.getAsFile();
+          if (file) {
+            fileEntries.push({ id: Date.now().toString()+Math.random(), name: file.name, file, relativePath: file.name, size: file.size });
+          }
+          renderFileList();
+          return;
+        }
       }
-
-      let handled = false;
-
-      // First pass: Handle image paste
       for (const item of items) {
         if (item.type.startsWith('image/')) {
           e.preventDefault();
-          handled = true;
           const blob = item.getAsFile();
           if (blob) {
             const reader = new FileReader();
-            reader.onload = () => {
-              pastedImageData = reader.result;
-              const img = document.createElement('img');
-              img.src = reader.result;
-              thumbs.innerHTML = '';
-              thumbs.appendChild(img);
-            };
+            reader.onload = () => { pastedImageData = reader.result; thumbs.innerHTML = '<img src="'+reader.result+'"/>'; };
             reader.readAsDataURL(blob);
           }
           return;
         }
       }
-
-      // Second pass: Handle text paste
       for (const item of items) {
         if (item.type === 'text/plain' || item.kind === 'string') {
           e.preventDefault();
-          handled = true;
-          item.getAsString((text) => {
-            if (text) {
-              const currentText = pasteArea.innerText;
-              pasteArea.innerText = currentText + text;
-            }
-          });
+          item.getAsString(text => { pasteArea.innerText += text; });
           return;
         }
       }
-
-      // If nothing was handled, let default paste behavior work
-      if (!handled) {
-        e.preventDefault();
-        const text = e.clipboardData?.getData('text/plain');
-        if (text) {
-          document.execCommand('insertText', false, text);
-        }
-      }
     });
 
-    // Resumable configuration
-   const resumable = new Resumable({
-  target: '/upload-chunk?sessionId=' + sessionId,
-  chunkSize: 10 * 1024 * 1024,  // 10 MB chunks (faster uploads)
-  simultaneousUploads: 8,        // more parallel uploads
-  testChunks: true,              // allow resume
-  query: { sessionId: sessionId },
-});
-
-    resumable.on('fileAdded', (file) => {
-      // file is already in resumable's queue; we don't need to do anything
-    });
-
+    const resumable = new Resumable({ target: '/upload-chunk?sessionId='+sessionId, chunkSize: 10*1024*1024, simultaneousUploads: 8, testChunks: true, query: { sessionId } });
     resumable.on('progress', () => {
-      const pct = Math.floor(resumable.progress() * 100);
-      progressFill.style.width = pct + '%';
-
-      // Calculate speed (MB/s)
+      const pct = Math.floor(resumable.progress()*100);
+      progressFill.style.width = pct+'%';
       const now = Date.now();
-      const elapsed = (now - lastTime) / 1000;
-      if (totalSize === 0) totalSize = resumable.getSize();
+      const elapsed = (now - lastTime)/1000;
+      if (totalSize===0) totalSize = resumable.getSize();
       const bytesUploaded = totalSize * resumable.progress();
       const deltaBytes = bytesUploaded - lastBytes;
       if (elapsed >= 0.5) {
-        currentSpeed = deltaBytes / elapsed / (1024 * 1024);
+        currentSpeed = deltaBytes/elapsed/(1024*1024);
         lastBytes = bytesUploaded;
         lastTime = now;
       }
-      const speedText = currentSpeed > 0 ? ' – ' + currentSpeed.toFixed(1) + ' MB/s' : '';
-      status.textContent = 'Uploading... ' + pct + '%' + speedText;
+      const speedText = currentSpeed>0 ? ' – '+currentSpeed.toFixed(1)+' MB/s' : '';
+      status.textContent = 'Uploading... '+pct+'%'+speedText;
     });
-
     resumable.on('complete', () => {
       status.innerHTML = '<svg class="success-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg> Sent successfully!';
       progressBar.style.display = 'none';
-      fileEntries = [];
-      renderFileList();
-      pasteArea.innerHTML = '';
-      thumbs.innerHTML = '';
-      pastedImageData = null;
-      sendBtn.disabled = false;
-      // Reset speed tracking for next upload
-      lastBytes = 0;
-      currentSpeed = 0;
-      totalSize = 0;
-      lastTime = Date.now();
+      fileEntries = []; renderFileList(); pasteArea.innerHTML = ''; thumbs.innerHTML = ''; pastedImageData = null; sendBtn.disabled = false;
+      lastBytes = 0; currentSpeed = 0; totalSize = 0; lastTime = Date.now();
+      resumable.cancel();
     });
-
-    resumable.on('error', (message, file) => {
-      status.textContent = 'Upload error: ' + message;
-      sendBtn.disabled = false;
-    });
+    resumable.on('error', (message) => { status.textContent = 'Upload error: '+message; sendBtn.disabled = false; resumable.cancel(); });
 
     sendBtn.addEventListener('click', async () => {
-      const text = pasteArea.innerText.trim();
+      console.log("=== Send button clicked ===");
+      let text = pasteArea.innerText.trim();
+      if (!text) text = pasteArea.textContent.trim();
+      if (!text) text = pasteArea.innerText.trim();
+      console.log("Extracted text:", JSON.stringify(text));
+      console.log("File entries count:", fileEntries.length);
+      console.log("Pasted image data:", !!pastedImageData);
+
       if (fileEntries.length === 0 && !pastedImageData && !text) {
-        status.textContent = 'Please add files or paste something first.';
+        status.textContent = 'Please add files, paste text, or paste an image.';
         return;
       }
       sendBtn.disabled = true;
       status.textContent = 'Preparing...';
       progressBar.style.display = 'block';
       progressFill.style.width = '0%';
-      // Reset speed tracking for this transfer
-      lastBytes = 0;
-      lastTime = Date.now();
-      currentSpeed = 0;
-      totalSize = 0;
+      lastBytes = 0; lastTime = Date.now(); currentSpeed = 0; totalSize = 0;
 
       try {
-        // 1. Single file (no text, no image)
+        // 1. Single file only → Resumable
+                // 1. Single file only → send via simple upload (fast, one-click)
         if (fileEntries.length === 1 && !pastedImageData && !text) {
+          console.log("Branch: Single file (direct fetch)");
           const entry = fileEntries[0];
-          resumable.addFile(entry.file);
-          resumable.upload();
-          status.textContent = 'Starting upload...';
+          // Read the file as base64
+          const reader = new FileReader();
+          reader.onload = async () => {
+            try {
+              const base64Content = reader.result.split(',')[1]; // remove data URL prefix
+              const filename = entry.name;
+              const response = await fetch('/upload-simple?sessionId='+sessionId, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ content: base64Content, filename })
+              });
+              if (response.ok) {
+                status.innerHTML = '<svg class="success-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg> Sent successfully!';
+                progressBar.style.display = 'none';
+              } else {
+                const errText = await response.text();
+                status.textContent = 'Upload failed: '+response.status+' '+errText;
+              }
+            } catch (err) {
+              status.textContent = 'Upload error: ' + err.message;
+            }
+            fileEntries = []; renderFileList(); pasteArea.innerHTML = ''; thumbs.innerHTML = '';
+            pastedImageData = null;
+            sendBtn.disabled = false;
+          };
+          reader.readAsDataURL(entry.file);
+          status.textContent = 'Uploading...';
           return;
         }
 
         // 2. Only text (no files, no image)
         if (fileEntries.length === 0 && text && !pastedImageData) {
-          const blob = new Blob([text], { type: 'text/plain' });
-          const txtName = 'pasted-' + new Date().toISOString().replace(/[:.]/g, '-') + '.txt';
-          const file = new File([blob], txtName, { type: 'text/plain' });
-          resumable.addFile(file);
-          resumable.upload();
-          status.textContent = 'Starting upload...';
+          console.log("Branch: Text only (direct fetch)");
+          const content = btoa(unescape(encodeURIComponent(text)));
+          const filename = 'pasted-'+new Date().toISOString().replace(/[:.]/g, '-')+'.txt';
+          const url = '/upload-simple?sessionId='+sessionId;
+          console.log("Fetching:", url);
+          const response = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ content, filename })
+          });
+          console.log("Response status:", response.status);
+          if (response.ok) {
+            const respText = await response.text();
+            console.log("Response OK:", respText);
+            status.innerHTML = '<svg class="success-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg> Sent successfully!';
+            pasteArea.innerHTML = '';
+            thumbs.innerHTML = '';
+            progressBar.style.display = 'none';
+          } else {
+            const errText = await response.text();
+            console.error("Fetch failed:", response.status, errText);
+            status.textContent = 'Upload failed: '+response.status+' '+errText;
+          }
+          sendBtn.disabled = false;
           return;
         }
 
-        // 3. Only pasted image (no files, no text)
+        // 3. Only image (no files, no text)
         if (fileEntries.length === 0 && pastedImageData && !text) {
-          const response = await fetch(pastedImageData);
-          const blob = await response.blob();
-          const imgName = 'screenshot-' + new Date().toISOString().replace(/[:.]/g, '-') + '.png';
-          const file = new File([blob], imgName, { type: 'image/png' });
-          resumable.addFile(file);
-          resumable.upload();
-          status.textContent = 'Starting upload...';
+          console.log("Branch: Image only (direct fetch)");
+          const base64 = pastedImageData.split(',')[1];
+          const filename = 'screenshot-'+new Date().toISOString().replace(/[:.]/g, '-')+'.png';
+          const response = await fetch('/upload-simple?sessionId='+sessionId, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ content: base64, filename })
+          });
+          if (response.ok) {
+            status.innerHTML = '<svg class="success-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg> Sent successfully!';
+            thumbs.innerHTML = '';
+            progressBar.style.display = 'none';
+          } else {
+            const errText = await response.text();
+            status.textContent = 'Upload failed: '+response.status+' '+errText;
+          }
+          pastedImageData = null;
+          sendBtn.disabled = false;
           return;
         }
 
-        // 4. Mixed content (multiple files, or files+text, or files+image) → ZIP
+        // 4. Mixed content → ZIP via Resumable
+        console.log("Branch: Mixed content (ZIP + Resumable)");
         const zip = new JSZip();
         for (const entry of fileEntries) {
           zip.file(entry.relativePath, entry.file);
@@ -730,10 +787,7 @@ function getUploadHTML(): string {
           const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
           zip.file('pasted-' + timestamp + '.txt', text);
         }
-
         const blob = await zip.generateAsync({ type: 'blob' });
-
-        // Try to use folder name for the zip file if all files share the same top folder
         let folderName = null;
         if (fileEntries.length > 0) {
           const firstPath = fileEntries[0].relativePath;
@@ -743,41 +797,33 @@ function getUploadHTML(): string {
             let sameFolder = true;
             for (const entry of fileEntries) {
               const entryParts = entry.relativePath.split('/');
-              if (entryParts.length < 2 || entryParts[0] !== folderName) {
-                sameFolder = false;
-                break;
-              }
+              if (entryParts.length < 2 || entryParts[0] !== folderName) { sameFolder = false; break; }
             }
             if (!sameFolder) folderName = null;
           }
         }
-
-        let zipName;
-        if (folderName) {
-          zipName = folderName + '-' + new Date().toISOString().replace(/[:.]/g, '-') + '.zip';
-        } else {
-          zipName = 'mayo-share-' + new Date().toISOString().replace(/[:.]/g, '-') + '.zip';
-        }
-
+        const zipName = folderName ? folderName+'-'+new Date().toISOString().replace(/[:.]/g, '-')+'.zip' : 'mayo-share-'+new Date().toISOString().replace(/[:.]/g, '-')+'.zip';
+        fileEntries = []; renderFileList(); pasteArea.innerHTML = ''; thumbs.innerHTML = ''; pastedImageData = null;
         const file = new File([blob], zipName, { type: 'application/zip' });
         resumable.addFile(file);
         resumable.upload();
         status.textContent = 'Starting upload...';
       } catch (err) {
+        console.error("Exception in sendBtn:", err);
         status.textContent = 'Preparation error: ' + err.message;
         sendBtn.disabled = false;
       }
     });
   </script>
   <script>
-  window.addEventListener('load', function() {
-    var tl = gsap.timeline({ defaults: { ease: 'power2.out' } });
-    tl.from('.logo', { opacity: 0, y: -20, duration: 0.5 });
-    tl.from('.subtitle', { opacity: 0, y: 10, duration: 0.4 }, '-=0.3');
-    tl.from('.card', { opacity: 0, y: 30, duration: 0.5 }, '-=0.2');
-    tl.from('.file-section, .btn, #status', { opacity: 0, y: 10, duration: 0.3, stagger: 0.1 }, '-=0.3');
-  });
-</script>
+    window.addEventListener('load', function() {
+      var tl = gsap.timeline({ defaults: { ease: 'power2.out' } });
+      tl.from('.logo', { opacity: 0, y: -20, duration: 0.5 });
+      tl.from('.subtitle', { opacity: 0, y: 10, duration: 0.4 }, '-=0.3');
+      tl.from('.card', { opacity: 0, y: 30, duration: 0.5 }, '-=0.2');
+      tl.from('.file-section, .btn, #status', { opacity: 0, y: 10, duration: 0.3, stagger: 0.1 }, '-=0.3');
+    });
+  </script>
 </body>
 </html>`;
 }
@@ -788,8 +834,8 @@ function getWaitingHTML(name: string): string {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Waiting for Approval – MAYO Share</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+  <title>Waiting for Approval – MAYO Share</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { background: #0A0A0A; color: white; font-family: Arial, sans-serif; padding: 40px 20px; text-align: center; }
