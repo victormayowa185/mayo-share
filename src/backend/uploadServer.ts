@@ -21,12 +21,19 @@ interface Session {
   senderName: string;
   saveDir: string;
   deviceType: string;
+  currentUpload?: {
+    fileId: string;
+    filename: string;
+    totalChunks: number;
+    uploadedChunks: Set<number>;
+  };
 }
 
 interface SSEClient {
   id: string;
   res: ServerResponse;
 }
+
 let RECEIVE_DIR = "C:\\mayo-received";
 export function setReceiveDir(path: string) {
   RECEIVE_DIR = path;
@@ -38,6 +45,12 @@ export class UploadServer extends EventEmitter {
   private sessions = new Map<string, Session>();
   private sseClients = new Map<string, SSEClient>();
 
+  // Admin SSE clients (for desktop real‑time updates)
+  private adminClients = new Set<ServerResponse>();
+
+  // File assembly locks - prevent duplicate assembly for same file
+  private fileAssemblyLocks = new Map<string, Promise<void>>();
+
   approveSender(sessionId: string) {
     const session = this.sessions.get(sessionId);
     if (session && session.status === "pending") {
@@ -48,6 +61,7 @@ export class UploadServer extends EventEmitter {
         client.res.end();
         this.sseClients.delete(sessionId);
       }
+      this.broadcastAdminUpdate();
     }
   }
 
@@ -61,7 +75,28 @@ export class UploadServer extends EventEmitter {
         client.res.end();
         this.sseClients.delete(sessionId);
       }
+      this.broadcastAdminUpdate();
     }
+  }
+
+  private broadcastAdminUpdate() {
+    const sessionsList = Array.from(this.sessions.values()).map(s => ({
+      id: s.id,
+      senderName: s.senderName,
+      status: s.status,
+      deviceType: s.deviceType,
+      currentUpload: s.currentUpload ? {
+        filename: s.currentUpload.filename,
+        totalChunks: s.currentUpload.totalChunks,
+        uploadedChunks: Array.from(s.currentUpload.uploadedChunks)
+      } : null
+    }));
+    const data = `data: ${JSON.stringify(sessionsList)}\n\n`;
+    this.adminClients.forEach(client => {
+      try {
+        client.write(data);
+      } catch { /* client disconnected */ }
+    });
   }
 
   async start(ip?: string): Promise<string> {
@@ -83,6 +118,65 @@ export class UploadServer extends EventEmitter {
           if (method === "GET" && url === "/favicon.ico") {
             res.writeHead(204);
             res.end();
+            return;
+          }
+
+          // ─── Admin dashboard (desktop UI) ───
+          if (method === "GET" && (url === "/admin" || url === "/admin.html")) {
+            res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+            res.end(getAdminHTML());
+            return;
+          }
+
+          // ─── Admin SSE stream for real‑time updates ───
+          if (method === "GET" && url === "/admin/events") {
+            res.writeHead(200, {
+              "Content-Type": "text/event-stream",
+              "Cache-Control": "no-cache",
+              Connection: "keep-alive"
+            });
+            this.adminClients.add(res);
+            // Send initial data
+            const sessionsList = Array.from(this.sessions.values()).map(s => ({
+              id: s.id,
+              senderName: s.senderName,
+              status: s.status,
+              deviceType: s.deviceType,
+              currentUpload: s.currentUpload ? {
+                filename: s.currentUpload.filename,
+                totalChunks: s.currentUpload.totalChunks,
+                uploadedChunks: Array.from(s.currentUpload.uploadedChunks)
+              } : null
+            }));
+            res.write(`data: ${JSON.stringify(sessionsList)}\n\n`);
+            req.on("close", () => this.adminClients.delete(res));
+            return;
+          }
+
+          // ─── Check which chunks are already uploaded (for resume) ───
+          if (method === "GET" && url?.startsWith("/upload-status")) {
+            const parsedUrl = new URL(url!, `http://localhost:${PORT}`);
+            const sessionId = parsedUrl.searchParams.get("sessionId");
+            const fileId = parsedUrl.searchParams.get("fileId");
+            const session = this.sessions.get(sessionId || "");
+            if (!session || session.status !== "approved") {
+              res.writeHead(403);
+              res.end("Not approved");
+              return;
+            }
+            const chunkDir = path.join(RECEIVE_DIR, "chunks", fileId || "none");
+            try {
+              const files = await fs.readdir(chunkDir);
+              const uploadedIndices = files
+                .filter(f => f.startsWith("chunk-"))
+                .map(f => parseInt(f.split("-")[1], 10))
+                .filter(n => !isNaN(n));
+              res.writeHead(200, { "Content-Type": "application/json" });
+              res.end(JSON.stringify({ uploadedChunks: uploadedIndices }));
+            } catch {
+              res.writeHead(200, { "Content-Type": "application/json" });
+              res.end(JSON.stringify({ uploadedChunks: [] }));
+            }
             return;
           }
 
@@ -115,23 +209,17 @@ export class UploadServer extends EventEmitter {
               this.emit("sender-connected", sessionId, session.senderName);
             }
             if (session.status === "pending") {
-              res.writeHead(200, {
-                "Content-Type": "text/html; charset=utf-8",
-              });
+              res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
               res.end(getWaitingHTML(session.senderName || "Unknown"));
               return;
             }
             if (session.status === "approved") {
-              res.writeHead(200, {
-                "Content-Type": "text/html; charset=utf-8",
-              });
+              res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
               res.end(getUploadHTML());
               return;
             }
             if (session.status === "declined") {
-              res.writeHead(200, {
-                "Content-Type": "text/html; charset=utf-8",
-              });
+              res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
               res.end(getDeclinedHTML());
               return;
             }
@@ -171,12 +259,8 @@ export class UploadServer extends EventEmitter {
                 if (session) {
                   session.senderName = name;
                   if (deviceType) session.deviceType = deviceType;
-                  this.emit(
-                    "sender-connected",
-                    sessionId,
-                    name,
-                    session.deviceType,
-                  );
+                  this.emit("sender-connected", sessionId, name, session.deviceType);
+                  this.broadcastAdminUpdate();
                   res.writeHead(200, { "Content-Type": "application/json" });
                   res.end(JSON.stringify({ ok: true }));
                 } else {
@@ -191,7 +275,7 @@ export class UploadServer extends EventEmitter {
             return;
           }
 
-          // ─── Simple text/image upload endpoint (bypasses Resumable) ───
+          // ─── Simple text/image upload endpoint ───
           if (method === "POST" && url?.startsWith("/upload-simple")) {
             const parsedUrl = new URL(url!, `http://localhost:${PORT}`);
             const sessionId = parsedUrl.searchParams.get("sessionId");
@@ -211,6 +295,7 @@ export class UploadServer extends EventEmitter {
                 const savePath = path.join(session.saveDir, filename);
                 await fs.writeFile(savePath, buffer);
                 this.emit("file-received", filename);
+                this.broadcastAdminUpdate();
                 res.writeHead(200);
                 res.end("OK");
               } catch (err) {
@@ -222,44 +307,16 @@ export class UploadServer extends EventEmitter {
             return;
           }
 
-          // ─── Resumable: test chunk existence ───
-          if (method === "GET" && url?.startsWith("/upload-chunk")) {
-            const parsedUrl = new URL(url!, `http://localhost:${PORT}`);
-            const sessionId = parsedUrl.searchParams.get("sessionId");
-            const identifier =
-              parsedUrl.searchParams.get("resumableIdentifier") || "";
-            const chunkNumber = parsedUrl.searchParams.get(
-              "resumableChunkNumber",
-            );
-            if (!sessionId || !this.sessions.has(sessionId)) {
-              res.writeHead(404);
-              res.end();
-              return;
-            }
-            const session = this.sessions.get(sessionId)!;
-            if (session.status !== "approved") {
-              res.writeHead(403);
-              res.end("Not approved");
-              return;
-            }
-            const chunkDir = path.join(RECEIVE_DIR, "chunks", identifier);
-            const chunkPath = path.join(chunkDir, chunkNumber || "0");
-            try {
-              await fs.access(chunkPath);
-              res.writeHead(200);
-              res.end();
-            } catch {
-              res.writeHead(204);
-              res.end();
-            }
-            return;
-          }
-
-          // ─── Resumable: receive chunk ───
+          // ─── Chunk upload endpoint (with resume support) ───
           if (method === "POST" && url?.startsWith("/upload-chunk")) {
             try {
               const parsedUrl = new URL(url!, `http://localhost:${PORT}`);
               const sessionId = parsedUrl.searchParams.get("sessionId") || "";
+              const fileId = parsedUrl.searchParams.get("fileId") || "";
+              const chunkIndex = parseInt(parsedUrl.searchParams.get("chunkIndex") || "0", 10);
+              const totalChunks = parseInt(parsedUrl.searchParams.get("totalChunks") || "0", 10);
+              const filename = parsedUrl.searchParams.get("filename") || "file";
+
               const session = this.sessions.get(sessionId);
               if (!session || session.status !== "approved") {
                 res.writeHead(403);
@@ -267,120 +324,127 @@ export class UploadServer extends EventEmitter {
                 return;
               }
 
-              const form = formidable({
-                uploadDir: path.join(RECEIVE_DIR, "chunks"),
-                keepExtensions: true,
-                maxFileSize: 500 * 1024 * 1024,
-                multiples: false,
+              // Update session upload tracking
+              if (chunkIndex === 0) {
+                session.currentUpload = {
+                  fileId,
+                  filename,
+                  totalChunks,
+                  uploadedChunks: new Set()
+                };
+              }
+              if (session.currentUpload && session.currentUpload.fileId === fileId) {
+                session.currentUpload.uploadedChunks.add(chunkIndex);
+              }
+
+              const chunkDir = path.join(RECEIVE_DIR, "chunks", fileId);
+              await fs.mkdir(chunkDir, { recursive: true });
+              const chunkPath = path.join(chunkDir, `chunk-${chunkIndex}`);
+
+              let fileData = Buffer.alloc(0);
+              req.on("data", (chunk) => {
+                fileData = Buffer.concat([fileData, chunk]);
               });
 
-              const [fields, files] = await form.parse(req);
-              const rawFile = files.file;
-              const chunkFile = Array.isArray(rawFile) ? rawFile[0] : rawFile;
-              if (!chunkFile) {
-                res.writeHead(400);
-                res.end("No chunk file");
-                return;
-              }
-
-              const identifier = getField(fields.resumableIdentifier);
-              const chunkNumber = getField(fields.resumableChunkNumber) || "0";
-              const totalChunks = parseInt(
-                getField(fields.resumableTotalChunks) || "0",
-                10,
-              );
-              let originalFilename =
-                getField(fields.resumableFilename) || "uploaded-file";
-
-              if (chunkNumber === "1") {
-                const totalSize = parseInt(
-                  getField(fields.resumableTotalSize) || "0",
-                  10,
-                );
-                if (totalSize > 0) {
-                  const stats = await statfsAsync(RECEIVE_DIR);
-                  const freeBytes = stats.bfree * stats.bsize;
-                  const safetyMargin = 100 * 1024 * 1024;
-                  if (freeBytes < totalSize + safetyMargin) {
-                    res.writeHead(507, { "Content-Type": "text/plain" });
-                    res.end(
-                      `Insufficient disk space. Need at least ${formatBytesServer(totalSize + safetyMargin)} free.`,
-                    );
-                    return;
-                  }
-                }
-              }
-
-              originalFilename = originalFilename
-                .replace(/[<>:"|?*]/g, "_")
-                .replace(/\.{2,}/g, ".")
-                .replace(/\s+/g, " ")
-                .trim();
-
-              const chunkDir = path.join(RECEIVE_DIR, "chunks", identifier);
-              await fs.mkdir(chunkDir, { recursive: true });
-              const destChunkPath = path.join(chunkDir, chunkNumber);
-              await fs.rename(chunkFile.filepath, destChunkPath);
-
-              console.log(
-                `Chunk ${chunkNumber}/${totalChunks} saved. File: ${originalFilename}`,
-              );
-              const existingChunks = await fs.readdir(chunkDir);
-              if (existingChunks.length === totalChunks) {
-                await fs.mkdir(session.saveDir, { recursive: true });
-                const finalPath = path.join(session.saveDir, originalFilename);
-                const { createWriteStream } = await import("fs");
-                const writeStream = createWriteStream(finalPath);
-                await new Promise<void>((resolve, reject) => {
-                  writeStream.on("finish", resolve);
-                  writeStream.on("error", reject);
-                  (async () => {
-                    for (let i = 1; i <= totalChunks; i++) {
-                      const chunkPath = path.join(chunkDir, i.toString());
-                      const data = await fs.readFile(chunkPath);
-                      writeStream.write(data);
-                      await fs.unlink(chunkPath);
-                    }
-                    writeStream.end();
-                  })().catch(reject);
-                });
+              req.on("end", async () => {
                 try {
-                  await fs.rmdir(chunkDir);
-                } catch {}
-                this.emit("file-received", originalFilename);
-              }
-              res.writeHead(200, { "Content-Type": "text/plain" });
-              res.end("Chunk received");
-            } catch (e: any) {
-              console.error("Chunk upload error:", e);
+                  await fs.writeFile(chunkPath, fileData);
+                  console.log(`[Server] Chunk ${chunkIndex}/${totalChunks} saved for ${filename}`);
+
+                  // Check completeness
+                  const chunks = await fs.readdir(chunkDir);
+                  if (chunks.length === totalChunks) {
+                    // LOCK: Check if assembly is already in progress for this file
+                    if (this.fileAssemblyLocks.has(fileId)) {
+                      // Already assembling, wait for it to complete
+                      await this.fileAssemblyLocks.get(fileId);
+                      res.writeHead(200, { "Content-Type": "application/json" });
+                      res.end(JSON.stringify({ ok: true, complete: true }));
+                      return;
+                    }
+
+                    // Create assembly promise and lock it
+                    const assemblyPromise = (async () => {
+                      try {
+                        await fs.mkdir(session.saveDir, { recursive: true });
+                        const finalPath = path.join(session.saveDir, filename);
+                        const { createWriteStream } = await import("fs");
+                        const writeStream = createWriteStream(finalPath);
+
+                        // OPTION 1: Parallel chunk reading (10 chunks in parallel for speed)
+                        const PARALLEL_READS = 10;
+                        for (let startIdx = 0; startIdx < totalChunks; startIdx += PARALLEL_READS) {
+                          const endIdx = Math.min(startIdx + PARALLEL_READS, totalChunks);
+                          const chunkPromises = [];
+
+                          for (let i = startIdx; i < endIdx; i++) {
+                            chunkPromises.push(fs.readFile(path.join(chunkDir, `chunk-${i}`)));
+                          }
+
+                          const chunkData = await Promise.all(chunkPromises);
+                          for (const data of chunkData) {
+                            writeStream.write(data);
+                          }
+                        }
+
+                        writeStream.end();
+                        await new Promise<void>((resolve, reject) => {
+                          writeStream.on("finish", resolve);
+                          writeStream.on("error", reject);
+                        });
+
+                        console.log(`[Server] File complete: ${filename}`);
+                        this.emit("file-received", filename);
+                        if (session.currentUpload && session.currentUpload.fileId === fileId) {
+                          session.currentUpload = undefined;
+                        }
+                        this.broadcastAdminUpdate();
+
+                        // OPTION 4: Async cleanup (don't wait, do in background)
+                        (async () => {
+                          try {
+                            for (let i = 0; i < totalChunks; i++) {
+                              await fs.unlink(path.join(chunkDir, `chunk-${i}`));
+                            }
+                            await fs.rmdir(chunkDir);
+                          } catch (err) {
+                            console.error("Cleanup error:", err);
+                          }
+                        })();
+                      } finally {
+                        // Remove lock when assembly is done
+                        this.fileAssemblyLocks.delete(fileId);
+                      }
+                    })();
+
+                    this.fileAssemblyLocks.set(fileId, assemblyPromise);
+                    await assemblyPromise;
+
+                    res.writeHead(200, { "Content-Type": "application/json" });
+                    res.end(JSON.stringify({ ok: true, complete: true }));
+                  } else {
+                    this.broadcastAdminUpdate();
+                    res.writeHead(200, { "Content-Type": "application/json" });
+                    res.end(JSON.stringify({ ok: true, complete: false }));
+                  }
+                } catch (err) {
+                  console.error("Chunk save error:", err);
+                  this.fileAssemblyLocks.delete(fileId);
+                  res.writeHead(500);
+                  res.end("Error saving chunk");
+                }
+              });
+            } catch (err) {
+              console.error("Chunk upload error:", err);
               res.writeHead(500);
-              res.end("Chunk upload failed: " + (e.message || "unknown error"));
+              res.end("Error");
             }
             return;
           }
 
-          // ─── Serve local JS libraries from node_modules (offline) ───
-          if (method === "GET" && url === "/jszip.min.js") {
-            const filePath = path.join(
-              process.cwd(),
-              "node_modules/jszip/dist/jszip.min.js",
-            );
-            try {
-              const data = await fs.readFile(filePath);
-              res.writeHead(200, { "Content-Type": "application/javascript" });
-              res.end(data);
-            } catch {
-              res.writeHead(404);
-              res.end();
-            }
-            return;
-          }
-
-          if (method === "GET" && url === "/resumable.min.js") {
-            const filePath = path.join(
-              process.cwd(),
-              "node_modules/resumablejs/resumable.js",
-            );
+          // ─── Serve GSAP from node_modules (offline) ───
+          if (method === "GET" && url === "/gsap.min.js") {
+            const filePath = path.join(process.cwd(), "node_modules/gsap/dist/gsap.min.js");
             try {
               const data = await fs.readFile(filePath);
               res.writeHead(200, { "Content-Type": "application/javascript" });
@@ -394,7 +458,7 @@ export class UploadServer extends EventEmitter {
 
           res.writeHead(404);
           res.end("Not found");
-        },
+        }
       );
 
       this.server.listen(PORT, "0.0.0.0", () => {
@@ -416,13 +480,108 @@ export class UploadServer extends EventEmitter {
   }
 }
 
+// ========================
+// HTML GENERATORS
+// ========================
+
+function getAdminHTML(): string {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>MAYO Share - Admin</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #0A0A0A; color: white; font-family: Arial, sans-serif; padding: 40px 20px; }
+    .container { max-width: 800px; margin: 0 auto; }
+    h1 { font-size: 2rem; color: #b169e0; margin-bottom: 20px; }
+    .user-card { background: #111; border: 1px solid #222; border-radius: 12px; padding: 20px; margin-bottom: 20px; }
+    .user-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 12px; }
+    .user-name { font-size: 1.3rem; font-weight: bold; color: #b169e0; }
+    .user-status { font-size: 0.85rem; padding: 4px 8px; border-radius: 20px; background: #2a2a2a; }
+    .status-pending { color: #ffaa44; }
+    .status-approved { color: #44ff88; }
+    .status-declined { color: #ff4444; }
+    .progress-section { margin-top: 12px; }
+    .progress-bar-bg { background: #333; border-radius: 8px; height: 8px; overflow: hidden; margin: 8px 0; }
+    .progress-fill { background: #b169e0; width: 0%; height: 100%; transition: width 0.2s; }
+    .details { font-size: 0.85rem; color: #aaa; margin-top: 8px; }
+    .button-group { margin-top: 12px; }
+    button { background: #b169e0; border: none; padding: 8px 16px; border-radius: 6px; color: white; cursor: pointer; margin-right: 8px; }
+    button:hover { opacity: 0.9; }
+    .btn-decline { background: #aa3333; }
+  </style>
+</head>
+<body>
+<div class="container">
+  <h1>MAYO Share - Connected Users</h1>
+  <div id="usersList"></div>
+</div>
+<script>
+  const usersDiv = document.getElementById('usersList');
+  const evtSource = new EventSource('/admin/events');
+  evtSource.onmessage = (e) => {
+    const users = JSON.parse(e.data);
+    renderUsers(users);
+  };
+  function renderUsers(users) {
+    usersDiv.innerHTML = '';
+    users.forEach(user => {
+      const card = document.createElement('div');
+      card.className = 'user-card';
+      let statusText = user.status;
+      let statusClass = 'status-' + user.status;
+      let progressHtml = '';
+      let uploadInfo = '';
+      if (user.currentUpload && user.status === 'approved') {
+        const uploaded = user.currentUpload.uploadedChunks.length;
+        const total = user.currentUpload.totalChunks;
+        const percent = total > 0 ? (uploaded / total * 100).toFixed(1) : 0;
+        progressHtml = \`
+          <div class="progress-section">
+            <div>Uploading: \${escapeHtml(user.currentUpload.filename)}</div>
+            <div class="progress-bar-bg"><div class="progress-fill" style="width: \${percent}%;"></div></div>
+            <div class="details">\${uploaded} / \${total} chunks (\${percent}%)</div>
+          </div>
+        \`;
+      } else if (user.status === 'approved') {
+        uploadInfo = '<div class="details">Waiting for files...</div>';
+      }
+      card.innerHTML = \`
+        <div class="user-header">
+          <span class="user-name">\${escapeHtml(user.senderName || 'Unknown')}</span>
+          <span class="user-status \${statusClass}">\${statusText}</span>
+        </div>
+        <div class="details">Device: \${user.deviceType || 'unknown'}</div>
+        \${progressHtml}
+        \${uploadInfo}
+        <div class="button-group">
+          <button onclick="approve('\${user.id}')">Approve</button>
+          <button class="btn-decline" onclick="decline('\${user.id}')">Decline</button>
+        </div>
+      \`;
+      usersDiv.appendChild(card);
+    });
+  }
+  function escapeHtml(str) { return str.replace(/[&<>]/g, m => m === '&' ? '&amp;' : m === '<' ? '&lt;' : '&gt;'); }
+  async function approve(sessionId) {
+    await fetch('/approve?sessionId=' + sessionId, { method: 'POST' });
+  }
+  async function decline(sessionId) {
+    await fetch('/decline?sessionId=' + sessionId, { method: 'POST' });
+  }
+</script>
+</body>
+</html>`;
+}
+
 function getUploadHTML(): string {
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+  <script src="/gsap.min.js"></script>
   <title>Send to MAYO Share</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -433,397 +592,462 @@ function getUploadHTML(): string {
     .card { background: #111; border: 1px solid #222; border-radius: 16px; max-width: 520px; margin: 0 auto; padding: 32px 24px; }
     .file-section { margin-bottom: 20px; }
     label { display: block; color: #888; font-size: 0.85rem; margin-bottom: 8px; text-align: left; }
-    .file-row { display: flex; gap: 10px; align-items: center; margin-bottom: 12px; }
+    .file-row { display: flex; gap: 10px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
     .file-btn { padding: 10px 20px; background: #b169e0; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 0.9rem; }
     .file-btn:hover { opacity: 0.9; }
-    .file-list { list-style: none; padding: 0; margin: 0 0 16px 0; }
+    .file-list { list-style: none; padding: 0; margin: 0 0 16px 0; max-height: 200px; overflow-y: auto; }
     .file-item { display: flex; align-items: center; gap: 8px; background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 6px; padding: 8px 12px; margin-bottom: 6px; font-size: 0.85rem; }
     .file-item .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #ccc; text-align: left; }
     .file-item .size { color: #888; white-space: nowrap; }
-    .file-item .remove-btn { background: transparent; border: none; color: #888; cursor: pointer; font-size: 1rem; padding: 0 4px; }
-    .file-item .remove-btn:hover { color: #f44336; }
-    .paste-toggle { display: flex; align-items: center; justify-content: space-between; color: #888; font-size: 0.85rem; margin-bottom: 8px; cursor: pointer; }
-    .paste-toggle svg { width: 14px; height: 14px; transition: transform 0.2s; }
-    .paste-toggle.open svg { transform: rotate(90deg); }
+    .file-item button { background: transparent; border: none; color: #888; cursor: pointer; padding: 0 4px; display: inline-flex; align-items: center; }
+    .file-item button:hover { color: #b169e0; }
+    .remove-btn:hover { color: #f44336 !important; }
     .paste-area { width: 100%; min-height: 80px; background: #1a1a1a; border: 1px solid #333; border-radius: 8px; color: #ccc; padding: 12px; font-size: 0.9rem; text-align: left; outline: none; display: block; }
     .btn { width: auto; padding: 14px 32px; background: #b169e0; color: white; border: none; border-radius: 30px; font-size: 1rem; display: inline-block; cursor: pointer; margin-top: 16px; }
     .btn:hover { opacity: 0.9; }
     .btn:disabled { opacity: 0.5; cursor: not-allowed; }
-    #status { margin-top: 20px; color: #aaa; font-size: 0.95rem; display: flex; align-items: center; justify-content: center; gap: 6px; }
-    #status svg { width: 18px; height: 18px; }
-    .success-icon { color: #4CAF50; }
+    #status { margin-top: 20px; color: #aaa; font-size: 0.95rem; display: flex; align-items: center; justify-content: center; gap: 6px; flex-wrap: wrap; }
+    .success-check { width: 20px; height: 20px; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
     #thumbs img { max-width: 80px; max-height: 80px; margin: 4px; border-radius: 4px; }
     .progress-bar { width: 100%; background: #333; border-radius: 8px; height: 8px; margin: 12px 0; overflow: hidden; display: none; }
     .progress-bar .fill { height: 100%; background: #b169e0; width: 0%; transition: width 0.2s; }
     .mayo-text { color: #b169e0; }
     .share-text { color: #fff; }
-    .action-buttons-row { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
+    .action-buttons-row { display: flex; gap: 8px; align-items: center; margin-top: 8px; justify-content: flex-end; }
     .small-icon-btn { background: transparent; border: none; cursor: pointer; padding: 4px; display: inline-flex; align-items: center; color: #ccc; }
     .small-icon-btn:hover { color: #b169e0; }
     .inline-edit { display: flex; flex-direction: column; gap: 8px; width: 100%; }
     .inline-edit textarea { background: #111; border: 1px solid #333; color: #ccc; padding: 8px; border-radius: 6px; font-family: monospace; font-size: 0.85rem; resize: vertical; }
     .inline-edit-actions { display: flex; gap: 8px; justify-content: flex-end; }
+    .resume-btn { background: #ffaa44; color: #111; margin-left: 8px; }
+    .assembling-notice { color: #b169e0; margin-top: 12px; font-size: 0.9rem; display: flex; align-items: center; justify-content: center; gap: 8px; }
+    .assembling-spinner { width: 12px; height: 12px; border: 2px solid #555; border-top: 2px solid #b169e0; border-radius: 50%; animation: spin 0.8s linear infinite; }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
   </style>
 </head>
 <body>
-  <div class="logo">
-    <svg viewBox="0 0 400 354.74" xmlns="http://www.w3.org/2000/svg"><circle cx="200" cy="177" r="150" fill="currentColor"/></svg>
-    <span class="mayo-text">MAYO</span><span class="share-text">Share</span>
-  </div>
-  <div class="subtitle">Send files to this laptop</div>
-  <div class="card">
-    <div class="file-section">
-      <label>Add files or folders:</label>
-      <div class="file-row">
-        <button class="file-btn" id="addFilesBtn">Add Files</button>
-        <button class="file-btn" id="addFolderBtn">Add Folder</button>
-      </div>
-      <ul class="file-list" id="fileList"></ul>
+<div class="logo">
+  <svg viewBox="0 0 400 354.74" xmlns="http://www.w3.org/2000/svg"><circle cx="200" cy="177" r="150" fill="currentColor"/></svg>
+  <span class="mayo-text">MAYO</span><span class="share-text">Share</span>
+</div>
+<div class="subtitle">Send files to this laptop</div>
+<div class="card" id="dropZone">
+  <div class="file-section">
+    <label>Add files or folders:</label>
+    <div class="file-row">
+      <button class="file-btn" id="addFilesBtn">Add Files</button>
+      <button class="file-btn" id="addFolderBtn">Add Folder</button>
     </div>
-    <div class="file-section">
-      <label>Paste text or image (Ctrl+V):</label>
-      <div class="paste-area" id="pasteArea" contenteditable="true" placeholder="Paste text here, or paste an image"></div>
-      <div class="action-buttons-row">
-        <button class="small-icon-btn" id="addTextAsFileBtn" title="Add text as file">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
-        </button>
-        <span style="color:#555; font-size:0.8rem;">Add as file</span>
-      </div>
-      <div id="thumbs"></div>
-    </div>
-    <button class="btn" id="sendBtn">Send</button>
-    <div class="progress-bar" id="progressBar"><div class="fill" id="progressFill"></div></div>
-    <div id="status"></div>
+    <ul class="file-list" id="fileList"></ul>
   </div>
-  <script src="/jszip.min.js"></script>
-  <script src="/resumable.min.js"></script>
-  <script>
-    console.log("=== Upload page loaded ===");
-    const addFilesBtn = document.getElementById('addFilesBtn');
-    const addFolderBtn = document.getElementById('addFolderBtn');
-    const fileListEl = document.getElementById('fileList');
-    const pasteArea = document.getElementById('pasteArea');
-    const sendBtn = document.getElementById('sendBtn');
-    const status = document.getElementById('status');
-    const thumbs = document.getElementById('thumbs');
-    const progressBar = document.getElementById('progressBar');
-    const progressFill = document.getElementById('progressFill');
-    const addTextAsFileBtn = document.getElementById('addTextAsFileBtn');
+  <div class="file-section">
+    <label>Paste text or image (Ctrl+V):</label>
+    <div class="paste-area" id="pasteArea" contenteditable="true" placeholder="Paste text here, or paste an image"></div>
+    <div class="action-buttons-row">
+      <button class="small-icon-btn" id="addTextAsFileBtn" title="Add text as file">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+      </button>
+      <span style="color:#555; font-size:0.8rem;">Add as file</span>
+    </div>
+    <div id="thumbs"></div>
+  </div>
+  <button class="btn" id="sendBtn">Send</button>
+  <div class="progress-bar" id="progressBar"><div class="fill" id="progressFill"></div></div>
+  <div id="status"></div>
+</div>
 
-    const fileInput = document.createElement('input');
-    fileInput.type = 'file';
-    fileInput.multiple = true;
-    const folderInput = document.createElement('input');
-    folderInput.type = 'file';
-    folderInput.multiple = true;
-    folderInput.webkitdirectory = true;
+<script>
+  // ---------- DOM elements ----------
+  const addFilesBtn = document.getElementById('addFilesBtn');
+  const addFolderBtn = document.getElementById('addFolderBtn');
+  const fileListEl = document.getElementById('fileList');
+  const pasteArea = document.getElementById('pasteArea');
+  const sendBtn = document.getElementById('sendBtn');
+  const statusDiv = document.getElementById('status');
+  const thumbs = document.getElementById('thumbs');
+  const progressBar = document.getElementById('progressBar');
+  const progressFill = document.getElementById('progressFill');
+  const addTextAsFileBtn = document.getElementById('addTextAsFileBtn');
+  const dropZone = document.getElementById('dropZone');
 
-    let fileEntries = [];
-    let pastedImageData = null;
-    let lastBytes = 0, lastTime = Date.now(), currentSpeed = 0, totalSize = 0;
-    let editingFileId = null, editContent = '';
-    const sessionId = new URLSearchParams(location.search).get('sessionId');
-    console.log("Session ID:", sessionId);
+  const sessionId = new URLSearchParams(location.search).get('sessionId');
+  const CHUNK_SIZE = 5 * 1024 * 1024;      // 5MB per chunk
+  const PARALLEL_CHUNKS = 4;               // 4 parallel uploads
+  const MAX_RETRIES = 3;
 
-    function sanitizeId(id) { return id.replace(/\\./g, '_'); }
-    function escapeHtml(str) { return str.replace(/[&<>]/g, m => m === '&' ? '&amp;' : m === '<' ? '&lt;' : '&gt;'); }
-    function formatBytes(bytes) { if (bytes===0) return '0 B'; const k=1024,sizes=['B','KB','MB','GB']; const i=Math.floor(Math.log(bytes)/Math.log(k)); return parseFloat((bytes/Math.pow(k,i)).toFixed(1))+' '+sizes[i]; }
+  let fileEntries = [];          // { id, name, file, isTextFile, textContent? }
+  let pastedImageData = null;
+  let isUploading = false;
+  let currentQueue = [];         // files to upload sequentially
+  let currentFileIndex = 0;
+  let currentFileId = null;
+  let currentTotalChunks = 0;
+  let uploadedChunks = new Set(); // indices already uploaded (for resume)
+  let activeUploads = new Map();   // chunkIndex -> { retries, abortController }
+  let paused = false;
+  let pauseResolve = null;
 
-    function renderFileList() {
-      fileListEl.innerHTML = '';
-      fileEntries.forEach(entry => {
-        const li = document.createElement('li');
-        li.className = 'file-item';
-        if (editingFileId === entry.id) {
-          const safeId = sanitizeId(entry.id);
-          li.innerHTML = \`
-            <div class="inline-edit">
-              <textarea id="edit-textarea-\${safeId}" rows="3">\${escapeHtml(editContent)}</textarea>
-              <div class="inline-edit-actions">
-                <button class="small-icon-btn save-edit-btn" data-id="\${entry.id}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg></button>
-                <button class="small-icon-btn cancel-edit-btn" data-id="\${entry.id}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
-              </div>
-            </div>\`;
-          fileListEl.appendChild(li);
-          const textarea = li.querySelector('#edit-textarea-'+safeId);
-          textarea.addEventListener('input', e => { editContent = e.target.value; });
-          li.querySelector('.save-edit-btn').addEventListener('click', () => saveEditedText(entry.id));
-          li.querySelector('.cancel-edit-btn').addEventListener('click', () => { editingFileId = null; renderFileList(); });
-        } else {
-          li.innerHTML = '<span class="name">'+escapeHtml(entry.name)+'</span><span class="size">'+formatBytes(entry.file.size)+'</span>' +
-            (entry.name.startsWith('pasted-') && entry.name.endsWith('.txt') ?
-              '<button class="edit-btn small-icon-btn" data-id="'+entry.id+'"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3l4 4-7 7H10v-4l7-7z M15 8l-6 6M21 21H3"/></svg></button>' : '') +
-            '<button class="remove-btn" data-id="'+entry.id+'">✕</button>';
-          fileListEl.appendChild(li);
+  // Helper functions
+  function formatBytes(bytes) {
+    if (bytes === 0) return '0 B';
+    const k = 1024, sizes = ['B','KB','MB','GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+  }
+
+  function escapeHtml(str) {
+    return str.replace(/[&<>]/g, m => m === '&' ? '&amp;' : m === '<' ? '&lt;' : '&gt;');
+  }
+
+  function getSuccessIcon() {
+    return '<svg class="success-check" viewBox="0 0 24 24" fill="none" stroke="#4CAF50" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>';
+  }
+
+  // Render file list with edit buttons for text files
+  function renderFileList() {
+    fileListEl.innerHTML = '';
+    fileEntries.forEach(entry => {
+      const li = document.createElement('li');
+      li.className = 'file-item';
+      const isText = entry.isTextFile || (entry.name && entry.name.endsWith('.txt'));
+      li.innerHTML = \`
+        <span class="name">\${escapeHtml(entry.name)}</span>
+        <span class="size">\${formatBytes(entry.file.size)}</span>
+        \${isText ? \`<button class="edit-btn" data-id="\${entry.id}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3l4 4-7 7H10v-4l7-7z M15 8l-6 6M21 21H3"/></svg></button>\` : ''}
+        <button class="remove-btn" data-id="\${entry.id}">✕</button>
+      \`;
+      fileListEl.appendChild(li);
+    });
+    document.querySelectorAll('.remove-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        fileEntries = fileEntries.filter(f => f.id !== btn.dataset.id);
+        renderFileList();
+      });
+    });
+    document.querySelectorAll('.edit-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const entry = fileEntries.find(f => f.id === btn.dataset.id);
+        if (entry && (entry.isTextFile || entry.name.endsWith('.txt'))) {
+          const textContent = await entry.file.text();
+          const newContent = prompt("Edit text file content:", textContent);
+          if (newContent !== null) {
+            const blob = new Blob([newContent], { type: 'text/plain' });
+            const newFile = new File([blob], entry.name, { type: 'text/plain' });
+            entry.file = newFile;
+            renderFileList();
+          }
         }
       });
-      document.querySelectorAll('.remove-btn').forEach(btn => btn.addEventListener('click', () => { fileEntries = fileEntries.filter(f => f.id !== btn.dataset.id); renderFileList(); }));
-      document.querySelectorAll('.edit-btn').forEach(btn => btn.addEventListener('click', async () => {
-        const entry = fileEntries.find(f => f.id === btn.dataset.id);
-        if (entry && entry.name.endsWith('.txt')) {
-          editContent = await entry.file.text();
-          editingFileId = entry.id;
+    });
+  }
+
+  function addFilesFromInput(input) {
+    for (const file of input.files) {
+      fileEntries.push({
+        id: Date.now().toString() + Math.random(),
+        name: file.webkitRelativePath || file.name,
+        file: file,
+        isTextFile: file.type === 'text/plain' || file.name.endsWith('.txt')
+      });
+    }
+    renderFileList();
+    input.value = '';
+  }
+
+  addFilesBtn.addEventListener('click', () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.multiple = true;
+    input.addEventListener('change', () => addFilesFromInput(input));
+    input.click();
+  });
+  addFolderBtn.addEventListener('click', () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.multiple = true;
+    input.webkitdirectory = true;
+    input.addEventListener('change', () => addFilesFromInput(input));
+    input.click();
+  });
+
+  // Drag & Drop
+  dropZone.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    dropZone.style.border = '2px dashed #b169e0';
+  });
+  dropZone.addEventListener('dragleave', () => {
+    dropZone.style.border = 'none';
+  });
+  dropZone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dropZone.style.border = 'none';
+    const items = e.dataTransfer.items;
+    const files = [];
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (item.kind === 'file') {
+        const file = item.getAsFile();
+        if (file) files.push(file);
+      }
+    }
+    for (const file of files) {
+      fileEntries.push({
+        id: Date.now().toString() + Math.random(),
+        name: file.name,
+        file: file,
+        isTextFile: file.type === 'text/plain' || file.name.endsWith('.txt')
+      });
+    }
+    renderFileList();
+  });
+
+  // Paste text as file
+  addTextAsFileBtn.addEventListener('click', () => {
+    const text = pasteArea.innerText.trim();
+    if (!text) return;
+    const blob = new Blob([text], { type: 'text/plain' });
+    const filename = 'pasted-' + new Date().toISOString().replace(/[:.]/g, '-') + '.txt';
+    const file = new File([blob], filename, { type: 'text/plain' });
+    fileEntries.push({
+      id: Date.now().toString() + Math.random(),
+      name: filename,
+      file: file,
+      isTextFile: true
+    });
+    pasteArea.innerHTML = '';
+    renderFileList();
+  });
+
+  pasteArea.addEventListener('paste', async (e) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (const item of items) {
+      if (item.kind === 'file') {
+        e.preventDefault();
+        const file = item.getAsFile();
+        if (file) {
+          fileEntries.push({
+            id: Date.now().toString() + Math.random(),
+            name: file.name,
+            file: file,
+            isTextFile: file.type === 'text/plain' || file.name.endsWith('.txt')
+          });
           renderFileList();
         }
-      }));
-    }
-
-    async function saveEditedText(fileId) {
-      const entry = fileEntries.find(f => f.id === fileId);
-      if (!entry) return;
-      const newBlob = new Blob([editContent], { type: 'text/plain' });
-      const newFile = new File([newBlob], entry.name, { type: 'text/plain' });
-      entry.file = newFile;
-      entry.size = newFile.size;
-      editingFileId = null;
-      renderFileList();
-    }
-
-    function addFilesFromInput(input) {
-      for (const file of input.files) {
-        fileEntries.push({ name: file.webkitRelativePath || file.name, file, relativePath: file.webkitRelativePath || file.name, id: Date.now().toString()+Math.random(), size: file.size });
-      }
-      renderFileList();
-      input.value = '';
-    }
-
-    addFilesBtn.addEventListener('click', () => fileInput.click());
-    addFolderBtn.addEventListener('click', () => folderInput.click());
-    fileInput.addEventListener('change', () => addFilesFromInput(fileInput));
-    folderInput.addEventListener('change', () => addFilesFromInput(folderInput));
-
-    function addTextAsFile() {
-      const text = pasteArea.innerText.trim();
-      if (!text) return;
-      const blob = new Blob([text], { type: 'text/plain' });
-      const txtName = 'pasted-'+new Date().toISOString().replace(/[:.]/g, '-')+'.txt';
-      const file = new File([blob], txtName, { type: 'text/plain' });
-      fileEntries.push({ id: Date.now().toString()+Math.random(), name: txtName, file, relativePath: txtName, size: blob.size });
-      pasteArea.innerHTML = '';
-      renderFileList();
-    }
-    addTextAsFileBtn.addEventListener('click', addTextAsFile);
-
-    pasteArea.addEventListener('paste', async (e) => {
-      const items = e.clipboardData?.items;
-      if (!items) return;
-      for (const item of items) {
-        if (item.kind === 'file') {
-          e.preventDefault();
-          const file = item.getAsFile();
-          if (file) {
-            fileEntries.push({ id: Date.now().toString()+Math.random(), name: file.name, file, relativePath: file.name, size: file.size });
-          }
-          renderFileList();
-          return;
-        }
-      }
-      for (const item of items) {
-        if (item.type.startsWith('image/')) {
-          e.preventDefault();
-          const blob = item.getAsFile();
-          if (blob) {
-            const reader = new FileReader();
-            reader.onload = () => { pastedImageData = reader.result; thumbs.innerHTML = '<img src="'+reader.result+'"/>'; };
-            reader.readAsDataURL(blob);
-          }
-          return;
-        }
-      }
-      for (const item of items) {
-        if (item.type === 'text/plain' || item.kind === 'string') {
-          e.preventDefault();
-          item.getAsString(text => { pasteArea.innerText += text; });
-          return;
-        }
-      }
-    });
-
-    const resumable = new Resumable({ target: '/upload-chunk?sessionId='+sessionId, chunkSize: 10*1024*1024, simultaneousUploads: 8, testChunks: true, query: { sessionId } });
-    resumable.on('progress', () => {
-      const pct = Math.floor(resumable.progress()*100);
-      progressFill.style.width = pct+'%';
-      const now = Date.now();
-      const elapsed = (now - lastTime)/1000;
-      if (totalSize===0) totalSize = resumable.getSize();
-      const bytesUploaded = totalSize * resumable.progress();
-      const deltaBytes = bytesUploaded - lastBytes;
-      if (elapsed >= 0.5) {
-        currentSpeed = deltaBytes/elapsed/(1024*1024);
-        lastBytes = bytesUploaded;
-        lastTime = now;
-      }
-      const speedText = currentSpeed>0 ? ' – '+currentSpeed.toFixed(1)+' MB/s' : '';
-      status.textContent = 'Uploading... '+pct+'%'+speedText;
-    });
-    resumable.on('complete', () => {
-      status.innerHTML = '<svg class="success-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg> Sent successfully!';
-      progressBar.style.display = 'none';
-      fileEntries = []; renderFileList(); pasteArea.innerHTML = ''; thumbs.innerHTML = ''; pastedImageData = null; sendBtn.disabled = false;
-      lastBytes = 0; currentSpeed = 0; totalSize = 0; lastTime = Date.now();
-      resumable.cancel();
-    });
-    resumable.on('error', (message) => { status.textContent = 'Upload error: '+message; sendBtn.disabled = false; resumable.cancel(); });
-
-    sendBtn.addEventListener('click', async () => {
-      console.log("=== Send button clicked ===");
-      let text = pasteArea.innerText.trim();
-      if (!text) text = pasteArea.textContent.trim();
-      if (!text) text = pasteArea.innerText.trim();
-      console.log("Extracted text:", JSON.stringify(text));
-      console.log("File entries count:", fileEntries.length);
-      console.log("Pasted image data:", !!pastedImageData);
-
-      if (fileEntries.length === 0 && !pastedImageData && !text) {
-        status.textContent = 'Please add files, paste text, or paste an image.';
         return;
       }
-      sendBtn.disabled = true;
-      status.textContent = 'Preparing...';
-      progressBar.style.display = 'block';
-      progressFill.style.width = '0%';
-      lastBytes = 0; lastTime = Date.now(); currentSpeed = 0; totalSize = 0;
-
-      try {
-        // 1. Single file only → Resumable
-                // 1. Single file only → send via simple upload (fast, one-click)
-        if (fileEntries.length === 1 && !pastedImageData && !text) {
-          console.log("Branch: Single file (direct fetch)");
-          const entry = fileEntries[0];
-          // Read the file as base64
+    }
+    for (const item of items) {
+      if (item.type.startsWith('image/')) {
+        e.preventDefault();
+        const blob = item.getAsFile();
+        if (blob) {
           const reader = new FileReader();
-          reader.onload = async () => {
-            try {
-              const base64Content = reader.result.split(',')[1]; // remove data URL prefix
-              const filename = entry.name;
-              const response = await fetch('/upload-simple?sessionId='+sessionId, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ content: base64Content, filename })
-              });
-              if (response.ok) {
-                status.innerHTML = '<svg class="success-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg> Sent successfully!';
-                progressBar.style.display = 'none';
-              } else {
-                const errText = await response.text();
-                status.textContent = 'Upload failed: '+response.status+' '+errText;
-              }
-            } catch (err) {
-              status.textContent = 'Upload error: ' + err.message;
-            }
-            fileEntries = []; renderFileList(); pasteArea.innerHTML = ''; thumbs.innerHTML = '';
-            pastedImageData = null;
-            sendBtn.disabled = false;
+          reader.onload = () => {
+            pastedImageData = reader.result;
+            thumbs.innerHTML = '<img src="' + reader.result + '"/>';
           };
-          reader.readAsDataURL(entry.file);
-          status.textContent = 'Uploading...';
-          return;
+          reader.readAsDataURL(blob);
         }
+        return;
+      }
+    }
+  });
 
-        // 2. Only text (no files, no image)
-        if (fileEntries.length === 0 && text && !pastedImageData) {
-          console.log("Branch: Text only (direct fetch)");
-          const content = btoa(unescape(encodeURIComponent(text)));
-          const filename = 'pasted-'+new Date().toISOString().replace(/[:.]/g, '-')+'.txt';
-          const url = '/upload-simple?sessionId='+sessionId;
-          console.log("Fetching:", url);
-          const response = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ content, filename })
-          });
-          console.log("Response status:", response.status);
-          if (response.ok) {
-            const respText = await response.text();
-            console.log("Response OK:", respText);
-            status.innerHTML = '<svg class="success-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg> Sent successfully!';
-            pasteArea.innerHTML = '';
-            thumbs.innerHTML = '';
-            progressBar.style.display = 'none';
-          } else {
-            const errText = await response.text();
-            console.error("Fetch failed:", response.status, errText);
-            status.textContent = 'Upload failed: '+response.status+' '+errText;
-          }
-          sendBtn.disabled = false;
-          return;
-        }
+  // ----- Chunk upload with parallel, retry, resume -----
+  async function checkUploadedChunks(fileId) {
+    const res = await fetch(\`/upload-status?sessionId=\${sessionId}&fileId=\${fileId}\`);
+    if (res.ok) {
+      const data = await res.json();
+      return new Set(data.uploadedChunks);
+    }
+    return new Set();
+  }
 
-        // 3. Only image (no files, no text)
-        if (fileEntries.length === 0 && pastedImageData && !text) {
-          console.log("Branch: Image only (direct fetch)");
-          const base64 = pastedImageData.split(',')[1];
-          const filename = 'screenshot-'+new Date().toISOString().replace(/[:.]/g, '-')+'.png';
-          const response = await fetch('/upload-simple?sessionId='+sessionId, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ content: base64, filename })
-          });
-          if (response.ok) {
-            status.innerHTML = '<svg class="success-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg> Sent successfully!';
-            thumbs.innerHTML = '';
-            progressBar.style.display = 'none';
-          } else {
-            const errText = await response.text();
-            status.textContent = 'Upload failed: '+response.status+' '+errText;
-          }
-          pastedImageData = null;
-          sendBtn.disabled = false;
-          return;
-        }
+  async function uploadChunk(file, fileId, chunkIndex, totalChunks, retryCount = 0) {
+    const start = chunkIndex * CHUNK_SIZE;
+    const end = Math.min(start + CHUNK_SIZE, file.size);
+    const chunk = file.slice(start, end);
+    const formData = new FormData();
+    formData.append('chunk', chunk);
+    const url = \`/upload-chunk?sessionId=\${sessionId}&fileId=\${fileId}&chunkIndex=\${chunkIndex}&totalChunks=\${totalChunks}&filename=\${encodeURIComponent(file.name)}\`;
+    try {
+      const response = await fetch(url, { method: 'POST', body: formData });
+      if (!response.ok) throw new Error(\`HTTP \${response.status}\`);
+      const data = await response.json();
+      return { success: true, complete: data.complete };
+    } catch (err) {
+      if (retryCount < MAX_RETRIES) {
+        await new Promise(r => setTimeout(r, 1000 * (retryCount + 1)));
+        return uploadChunk(file, fileId, chunkIndex, totalChunks, retryCount + 1);
+      }
+      throw err;
+    }
+  }
 
-        // 4. Mixed content → ZIP via Resumable
-        console.log("Branch: Mixed content (ZIP + Resumable)");
-        const zip = new JSZip();
-        for (const entry of fileEntries) {
-          zip.file(entry.relativePath, entry.file);
-        }
-        if (pastedImageData) {
-          const base64 = pastedImageData.split(',')[1];
-          const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-          zip.file('screenshot-' + timestamp + '.png', base64, { base64: true });
-        }
-        if (text) {
-          const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-          zip.file('pasted-' + timestamp + '.txt', text);
-        }
-        const blob = await zip.generateAsync({ type: 'blob' });
-        let folderName = null;
-        if (fileEntries.length > 0) {
-          const firstPath = fileEntries[0].relativePath;
-          const parts = firstPath.split('/');
-          if (parts.length > 1) {
-            folderName = parts[0];
-            let sameFolder = true;
-            for (const entry of fileEntries) {
-              const entryParts = entry.relativePath.split('/');
-              if (entryParts.length < 2 || entryParts[0] !== folderName) { sameFolder = false; break; }
-            }
-            if (!sameFolder) folderName = null;
+  async function uploadFile(file) {
+    const fileId = Date.now().toString() + Math.random().toString(36).slice(2);
+    const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+    let uploaded = await checkUploadedChunks(fileId);
+    let completedChunks = uploaded.size;
+    let complete = false;
+
+    // Show progress bar for this file
+    progressBar.style.display = 'block';
+    function updateProgress() {
+      const pct = totalChunks > 0 ? (completedChunks / totalChunks) * 100 : 0;
+      progressFill.style.width = pct + '%';
+      statusDiv.textContent = \`Uploading \${file.name}... \${Math.floor(pct)}% (\${completedChunks}/\${totalChunks} chunks)\`;
+    }
+    updateProgress();
+
+    // Queue chunks that are not yet uploaded
+    const chunksToUpload = [];
+    for (let i = 0; i < totalChunks; i++) {
+      if (!uploaded.has(i)) chunksToUpload.push(i);
+    }
+
+    // Upload in parallel with PARALLEL_CHUNKS
+    let index = 0;
+    const workers = new Array(Math.min(PARALLEL_CHUNKS, chunksToUpload.length)).fill().map(async () => {
+      while (index < chunksToUpload.length && !complete && !paused) {
+        const chunkIdx = chunksToUpload[index++];
+        try {
+          const result = await uploadChunk(file, fileId, chunkIdx, totalChunks);
+          if (result.complete) {
+            // OPTION 3: Progress Feedback - Show assembling status
+            complete = true;
+            statusDiv.innerHTML = \`<div class="assembling-notice"><div class="assembling-spinner"></div>Assembling file...</div>\`;
           }
+          uploaded.add(chunkIdx);
+          completedChunks = uploaded.size;
+          updateProgress();
+        } catch (err) {
+          console.error(\`Failed chunk \${chunkIdx}\`, err);
+          // Pause and ask user to resume
+          paused = true;
+          statusDiv.innerHTML = \`<span style="color:#ffaa44;">⚠️ Upload paused (chunk \${chunkIdx+1} failed). <button id="resumeBtn" class="resume-btn">Resume</button></span>\`;
+          sendBtn.disabled = true;
+          await new Promise(resolve => { pauseResolve = resolve; });
+          paused = false;
+          statusDiv.innerHTML = \`Resuming...\`;
+          sendBtn.disabled = true;
+          // Retry this chunk again
+          index--; // put it back
+          continue;
         }
-        const zipName = folderName ? folderName+'-'+new Date().toISOString().replace(/[:.]/g, '-')+'.zip' : 'mayo-share-'+new Date().toISOString().replace(/[:.]/g, '-')+'.zip';
-        fileEntries = []; renderFileList(); pasteArea.innerHTML = ''; thumbs.innerHTML = ''; pastedImageData = null;
-        const file = new File([blob], zipName, { type: 'application/zip' });
-        resumable.addFile(file);
-        resumable.upload();
-        status.textContent = 'Starting upload...';
-      } catch (err) {
-        console.error("Exception in sendBtn:", err);
-        status.textContent = 'Preparation error: ' + err.message;
-        sendBtn.disabled = false;
+        if (complete) break;
       }
     });
-  </script>
-  <script>
-    window.addEventListener('load', function() {
-      var tl = gsap.timeline({ defaults: { ease: 'power2.out' } });
-      tl.from('.logo', { opacity: 0, y: -20, duration: 0.5 });
-      tl.from('.subtitle', { opacity: 0, y: 10, duration: 0.4 }, '-=0.3');
-      tl.from('.card', { opacity: 0, y: 30, duration: 0.5 }, '-=0.2');
-      tl.from('.file-section, .btn, #status', { opacity: 0, y: 10, duration: 0.3, stagger: 0.1 }, '-=0.3');
-    });
-  </script>
+    await Promise.all(workers);
+
+    if (complete) {
+      await new Promise(r => setTimeout(r, 800));
+      statusDiv.innerHTML = getSuccessIcon() + ' File sent successfully!';
+      return true;
+    } else {
+      throw new Error('Upload incomplete');
+    }
+  }
+
+  async function uploadMultipleFiles(files) {
+    for (let i = 0; i < files.length; i++) {
+      statusDiv.textContent = \`Preparing file \${i+1} of \${files.length}: \${files[i].name}\`;
+      await uploadFile(files[i].file);
+      if (i < files.length - 1) {
+        // reset progress bar for next file
+        progressFill.style.width = '0%';
+        await new Promise(r => setTimeout(r, 500));
+      }
+    }
+  }
+
+  // Send button logic
+  sendBtn.addEventListener('click', async () => {
+    if (isUploading) return;
+    if (fileEntries.length === 0 && !pastedImageData && !pasteArea.innerText.trim()) {
+      statusDiv.textContent = 'Please add files, paste text, or paste an image.';
+      return;
+    }
+    isUploading = true;
+    sendBtn.disabled = true;
+    statusDiv.textContent = 'Starting...';
+    progressBar.style.display = 'block';
+    progressFill.style.width = '0%';
+
+    try {
+      // Image only
+      if (pastedImageData && fileEntries.length === 0) {
+        const base64 = pastedImageData.split(',')[1];
+        const filename = 'screenshot-' + new Date().toISOString().replace(/[:.]/g, '-') + '.png';
+        const response = await fetch('/upload-simple?sessionId=' + sessionId, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content: base64, filename })
+        });
+        if (response.ok) {
+          statusDiv.innerHTML = getSuccessIcon() + ' Image sent!';
+          thumbs.innerHTML = '';
+          pastedImageData = null;
+        } else {
+          throw new Error('Image upload failed');
+        }
+        isUploading = false;
+        sendBtn.disabled = false;
+        progressBar.style.display = 'none';
+        return;
+      }
+
+      // Text only (no files)
+      const text = pasteArea.innerText.trim();
+      if (fileEntries.length === 0 && text && !pastedImageData) {
+        const content = btoa(unescape(encodeURIComponent(text)));
+        const filename = 'pasted-' + new Date().toISOString().replace(/[:.]/g, '-') + '.txt';
+        const response = await fetch('/upload-simple?sessionId=' + sessionId, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content, filename })
+        });
+        if (response.ok) {
+          statusDiv.innerHTML = getSuccessIcon() + ' Text sent!';
+          pasteArea.innerHTML = '';
+        } else {
+          throw new Error('Text upload failed');
+        }
+        isUploading = false;
+        sendBtn.disabled = false;
+        progressBar.style.display = 'none';
+        return;
+      }
+
+      // Files
+      await uploadMultipleFiles(fileEntries);
+      statusDiv.innerHTML = getSuccessIcon() + ' All files sent!';
+      fileEntries = [];
+      renderFileList();
+      pasteArea.innerHTML = '';
+      thumbs.innerHTML = '';
+      pastedImageData = null;
+    } catch (err) {
+      console.error(err);
+      statusDiv.textContent = 'Error: ' + err.message;
+    } finally {
+      isUploading = false;
+      sendBtn.disabled = false;
+      progressBar.style.display = 'none';
+      paused = false;
+      if (pauseResolve) { pauseResolve(); pauseResolve = null; }
+    }
+  });
+
+  // GSAP animation
+  window.addEventListener('load', () => {
+    gsap.timeline()
+      .from('.logo', { opacity: 0, y: -20, duration: 0.5 })
+      .from('.subtitle', { opacity: 0, y: 10, duration: 0.4 }, '-=0.3')
+      .from('.card', { opacity: 0, y: 30, duration: 0.5 }, '-=0.2');
+  });
+</script>
 </body>
 </html>`;
 }
@@ -834,7 +1058,7 @@ function getWaitingHTML(name: string): string {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+  <script src="/gsap.min.js"></script>
   <title>Waiting for Approval – MAYO Share</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -844,99 +1068,73 @@ function getWaitingHTML(name: string): string {
     .spinner { border: 3px solid #333; border-top: 3px solid #b169e0; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 20px auto; display: none; }
     @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     .input-group { margin: 16px auto; max-width: 300px; }
-    .input-group input {
-      width: 100%; padding: 12px; border-radius: 8px; border: 1px solid #333;
-      background: #1a1a1a; color: white; font-size: 1rem; text-align: center;
-    }
-      .mayo-text { color: #b169e0; }
-.share-text { color: #fff; }
-    .btn {
-      width: auto; padding: 14px; background: #b169e0; color: white; border: none; display: inline-block;
-      border-radius: 30px; font-size: 1rem; cursor: pointer; margin-top: 12px;
-    }
+    .input-group input { width: 100%; padding: 12px; border-radius: 8px; border: 1px solid #333; background: #1a1a1a; color: white; font-size: 1rem; text-align: center; }
+    .mayo-text { color: #b169e0; }
+    .share-text { color: #fff; }
+    .btn { width: auto; padding: 14px; background: #b169e0; color: white; border: none; display: inline-block; border-radius: 30px; font-size: 1rem; cursor: pointer; margin-top: 12px; }
     .btn:hover { opacity: 0.9; }
-    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
-    .waiting-text { display: none; color: #aaa; }
   </style>
 </head>
 <body>
-<div class="logo">
-  <span class="mayo-text">MAYO</span>
-  <span class="share-text">Share</span>
+<div class="logo"><span class="mayo-text">MAYO</span><span class="share-text">Share</span></div>
+<div class="subtitle">Hi ${name || "there"}!</div>
+<div id="nameForm">
+  <p style="color:#aaa; margin-bottom:12px;">Enter your name to request approval:</p>
+  <div class="input-group">
+    <input type="text" id="senderName" placeholder="Your name" autofocus />
+  </div>
+  <button class="btn" id="requestBtn">Request Approval</button>
 </div>
-  <div class="subtitle">Hi ${name || "there"}!</div>
-  <div id="nameForm">
-    <p style="color:#aaa; margin-bottom:12px;">Enter your name to request approval:</p>
-    <div class="input-group">
-      <input type="text" id="senderName" placeholder="Your name" autofocus />
-    </div>
-    <button class="btn" id="requestBtn">Request Approval</button>
-  </div>
-  <div id="waitingSection" style="display:none;">
-    <p class="waiting-text">Waiting for the receiver to approve your connection…</p>
-    <div class="spinner" style="display:block;"></div>
-  </div>
-  <script>
-    const sessionId = new URLSearchParams(location.search).get('sessionId');
-    const nameForm = document.getElementById('nameForm');
-    const waitingSection = document.getElementById('waitingSection');
-    const requestBtn = document.getElementById('requestBtn');
-    const senderNameInput = document.getElementById('senderName');
-
-    function detectDeviceType() {
-      const ua = navigator.userAgent;
-      if (/Mobi|Android|iPhone|iPod|webOS|BlackBerry|IEMobile|Opera Mini/i.test(ua)) {
-        if (/iPad|Tablet/i.test(ua) || (/Android/i.test(ua) && !/Mobile/i.test(ua))) {
-          return 'tablet';
-        }
-        return 'phone';
-      }
-      return 'desktop';
+<div id="waitingSection" style="display:none;">
+  <p style="color:#aaa;">Waiting for approval…</p>
+  <div class="spinner"></div>
+</div>
+<script>
+  const sessionId = new URLSearchParams(location.search).get('sessionId');
+  const nameForm = document.getElementById('nameForm');
+  const waitingSection = document.getElementById('waitingSection');
+  const requestBtn = document.getElementById('requestBtn');
+  const senderNameInput = document.getElementById('senderName');
+  function detectDeviceType() {
+    const ua = navigator.userAgent;
+    if (/Mobi|Android|iPhone|iPod|webOS|BlackBerry|IEMobile|Opera Mini/i.test(ua)) {
+      return /iPad|Tablet/i.test(ua) || (/Android/i.test(ua) && !/Mobile/i.test(ua)) ? 'tablet' : 'phone';
     }
-
-    requestBtn.addEventListener('click', async () => {
-      const name = senderNameInput.value.trim();
-      if (!name) return alert('Please enter a name.');
-      requestBtn.disabled = true;
-      const deviceType = detectDeviceType();
-      try {
-        const resp = await fetch('/set-name?sessionId=' + sessionId, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name, deviceType })
+    return 'desktop';
+  }
+  requestBtn.addEventListener('click', async () => {
+    const name = senderNameInput.value.trim();
+    if (!name) return alert('Please enter a name.');
+    requestBtn.disabled = true;
+    try {
+      const resp = await fetch('/set-name?sessionId=' + sessionId, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, deviceType: detectDeviceType() })
+      });
+      if (resp.ok) {
+        nameForm.style.display = 'none';
+        waitingSection.style.display = 'block';
+        const evtSource = new EventSource('/events?sessionId=' + sessionId);
+        evtSource.addEventListener('approved', () => location.reload());
+        evtSource.addEventListener('declined', () => {
+          document.body.innerHTML = '<h1>Declined</h1><p>The receiver declined your request.</p>';
+          evtSource.close();
         });
-        if (resp.ok) {
-          nameForm.style.display = 'none';
-          waitingSection.style.display = 'block';
-          // Now listen for approval via SSE
-          const evtSource = new EventSource('/events?sessionId=' + sessionId);
-          evtSource.addEventListener('approved', () => {
-            location.reload();
-          });
-          evtSource.addEventListener('declined', () => {
-            document.body.innerHTML = '<h1>Declined</h1><p style="color:#aaa;">The receiver declined your request.</p>';
-            evtSource.close();
-          });
-        } else {
-          alert('Failed to send request. Please try again.');
-          requestBtn.disabled = false;
-        }
-      } catch (err) {
-        alert('Network error: ' + err.message);
+      } else {
+        alert('Failed to send request.');
         requestBtn.disabled = false;
       }
-    });
-  </script>
-  <script>
-  window.addEventListener('load', function() {
-    var tl = gsap.timeline({ defaults: { ease: 'power2.out' } });
-    tl.from('.logo', { opacity: 0, y: -20, duration: 0.5 });
-    tl.from('.subtitle', { opacity: 0, y: 10, duration: 0.4 }, '-=0.3');
-    tl.from('#nameForm', { opacity: 0, y: 20, duration: 0.4 }, '-=0.2');
-    // If the waiting section is already visible, animate it too
-    if (document.getElementById('waitingSection').style.display !== 'none') {
-      tl.from('#waitingSection', { opacity: 0, y: 10, duration: 0.3 }, '-=0.2');
+    } catch (err) {
+      alert('Network error: ' + err.message);
+      requestBtn.disabled = false;
     }
+  });
+  window.addEventListener('load', () => {
+    gsap.timeline()
+      .from('.logo', { opacity: 0, y: -20, duration: 0.5 })
+      .from('.subtitle', { opacity: 0, y: 10, duration: 0.4 }, '-=0.3')
+      .from('#nameForm', { opacity: 0, y: 20, duration: 0.4 }, '-=0.2');
   });
 </script>
 </body>
@@ -948,18 +1146,16 @@ function getDeclinedHTML(): string {
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Declined – MAYO Share</title>
   <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { background: #0A0A0A; color: white; font-family: Arial, sans-serif; padding: 40px 20px; text-align: center; }
-    .logo { font-size: 2rem; font-weight: bold; color: #b169e0; margin-bottom: 8px; }
+    body { background: #0A0A0A; color: white; font-family: Arial, sans-serif; text-align: center; padding: 40px; }
+    .logo { font-size: 2rem; font-weight: bold; color: #b169e0; }
   </style>
 </head>
 <body>
-  <div class="logo">MAYO Share</div>
-  <h1>Declined</h1>
-  <p style="color:#aaa; margin-top:10px;">The receiver declined your request.</p>
+<div class="logo">MAYO Share</div>
+<h1>Declined</h1>
+<p>The receiver declined your request.</p>
 </body>
 </html>`;
 }
