@@ -10,8 +10,9 @@
     "start": "npm run build && npm run build:frontend && electron ."
   },
   "devDependencies": {
+    "@types/express": "^5.0.6",
     "@types/formidable": "^3.5.1",
-    "@types/node": "^20.0.0",
+    "@types/node": "^20.19.41",
     "@types/qrcode": "^1.5.6",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
@@ -23,7 +24,7 @@
   },
   "dependencies": {
     "@gsap/react": "^2.1.2",
-    "firebase": "^12.13.0",
+    "firebase": "^12.14.0",
     "formidable": "^3.5.4",
     "gsap": "^3.15.0",
     "i18next": "^26.2.0",
