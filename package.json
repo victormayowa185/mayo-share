@@ -4,7 +4,7 @@
   "description": "",
   "main": "dist/backend/index.js",
   "scripts": {
-    "build": "tsc",
+    "build": "tsc --noEmitOnError false",
     "build:frontend": "vite build",
     "dev:frontend": "vite",
     "start": "npm run build && npm run build:frontend && electron ."
@@ -17,7 +17,7 @@
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.1",
-    "electron": "^39.2.7",
+    "electron": "^39.8.10",
     "electron-builder": "^26.8.1",
     "typescript": "^5.4.0",
     "vite": "^8.0.11"

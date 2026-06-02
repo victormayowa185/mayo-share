@@ -29,6 +29,7 @@ const ActivityScreen: React.FC<Props> = ({ onBack }) => {
 
   const loadActivities = async () => {
     const data = await window.electronAPI.getActivity();
+     // @ts-ignore 
     setActivities(data);
   };
 

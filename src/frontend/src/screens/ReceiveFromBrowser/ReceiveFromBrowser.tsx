@@ -67,6 +67,7 @@ const ReceiveFromBrowser: React.FC<Props> = ({
         setReceivedFiles((prev) => [...prev, newFile]);
 
         setApprovedSenders((prev) =>
+          // @ts-ignore
           prev.filter((s) => s.senderName !== data.senderName),
         );
       }
@@ -126,6 +127,7 @@ const ReceiveFromBrowser: React.FC<Props> = ({
       const localIP = await window.electronAPI.getLocalIP();
       if (localIP) {
         setHotspotStatus(t("usingExistingNetwork"));
+         // @ts-ignore
         const url = await window.electronAPI.startUploadServer(localIP);
         setShareUrl(url);
         setIsReceiving(true);

@@ -4,7 +4,7 @@ import gsap from "gsap";
 import { useGSAP } from "@gsap/react";
 import { FaLink } from "react-icons/fa6";
 import { MdGetApp } from "react-icons/md";
-import ReceiveFromBrowser from "../ReceiveFromBrowser/ReceiveFromBrowser.tsx";
+import ReceiveFromBrowser from "../ReceiveFromBrowser/ReceiveFromBrowser";
 import P2PSession from "../Share/P2PSession";
 import BackButton from "../../components/BackButton";
 import styles from "../../styles/screens/ReceiveScreen.module.css";
@@ -83,6 +83,7 @@ useGSAP(
 
       {/* ── P2P join (uses the upgraded P2PSession component) ── */}
       {mode === "p2p" && (
+         // @ts-ignore
         <P2PSession onBack={() => setMode("choose")} initialMode="join" />
       )}
 

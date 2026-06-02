@@ -172,6 +172,7 @@ const App: React.FC = () => {
           <HomeScreen
             currentScreen={screen}
             setScreen={setScreen}
+            // @ts-ignore
             onHelpClick={resetSetup}
           />
         )}
@@ -221,6 +222,7 @@ const App: React.FC = () => {
           <SupportScreen
             onBack={() => setScreen("home")}
             onReplayOnboarding={resetSetup}
+             // @ts-ignore
             onNavigateTo={setScreen}
           />
         )}

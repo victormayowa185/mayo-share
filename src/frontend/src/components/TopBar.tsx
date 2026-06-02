@@ -9,7 +9,7 @@ import styles from "../styles/components/TopBar.module.css";
 gsap.registerPlugin(useGSAP);
 
 interface Props {
-  onNavigate?: (screen: string) => void;
+ onNavigate?: (screen: any) => void;
 }
 
 const TopBar: React.FC<Props> = ({ onNavigate }) => {

@@ -11,8 +11,6 @@
     "moduleResolution": "node",
     "resolveJsonModule": true,
     "allowSyntheticDefaultImports": true,
-    "allowImportingTsExtensions": true,
-    "noEmit": true,
     "outDir": "./dist",
     "rootDir": "./src",
     "baseUrl": ".",
