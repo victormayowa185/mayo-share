@@ -708,10 +708,11 @@ fileServer.on("download-started", (_index: number, fileName: string) => {
   });
 });
 
-fileServer.on("download-completed", (_index: number, fileName: string) => {
+fileServer.on("download-completed", (_index: number, fileName: string, clientIp: string) => {
   mainWindow?.webContents.send("download-update", {
     event: "completed",
     fileName,
+    clientIp,
   });
   addActivity({
     type: "sent",

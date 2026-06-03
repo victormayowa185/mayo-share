@@ -48,7 +48,7 @@ const formatBytes = (b: number) => {
 
 const QuickShare: React.FC<Props> = ({ onBack, shareIP }) => {
   const { t } = useTranslation();
-
+  const [downloadIps, setDownloadIps] = useState<Map<string, Set<string>>>(new Map());
   const [files, setFiles] = useState<FileEntry[]>([]);
   const [shareUrl, setShareUrl] = useState("");
   const [qrDataUrl, setQrDataUrl] = useState("");
@@ -79,22 +79,37 @@ const QuickShare: React.FC<Props> = ({ onBack, shareIP }) => {
   }, []);
 
   // Listen for download events
-  useEffect(() => {
-    window.electronAPI.onDownloadUpdate((data) => {
+ useEffect(() => {
+  const handleDownloadUpdate = (data: any) => {
+    if (data.event === "started") {
       setFiles((prev) =>
         prev.map((f) =>
-          f.name === data.fileName
-            ? {
-                ...f,
-                downloadStatus:
-                  data.event === "started" ? "downloading" : "done",
-              }
-            : f,
-        ),
+          f.name === data.fileName ? { ...f, downloadStatus: "downloading" } : f
+        )
       );
-    });
-  }, []);
+    } else if (data.event === "completed") {
+      setFiles((prev) =>
+        prev.map((f) =>
+          f.name === data.fileName ? { ...f, downloadStatus: "done" } : f
+        )
+      );
+      if (data.clientIp) {
+        setDownloadIps((prev) => {
+          const newMap = new Map(prev);
+          const existing = newMap.get(data.fileName) || new Set<string>();
+          existing.add(data.clientIp);
+          newMap.set(data.fileName, existing);
+          return newMap;
+        });
+      }
+    }
+  };
 
+  // Subscribe – no need to store unsubscribe because the API doesn't return one
+  window.electronAPI.onDownloadUpdate(handleDownloadUpdate);
+
+  // No cleanup (listener lives for component lifetime)
+}, []);
   // Ctrl+V paste handler
   const handlePaste = useCallback(
     async (e: ClipboardEvent) => {
@@ -342,6 +357,7 @@ const QuickShare: React.FC<Props> = ({ onBack, shareIP }) => {
     await window.electronAPI.stopFileServer();
     setShareUrl("");
     setQrDataUrl("");
+    setDownloadIps(new Map());
     setIsSharing(false);
     setCopied(false);
     setFiles((prev) => prev.map((f) => ({ ...f, downloadStatus: "idle" })));
@@ -393,6 +409,58 @@ const QuickShare: React.FC<Props> = ({ onBack, shareIP }) => {
     { dependencies: [files, isSharing] },
   );
 
+  useEffect(() => {
+    const badges = document.querySelectorAll(`.${styles.downloadBadge}`);
+    const tooltip = document.createElement("div");
+    tooltip.className = styles.downloadTooltip;
+    document.body.appendChild(tooltip);
+
+    const showTooltip = (e: MouseEvent) => {
+      const badge = e.currentTarget as HTMLElement;
+      const fileName = badge.getAttribute("data-filename");
+      if (!fileName) return;
+      const count = downloadIps.get(fileName)?.size || 0;
+      if (count < 2) return;
+      tooltip.textContent = `${count} device${count !== 1 ? "s" : ""} downloaded this file`;
+      const rect = badge.getBoundingClientRect();
+      tooltip.style.left = `${rect.left + rect.width / 2}px`;
+      tooltip.style.top = `${rect.top - 30}px`;
+      tooltip.style.transform = "translateX(-50%) scale(0.9)";
+      tooltip.style.opacity = "0";
+      tooltip.style.display = "block";
+      gsap.to(tooltip, {
+        duration: 0.2,
+        opacity: 1,
+        scale: 1,
+        ease: "back.out(0.6)",
+      });
+    };
+
+    const hideTooltip = () => {
+      gsap.to(tooltip, {
+        duration: 0.15,
+        opacity: 0,
+        scale: 0.9,
+        onComplete: () => {
+          tooltip.style.display = "none";
+        },
+      });
+    };
+
+    badges.forEach((badge) => {
+      badge.addEventListener("mouseenter", showTooltip);
+      badge.addEventListener("mouseleave", hideTooltip);
+    });
+
+    return () => {
+      badges.forEach((badge) => {
+        badge.removeEventListener("mouseenter", showTooltip);
+        badge.removeEventListener("mouseleave", hideTooltip);
+      });
+      tooltip.remove();
+    };
+  }, [downloadIps, files]);
+
   const folderContentRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 
   const [isDragging, setIsDragging] = useState(false);
@@ -428,7 +496,7 @@ const QuickShare: React.FC<Props> = ({ onBack, shareIP }) => {
         let size = f.size;
         try {
           size = await window.electronAPI.getFileSize(filePath);
-        } catch {}
+        } catch { }
         newFiles.push({
           id: Date.now().toString() + Math.random(),
           path: filePath,
@@ -506,12 +574,18 @@ const QuickShare: React.FC<Props> = ({ onBack, shareIP }) => {
           <span className={styles.fileRowName}>{file.name}</span>
           <span className={styles.fileRowSize}>{formatBytes(file.size)}</span>
           <span className={styles.fileRowStatus}>
-            {file.downloadStatus === "idle" && ""}
             {file.downloadStatus === "downloading" && (
               <div className={styles.miniSpinner} />
             )}
             {file.downloadStatus === "done" && (
-              <FaCheckCircle color="#4CAF50" size={16} />
+              <div className={styles.downloadBadge} data-filename={file.name}>
+                <FaCheckCircle color="#4CAF50" size={16} />
+                {(() => {
+                  const ips = downloadIps.get(file.name);
+                  const count = ips ? ips.size : 0;
+                  return count >= 2 ? <span className={styles.downloadCount}>{count}</span> : null;
+                })()}
+              </div>
             )}
           </span>
           {!isSharing && (

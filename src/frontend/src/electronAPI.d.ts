@@ -30,9 +30,7 @@ declare global {
         output?: string;
         error?: string;
       }>;
-      onDownloadProgress: (
-        callback: (data: { fileName: string; percent: number }) => void,
-      ) => void;
+     onDownloadUpdate: (callback: (data: { event: string; fileName: string; clientIp?: string }) => void) => () => void;
       getPlatform: () => Promise<string>;
       launchHardwareWizard: () => Promise<{ success: boolean; error?: string }>;
       submitRating: (data: {

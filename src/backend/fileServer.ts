@@ -63,6 +63,7 @@ export class FileServer extends EventEmitter {
           // Serve individual files: /file/ followed by the relative path
           if (url.startsWith("/file/")) {
             const relative = decodeURIComponent(url.slice(6));
+            const clientIp = req.socket.remoteAddress || "unknown";
             let fileEntry = this.fileMap.get(relative);
             if (!fileEntry) {
               const byName = this.files.find(
@@ -147,7 +148,7 @@ export class FileServer extends EventEmitter {
                 console.error("Stream error:", err);
               });
               res.on("finish", () => {
-                this.emit("download-completed", fileIndex, fileEntry.fileName);
+                this.emit("download-completed", fileIndex, fileEntry.fileName, clientIp);
               });
               return;
             }
@@ -194,7 +195,7 @@ export class FileServer extends EventEmitter {
               console.error("Stream error:", err);
             });
             res.on("finish", () => {
-              this.emit("download-completed", fileIndex, fileEntry.fileName);
+              this.emit("download-completed", fileIndex, fileEntry.fileName, clientIp);
             });
             return;
           }
@@ -633,12 +634,12 @@ function buildDownloadPage(files: SharedFile[]): string {
     }
     .zip-total-size { font-size: 0.8rem; opacity: 0.8; }
 
-    /* Theme toggle button */
-    .theme-toggle {
+  /* Theme toggle button */
+.theme-toggle {
   position: fixed;
   top: 20px;
   right: 20px;
-   border: 1px solid rgba(255,255,255,0.2); 
+  border: 1px solid rgba(255,255,255,0.2);
   border-radius: 50%;
   width: 44px;
   height: 44px;
@@ -649,22 +650,27 @@ function buildDownloadPage(files: SharedFile[]): string {
   z-index: 1000;
   transition: all 0.2s ease;
   backdrop-filter: blur(4px);
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+  background: rgba(0, 0, 0, 0.6);   
 }
 
 .theme-toggle svg {
-  stroke: #b169e0;   /* Purple outline on icons */
-  stroke-width: 2;   /* Optional: make it bolder */
+  stroke: #FFFFFF;
+  stroke-width: 2;
 }
 
 .theme-toggle:hover {
-  background: rgba(0, 0, 0, 0.8);
+  background: rgba(0,0,0,0.8);
   transform: scale(1.05);
 }
 
-/* Light theme adjustment */
 [data-theme="light"] .theme-toggle svg {
-  stroke: #000000;   /* Black outline in light mode */
+  stroke: #000000;
+}
+
+[data-theme="light"] .theme-toggle {
+  background: rgba(255, 255, 255, 0.7);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
 }
 
 [data-theme="light"] .theme-toggle:hover {
@@ -724,13 +730,15 @@ function buildDownloadPage(files: SharedFile[]): string {
 </head>
 <body>
   <button class="theme-toggle" id="themeToggle">
-    <svg id="sunIcon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-      <path fill="none" stroke="currentColor" stroke-linecap="round" stroke-miterlimit="10" stroke-width="32" d="M256 48v48M256 416v48M403.08 108.92l-33.94 33.94M142.86 369.14l-33.94 33.94M464 256h-48M96 256H48M403.08 403.08l-33.94-33.94M142.86 142.86l-33.94-33.94"/>
-      <circle cx="256" cy="256" r="80" fill="none" stroke="currentColor" stroke-linecap="round" stroke-miterlimit="10" stroke-width="32"/>
-    </svg>
-    <svg id="moonIcon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" style="display: none;">
-      <path d="M160 136c0-30.62 4.51-61.61 16-88C99.57 81.27 48 159.32 48 248c0 119.29 96.71 216 216 216 88.68 0 166.73-51.57 200-128-26.39 11.49-57.38 16-88 16-119.29 0-216-96.71-216-216z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="32"/>
-    </svg>
+  
+<svg id="sunIcon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <path fill="none" stroke-linecap="round" stroke-miterlimit="10" stroke-width="32" d="M256 48v48M256 416v48M403.08 108.92l-33.94 33.94M142.86 369.14l-33.94 33.94M464 256h-48M96 256H48M403.08 403.08l-33.94-33.94M142.86 142.86l-33.94-33.94"/>
+  <circle cx="256" cy="256" r="80" fill="none" stroke-linecap="round" stroke-miterlimit="10" stroke-width="32"/>
+</svg>
+<svg id="moonIcon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" style="display: none;">
+  <path d="M160 136c0-30.62 4.51-61.61 16-88C99.57 81.27 48 159.32 48 248c0 119.29 96.71 216 216 216 88.68 0 166.73-51.57 200-128-26.39 11.49-57.38 16-88 16-119.29 0-216-96.71-216-216z" fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-width="32"/>
+</svg>
+
   </button>
   <div class="header">
     <div class="logo">
