@@ -585,51 +585,167 @@ function getUploadHTML(): string {
   <title>Send to MAYO Share</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { background: #0A0A0A; color: white; font-family: Arial, sans-serif; padding: 40px 20px; text-align: center; }
+    
+    /* Theme variables - dark (default) */
+    :root {
+      --bg-body: #0A0A0A;
+      --text-color: #fff;
+      --share-color: #fff;
+      --subtitle-color: #888;
+      --card-bg: #111;
+      --border-color: #222;
+      --row-border: #1a1a1a;
+      --row-hover: #161616;
+      --name-color: #ccc;
+      --size-color: #888;
+      --btn-bg: #b169e0;
+      --btn-hover: #9a4fd4;
+      --btn-text: #fff;
+      --paste-bg: #1a1a1a;
+      --paste-border: #333;
+      --paste-text: #ccc;
+      --status-color: #aaa;
+      --progress-bg: #333;
+      --progress-fill: #b169e0;
+      --remove-hover: #f44336;
+      --small-icon: #888;
+      --small-icon-hover: #b169e0;
+      --edit-bg: #111;
+      --edit-border: #333;
+      --edit-text: #ccc;
+      --assembling-border: #555;
+    }
+    
+    /* Light theme */
+    [data-theme="light"] {
+      --bg-body: #f5f5f5;
+      --text-color: #222;
+      --share-color: #000;
+      --subtitle-color: #555;
+      --card-bg: #ffffff;
+      --border-color: #ddd;
+      --row-border: #e0e0e0;
+      --row-hover: #f0f0f0;
+      --name-color: #222;
+      --size-color: #666;
+      --btn-bg: #b169e0;
+      --btn-hover: #9a4fd4;
+      --btn-text: #000;
+      --paste-bg: #ffffff;
+      --paste-border: #ccc;
+      --paste-text: #222;
+      --status-color: #555;
+      --progress-bg: #e0e0e0;
+      --progress-fill: #b169e0;
+      --remove-hover: #f44336;
+      --small-icon: #666;
+      --small-icon-hover: #b169e0;
+      --edit-bg: #f9f9f9;
+      --edit-border: #ddd;
+      --edit-text: #222;
+      --assembling-border: #ccc;
+    }
+    
+    body {
+      background: var(--bg-body);
+      color: var(--text-color);
+      font-family: Arial, sans-serif;
+      padding: 40px 20px;
+      text-align: center;
+      transition: background 0.2s, color 0.2s;
+    }
     .logo { font-size: 2rem; font-weight: bold; color: #b169e0; margin-bottom: 8px; display: flex; align-items: center; justify-content: center; gap: 10px; }
     .logo svg { width: 32px; height: 32px; fill: #b169e0; }
-    .subtitle { color: #888; margin-bottom: 30px; }
-    .card { background: #111; border: 1px solid #222; border-radius: 16px; max-width: 520px; margin: 0 auto; padding: 32px 24px; }
+    .subtitle { color: var(--subtitle-color); margin-bottom: 30px; }
+    .card { background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 16px; max-width: 520px; margin: 0 auto; padding: 32px 24px; }
     .file-section { margin-bottom: 20px; }
-    label { display: block; color: #888; font-size: 0.85rem; margin-bottom: 8px; text-align: left; }
+    label { display: block; color: var(--subtitle-color); font-size: 0.85rem; margin-bottom: 8px; text-align: left; }
     .file-row { display: flex; gap: 10px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
-    .file-btn { padding: 10px 20px; background: #b169e0; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 0.9rem; }
-    .file-btn:hover { opacity: 0.9; }
+    .file-btn { padding: 10px 20px; background: var(--btn-bg); color: var(--btn-text); border: none; border-radius: 8px; cursor: pointer; font-size: 0.9rem; transition: background 0.2s; }
+    .file-btn:hover { background: var(--btn-hover); }
     .file-list { list-style: none; padding: 0; margin: 0 0 16px 0; max-height: 200px; overflow-y: auto; }
-    .file-item { display: flex; align-items: center; gap: 8px; background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 6px; padding: 8px 12px; margin-bottom: 6px; font-size: 0.85rem; }
-    .file-item .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #ccc; text-align: left; }
-    .file-item .size { color: #888; white-space: nowrap; }
-    .file-item button { background: transparent; border: none; color: #888; cursor: pointer; padding: 0 4px; display: inline-flex; align-items: center; }
-    .file-item button:hover { color: #b169e0; }
-    .remove-btn:hover { color: #f44336 !important; }
-    .paste-area { width: 100%; min-height: 80px; background: #1a1a1a; border: 1px solid #333; border-radius: 8px; color: #ccc; padding: 12px; font-size: 0.9rem; text-align: left; outline: none; display: block; }
-    .btn { width: auto; padding: 14px 32px; background: #b169e0; color: white; border: none; border-radius: 30px; font-size: 1rem; display: inline-block; cursor: pointer; margin-top: 16px; }
-    .btn:hover { opacity: 0.9; }
+    .file-item { display: flex; align-items: center; gap: 8px; background: var(--row-hover); border: 1px solid var(--row-border); border-radius: 6px; padding: 8px 12px; margin-bottom: 6px; font-size: 0.85rem; }
+    .file-item .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--name-color); text-align: left; }
+    .file-item .size { color: var(--size-color); white-space: nowrap; }
+    .file-item button { background: transparent; border: none; color: var(--small-icon); cursor: pointer; padding: 0 4px; display: inline-flex; align-items: center; }
+    .file-item button:hover { color: var(--small-icon-hover); }
+    .remove-btn:hover { color: var(--remove-hover) !important; }
+    .paste-area { width: 100%; min-height: 80px; background: var(--paste-bg); border: 1px solid var(--paste-border); border-radius: 8px; color: var(--paste-text); padding: 12px; font-size: 0.9rem; text-align: left; outline: none; display: block; }
+    .btn { width: auto; padding: 14px 32px; background: var(--btn-bg); color: var(--btn-text); border: none; border-radius: 30px; font-size: 1rem; display: inline-block; cursor: pointer; margin-top: 16px; transition: background 0.2s; }
+    .btn:hover { background: var(--btn-hover); }
     .btn:disabled { opacity: 0.5; cursor: not-allowed; }
-    #status { margin-top: 20px; color: #aaa; font-size: 0.95rem; display: flex; align-items: center; justify-content: center; gap: 6px; flex-wrap: wrap; }
+    #status { margin-top: 20px; color: var(--status-color); font-size: 0.95rem; display: flex; align-items: center; justify-content: center; gap: 6px; flex-wrap: wrap; }
     .success-check { width: 20px; height: 20px; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
     #thumbs img { max-width: 80px; max-height: 80px; margin: 4px; border-radius: 4px; }
-    .progress-bar { width: 100%; background: #333; border-radius: 8px; height: 8px; margin: 12px 0; overflow: hidden; display: none; }
-    .progress-bar .fill { height: 100%; background: #b169e0; width: 0%; transition: width 0.2s; }
+    .progress-bar { width: 100%; background: var(--progress-bg); border-radius: 8px; height: 8px; margin: 12px 0; overflow: hidden; display: none; }
+    .progress-bar .fill { height: 100%; background: var(--progress-fill); width: 0%; transition: width 0.2s; }
     .mayo-text { color: #b169e0; }
-    .share-text { color: #fff; }
+    .share-text { color: var(--share-color); }
     .action-buttons-row { display: flex; gap: 8px; align-items: center; margin-top: 8px; justify-content: flex-end; }
-    .small-icon-btn { background: transparent; border: none; cursor: pointer; padding: 4px; display: inline-flex; align-items: center; color: #ccc; }
-    .small-icon-btn:hover { color: #b169e0; }
+    .small-icon-btn { background: transparent; border: none; cursor: pointer; padding: 4px; display: inline-flex; align-items: center; color: var(--small-icon); transition: color 0.2s; }
+    .small-icon-btn:hover { color: var(--small-icon-hover); }
     .inline-edit { display: flex; flex-direction: column; gap: 8px; width: 100%; }
-    .inline-edit textarea { background: #111; border: 1px solid #333; color: #ccc; padding: 8px; border-radius: 6px; font-family: monospace; font-size: 0.85rem; resize: vertical; }
+    .inline-edit textarea { background: var(--edit-bg); border: 1px solid var(--edit-border); color: var(--edit-text); padding: 8px; border-radius: 6px; font-family: monospace; font-size: 0.85rem; resize: vertical; }
     .inline-edit-actions { display: flex; gap: 8px; justify-content: flex-end; }
     .resume-btn { background: #ffaa44; color: #111; margin-left: 8px; }
-    .assembling-notice { color: #b169e0; margin-top: 12px; font-size: 0.9rem; display: flex; align-items: center; justify-content: center; gap: 8px; }
-    .assembling-spinner { width: 12px; height: 12px; border: 2px solid #555; border-top: 2px solid #b169e0; border-radius: 50%; animation: spin 0.8s linear infinite; }
+    .assembling-notice { color: var(--btn-bg); margin-top: 12px; font-size: 0.9rem; display: flex; align-items: center; justify-content: center; gap: 8px; }
+    .assembling-spinner { width: 12px; height: 12px; border: 2px solid var(--assembling-border); border-top: 2px solid var(--btn-bg); border-radius: 50%; animation: spin 0.8s linear infinite; }
     @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+    /* Theme toggle button */
+    .theme-toggle {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      border: 1px solid rgba(255,255,255,0.2);
+      border-radius: 50%;
+      width: 44px;
+      height: 44px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+      transition: all 0.2s ease;
+      backdrop-filter: blur(4px);
+      box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+      background: rgba(0, 0, 0, 0.6);
+    }
+    .theme-toggle svg {
+      stroke: #FFFFFF;
+      stroke-width: 2;
+    }
+    .theme-toggle:hover {
+      background: rgba(0,0,0,0.8);
+      transform: scale(1.05);
+    }
+    [data-theme="light"] .theme-toggle svg {
+      stroke: #000000;
+    }
+    [data-theme="light"] .theme-toggle {
+      background: rgba(255, 255, 255, 0.7);
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    }
+    [data-theme="light"] .theme-toggle:hover {
+      background: rgba(255, 255, 255, 0.9);
+    }
   </style>
 </head>
 <body>
+<button class="theme-toggle" id="themeToggle">
+  <svg id="sunIcon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+    <path fill="none" stroke-linecap="round" stroke-miterlimit="10" stroke-width="32" d="M256 48v48M256 416v48M403.08 108.92l-33.94 33.94M142.86 369.14l-33.94 33.94M464 256h-48M96 256H48M403.08 403.08l-33.94-33.94M142.86 142.86l-33.94-33.94"/>
+    <circle cx="256" cy="256" r="80" fill="none" stroke-linecap="round" stroke-miterlimit="10" stroke-width="32"/>
+  </svg>
+  <svg id="moonIcon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" style="display: none;">
+    <path d="M160 136c0-30.62 4.51-61.61 16-88C99.57 81.27 48 159.32 48 248c0 119.29 96.71 216 216 216 88.68 0 166.73-51.57 200-128-26.39 11.49-57.38 16-88 16-119.29 0-216-96.71-216-216z" fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-width="32"/>
+  </svg>
+</button>
+
 <div class="logo">
-  <svg viewBox="0 0 400 354.74" xmlns="http://www.w3.org/2000/svg"><circle cx="200" cy="177" r="150" fill="currentColor"/></svg>
   <span class="mayo-text">MAYO</span><span class="share-text">Share</span>
 </div>
+
 <div class="subtitle">Send files to this laptop</div>
 <div class="card" id="dropZone">
   <div class="file-section">
@@ -657,6 +773,43 @@ function getUploadHTML(): string {
 </div>
 
 <script>
+  // Theme management
+  const themeToggle = document.getElementById('themeToggle');
+  const sunIcon = document.getElementById('sunIcon');
+  const moonIcon = document.getElementById('moonIcon');
+
+  function getStoredTheme() { return localStorage.getItem('mayo-upload-theme'); }
+  function setTheme(theme) {
+    if (theme === 'light') {
+      document.documentElement.setAttribute('data-theme', 'light');
+      localStorage.setItem('mayo-upload-theme', 'light');
+      sunIcon.style.display = 'none';
+      moonIcon.style.display = 'block';
+    } else {
+      document.documentElement.removeAttribute('data-theme');
+      localStorage.setItem('mayo-upload-theme', 'dark');
+      sunIcon.style.display = 'block';
+      moonIcon.style.display = 'none';
+    }
+  }
+  function applyStoredTheme() {
+    const stored = getStoredTheme();
+    if (stored === 'light') {
+      document.documentElement.setAttribute('data-theme', 'light');
+      sunIcon.style.display = 'none';
+      moonIcon.style.display = 'block';
+    } else {
+      document.documentElement.removeAttribute('data-theme');
+      sunIcon.style.display = 'block';
+      moonIcon.style.display = 'none';
+    }
+  }
+  applyStoredTheme();
+  themeToggle.addEventListener('click', () => {
+    const isLight = document.documentElement.getAttribute('data-theme') === 'light';
+    setTheme(isLight ? 'dark' : 'light');
+  });
+
   // ---------- DOM elements ----------
   const addFilesBtn = document.getElementById('addFilesBtn');
   const addFolderBtn = document.getElementById('addFolderBtn');
@@ -671,23 +824,22 @@ function getUploadHTML(): string {
   const dropZone = document.getElementById('dropZone');
 
   const sessionId = new URLSearchParams(location.search).get('sessionId');
-  const CHUNK_SIZE = 5 * 1024 * 1024;      // 5MB per chunk
-  const PARALLEL_CHUNKS = 4;               // 4 parallel uploads
+  const CHUNK_SIZE = 5 * 1024 * 1024;
+  const PARALLEL_CHUNKS = 4;
   const MAX_RETRIES = 3;
 
-  let fileEntries = [];          // { id, name, file, isTextFile, textContent? }
+  let fileEntries = [];
   let pastedImageData = null;
   let isUploading = false;
-  let currentQueue = [];         // files to upload sequentially
+  let currentQueue = [];
   let currentFileIndex = 0;
   let currentFileId = null;
   let currentTotalChunks = 0;
-  let uploadedChunks = new Set(); // indices already uploaded (for resume)
-  let activeUploads = new Map();   // chunkIndex -> { retries, abortController }
+  let uploadedChunks = new Set();
+  let activeUploads = new Map();
   let paused = false;
   let pauseResolve = null;
 
-  // Helper functions
   function formatBytes(bytes) {
     if (bytes === 0) return '0 B';
     const k = 1024, sizes = ['B','KB','MB','GB'];
@@ -703,7 +855,6 @@ function getUploadHTML(): string {
     return '<svg class="success-check" viewBox="0 0 24 24" fill="none" stroke="#4CAF50" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>';
   }
 
-  // Render file list with edit buttons for text files
   function renderFileList() {
     fileListEl.innerHTML = '';
     fileEntries.forEach(entry => {
@@ -770,7 +921,6 @@ function getUploadHTML(): string {
     input.click();
   });
 
-  // Drag & Drop
   dropZone.addEventListener('dragover', (e) => {
     e.preventDefault();
     dropZone.style.border = '2px dashed #b169e0';
@@ -801,7 +951,6 @@ function getUploadHTML(): string {
     renderFileList();
   });
 
-  // Paste text as file
   addTextAsFileBtn.addEventListener('click', () => {
     const text = pasteArea.innerText.trim();
     if (!text) return;
@@ -854,7 +1003,6 @@ function getUploadHTML(): string {
     }
   });
 
-  // ----- Chunk upload with parallel, retry, resume -----
   async function checkUploadedChunks(fileId) {
     const res = await fetch(\`/upload-status?sessionId=\${sessionId}&fileId=\${fileId}\`);
     if (res.ok) {
@@ -892,7 +1040,6 @@ function getUploadHTML(): string {
     let completedChunks = uploaded.size;
     let complete = false;
 
-    // Show progress bar for this file
     progressBar.style.display = 'block';
     function updateProgress() {
       const pct = totalChunks > 0 ? (completedChunks / totalChunks) * 100 : 0;
@@ -901,13 +1048,11 @@ function getUploadHTML(): string {
     }
     updateProgress();
 
-    // Queue chunks that are not yet uploaded
     const chunksToUpload = [];
     for (let i = 0; i < totalChunks; i++) {
       if (!uploaded.has(i)) chunksToUpload.push(i);
     }
 
-    // Upload in parallel with PARALLEL_CHUNKS
     let index = 0;
     const workers = new Array(Math.min(PARALLEL_CHUNKS, chunksToUpload.length)).fill().map(async () => {
       while (index < chunksToUpload.length && !complete && !paused) {
@@ -915,7 +1060,6 @@ function getUploadHTML(): string {
         try {
           const result = await uploadChunk(file, fileId, chunkIdx, totalChunks);
           if (result.complete) {
-            // OPTION 3: Progress Feedback - Show assembling status
             complete = true;
             statusDiv.innerHTML = \`<div class="assembling-notice"><div class="assembling-spinner"></div>Assembling file...</div>\`;
           }
@@ -924,7 +1068,6 @@ function getUploadHTML(): string {
           updateProgress();
         } catch (err) {
           console.error(\`Failed chunk \${chunkIdx}\`, err);
-          // Pause and ask user to resume
           paused = true;
           statusDiv.innerHTML = \`<span style="color:#ffaa44;">⚠️ Upload paused (chunk \${chunkIdx+1} failed). <button id="resumeBtn" class="resume-btn">Resume</button></span>\`;
           sendBtn.disabled = true;
@@ -932,8 +1075,7 @@ function getUploadHTML(): string {
           paused = false;
           statusDiv.innerHTML = \`Resuming...\`;
           sendBtn.disabled = true;
-          // Retry this chunk again
-          index--; // put it back
+          index--;
           continue;
         }
         if (complete) break;
@@ -955,14 +1097,12 @@ function getUploadHTML(): string {
       statusDiv.textContent = \`Preparing file \${i+1} of \${files.length}: \${files[i].name}\`;
       await uploadFile(files[i].file);
       if (i < files.length - 1) {
-        // reset progress bar for next file
         progressFill.style.width = '0%';
         await new Promise(r => setTimeout(r, 500));
       }
     }
   }
 
-  // Send button logic
   sendBtn.addEventListener('click', async () => {
     if (isUploading) return;
     if (fileEntries.length === 0 && !pastedImageData && !pasteArea.innerText.trim()) {
@@ -976,7 +1116,6 @@ function getUploadHTML(): string {
     progressFill.style.width = '0%';
 
     try {
-      // Image only
       if (pastedImageData && fileEntries.length === 0) {
         const base64 = pastedImageData.split(',')[1];
         const filename = 'screenshot-' + new Date().toISOString().replace(/[:.]/g, '-') + '.png';
@@ -998,7 +1137,6 @@ function getUploadHTML(): string {
         return;
       }
 
-      // Text only (no files)
       const text = pasteArea.innerText.trim();
       if (fileEntries.length === 0 && text && !pastedImageData) {
         const content = btoa(unescape(encodeURIComponent(text)));
@@ -1020,7 +1158,6 @@ function getUploadHTML(): string {
         return;
       }
 
-      // Files
       await uploadMultipleFiles(fileEntries);
       statusDiv.innerHTML = getSuccessIcon() + ' All files sent!';
       fileEntries = [];
@@ -1040,7 +1177,6 @@ function getUploadHTML(): string {
     }
   });
 
-  // GSAP animation
   window.addEventListener('load', () => {
     gsap.timeline()
       .from('.logo', { opacity: 0, y: -20, duration: 0.5 })
