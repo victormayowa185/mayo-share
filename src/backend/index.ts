@@ -163,7 +163,7 @@ function addActivity(entry: {
   try {
     const raw = fs.readFileSync(ACTIVITY_LOG_PATH, "utf-8");
     log = JSON.parse(raw);
-  } catch {}
+  } catch { }
   log.unshift(entry);
   // Keep only the last 200 entries
   if (log.length > 200) log = log.slice(0, 200);
@@ -194,7 +194,7 @@ function stopWindowsHotspot() {
     (error, stdout, stderr) => {
       try {
         fs.unlinkSync(tempScriptPath);
-      } catch {}
+      } catch { }
       if (error) {
         console.error("Failed to stop hotspot:", stderr || error.message);
       } else {
@@ -226,7 +226,7 @@ function createWindow(): void {
 }
 
 // ---------- i18n (multi‑language) ----------
-const LOCALES_DIR = path.join(__dirname, "..", "..", "src", "locales");
+const LOCALES_DIR = path.join(__dirname, '../locales');
 let currentLanguage = "en";
 
 // Load all translation files once and cache them
@@ -238,7 +238,7 @@ function loadAllTranslations() {
     try {
       const raw = fs.readFileSync(path.join(LOCALES_DIR, file), "utf-8");
       translationsCache[lang] = JSON.parse(raw);
-    } catch {}
+    } catch { }
   }
 }
 loadAllTranslations();
@@ -266,7 +266,7 @@ ipcMain.handle("set-language", async (_event, lang: string) => {
         JSON.stringify(settings, null, 2),
         "utf-8",
       );
-    } catch {}
+    } catch { }
   }
 });
 
@@ -293,7 +293,7 @@ ipcMain.handle("start-hotspot", async (): Promise<string> => {
         (error, stdout, stderr) => {
           try {
             fs.unlinkSync(tempScriptPath);
-          } catch {}
+          } catch { }
 
           let output = stdout || "";
           if (stderr && !stdout) output += stderr;
@@ -475,7 +475,7 @@ ipcMain.handle(
           (error, stdout) => {
             try {
               fs.unlinkSync(tempPath);
-            } catch {}
+            } catch { }
             const out = (stdout || "").trim();
             if (out.startsWith("ON")) {
               resolve({ active: true, ip: currentHotspotIP });
@@ -519,7 +519,7 @@ ipcMain.handle("get-hostname", async () => {
       const settings = JSON.parse(raw);
       if (settings.deviceName) return settings.deviceName;
     }
-  } catch {}
+  } catch { }
   return os.hostname();
 });
 // ---------- Local IP detection (for existing Wi‑Fi) ----------
@@ -631,7 +631,7 @@ ipcMain.handle(
         if (err) return reject(err);
         const buf = Buffer.alloc(size);
         read(fd, buf, 0, size, start, (err, bytesRead) => {
-          close(fd, () => {});
+          close(fd, () => { });
           if (err) return reject(err);
           resolve(buf.slice(0, bytesRead).toString("base64"));
         });
@@ -681,7 +681,7 @@ ipcMain.handle(
     const resumePath = path.join(os.tmpdir(), `mayo-resume-${transferId}.json`);
     try {
       await fs.promises.unlink(resumePath);
-    } catch {}
+    } catch { }
   },
 );
 
@@ -922,7 +922,7 @@ async function loadSettings() {
       currentSavePath = settings.savePath;
       setReceiveDir(currentSavePath);
     }
-  } catch {}
+  } catch { }
 }
 
 ipcMain.handle("get-save-path", async (): Promise<string> => {
@@ -946,7 +946,7 @@ ipcMain.handle(
           JSON.stringify({ savePath: currentSavePath }),
           "utf-8",
         );
-      } catch {}
+      } catch { }
     }
   },
 );
@@ -969,7 +969,7 @@ ipcMain.handle(
           "utf-8",
         );
         mainWindow?.webContents.send("device-name-changed", name.trim()); // ← add this line
-      } catch {}
+      } catch { }
     }
   },
 );
@@ -1076,7 +1076,7 @@ app.on("before-quit", () => {
   if (process.platform === "win32") {
     stopWindowsHotspot();
   } else if (process.platform === "darwin") {
-    stopHotspot().catch(() => {});
+    stopHotspot().catch(() => { });
   }
 });
 

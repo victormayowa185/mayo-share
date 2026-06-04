@@ -1,7 +1,6 @@
 ﻿import { createServer, Server, IncomingMessage, ServerResponse } from "http";
 import { promises as fs, createReadStream, statSync } from "fs";
 import path from "path";
-import zlib from "zlib";
 import { EventEmitter } from "events";
 
 interface SharedFile {
@@ -49,8 +48,9 @@ export class FileServer extends EventEmitter {
 
     return new Promise((resolve, reject) => {
       this.server = createServer(
-        (req: IncomingMessage, res: ServerResponse) => {
+        async (req: IncomingMessage, res: ServerResponse) => {
           const url = req.url || "/";
+          const method = req.method || "GET";
 
           // Serve the HTML index page
           if (url === "/" || url === "") {
@@ -59,6 +59,21 @@ export class FileServer extends EventEmitter {
             res.end(html);
             return;
           }
+
+          // Serve JSZip locally (offline)
+          if (url === "/jszip.min.js") {
+            const filePath = path.join(process.cwd(), "node_modules/jszip/dist/jszip.min.js");
+            try {
+              const data = await fs.readFile(filePath);
+              res.writeHead(200, { "Content-Type": "application/javascript" });
+              res.end(data);
+            } catch {
+              res.writeHead(404);
+              res.end();
+            }
+            return;
+          }
+
 
           // Serve individual files: /file/ followed by the relative path
           if (url.startsWith("/file/")) {
@@ -108,8 +123,10 @@ export class FileServer extends EventEmitter {
             // Common headers
             res.setHeader(
               "Content-Disposition",
-              `attachment; filename="${encodeURIComponent(fileEntry.fileName)}"`,
+              `attachment; filename="${encodeURIComponent(fileEntry.fileName)}"`
             );
+
+
             res.setHeader("ETag", etag);
             res.setHeader("Cache-Control", "no-cache, max-age=0");
             res.setHeader("Accept-Ranges", "bytes");
@@ -153,25 +170,17 @@ export class FileServer extends EventEmitter {
               return;
             }
 
-            // Full file request with optional gzip
-            const acceptEncoding =
-              (req.headers["accept-encoding"] as string) || "";
-            let stream: import("stream").Readable = createReadStream(
-              fileEntry.filePath,
-              {
-                highWaterMark: 1024 * 1024,
-              },
-            );
 
-            if (acceptEncoding.includes("gzip")) {
-              res.setHeader("Content-Encoding", "gzip");
-              res.setHeader("Content-Type", "application/gzip");
-              stream = stream.pipe(zlib.createGzip({ level: 1 }));
-              // Content-Length omitted because compressed size is unknown
-            } else {
-              res.setHeader("Content-Type", "application/octet-stream");
-              res.setHeader("Content-Length", fileSize);
-            }
+
+
+            res.setHeader("Content-Type", "application/octet-stream");
+            res.setHeader("Content-Length", fileSize);
+            let stream = createReadStream(fileEntry.filePath, { highWaterMark: 1024 * 1024 });
+
+
+
+
+
 
             const fileIndex = this.files.indexOf(fileEntry);
             this.emit("download-started", fileIndex, fileEntry.fileName);
@@ -363,6 +372,8 @@ function buildDownloadPage(files: SharedFile[]): string {
       }
       if (node.file) {
         const f = node.file;
+        const isExe = f.fileName.toLowerCase().endsWith('.exe');
+        const displayNote = isExe ? ' <span class="rename-hint">(rename to .exe after download)</span>' : '';
         return `
           <li class="tree-file">
             <div class="tree-file-row">
@@ -372,7 +383,7 @@ function buildDownloadPage(files: SharedFile[]): string {
                     <path d="M440 432H72a40 40 0 01-40-40V120a40 40 0 0140-40h75.89a40 40 0 0122.19 6.72l27.84 18.56a40 40 0 0022.19 6.72H440a40 40 0 0140 40v240a40 40 0 01-40 40zM32 192h448"/>
                   </svg>
                 </span>
-                <span class="file-name">${escapeHtml(f.fileName)}</span>
+                <span class="file-name">${escapeHtml(f.fileName)}</span>${displayNote}
               </span>
               <span class="size">${formatBytes(f.fileSize)}</span>
               <span class="action">
@@ -400,7 +411,10 @@ function buildDownloadPage(files: SharedFile[]): string {
                 <path d="M440 432H72a40 40 0 01-40-40V120a40 40 0 0140-40h75.89a40 40 0 0122.19 6.72l27.84 18.56a40 40 0 0022.19 6.72H440a40 40 0 0140 40v240a40 40 0 01-40 40zM32 192h448"/>
               </svg>
             </span>
-            <span class="file-name">${escapeHtml(f.fileName)}</span>
+            <span class="file-name">${escapeHtml(f.fileName)}${(() => {
+              const isExe = f.fileName.toLowerCase().endsWith('.exe');
+              return isExe ? ' <span class="rename-hint">(rename to .exe after download)</span>' : '';
+            })()}</span>
           </td>
           <td class="size">${formatBytes(f.fileSize)}</td>
           <td class="action">
@@ -634,7 +648,15 @@ function buildDownloadPage(files: SharedFile[]): string {
     }
     .zip-total-size { font-size: 0.8rem; opacity: 0.8; }
 
-  /* Theme toggle button */
+    /* Rename hint styling - moved outside media query */
+    .rename-hint {
+      color: #f0a500;
+      font-size: 0.75rem;
+      margin-left: 6px;
+      font-weight: normal;
+    }
+
+    /* Theme toggle button */
 .theme-toggle {
   position: fixed;
   top: 20px;
@@ -726,7 +748,7 @@ function buildDownloadPage(files: SharedFile[]): string {
       .zip-btn { width: 100%; padding: 10px; font-size: 0.9rem; }
     }
   </style>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <script src="/jszip.min.js"></script>
 </head>
 <body>
   <button class="theme-toggle" id="themeToggle">
@@ -751,7 +773,7 @@ function buildDownloadPage(files: SharedFile[]): string {
     ${useTree ? "" : ""}
     ${fileListHtml}
     ${useTree ? "" : ""}
-    ${fileCount > 1 ? zipButtonHtml : ""}
+   ${useTree ? zipButtonHtml : ""}
   </div>
   <div class="footer">Shared via MAYO Share • Offline P2P File Transfer</div>
 

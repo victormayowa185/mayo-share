@@ -1,13 +1,41 @@
 {
-  "name": "mayo-manual",
+  "name": "mayo-share",
   "version": "1.0.0",
-  "description": "",
+  "description": "Offline P2P File Sharing",
+  "author": "Victor Mayowa",
   "main": "dist/backend/index.js",
   "scripts": {
-    "build": "tsc --noEmitOnError false",
+    "copy:locales": "xcopy /E /I /Y src\\locales dist\\locales",
+    "build:preload": "tsc -p tsconfig.preload.json",
+    "build:backend": "tsc -p tsconfig.backend.json",
     "build:frontend": "vite build",
-    "dev:frontend": "vite",
-    "start": "npm run build && npm run build:frontend && electron ."
+    "build": "npm run build:backend && npm run copy:locales && npm run build:preload && npm run build:frontend",
+    "start": "npm run build && electron .",
+    "dist": "npm run build && electron-builder"
+  },
+  "build": {
+    "appId": "com.mayo.share",
+    "productName": "MAYO Share",
+    "directories": {
+      "output": "dist/installer"
+    },
+    "files": [
+      "dist/**/*",
+      "node_modules/**/*"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "src/frontend/src/assets/mayo.ico",
+      "asar": false,
+      "signtoolOptions": {
+        "sign": null
+      }
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true
+    }
   },
   "devDependencies": {
     "@types/express": "^5.0.6",
