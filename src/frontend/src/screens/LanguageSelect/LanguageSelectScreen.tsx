@@ -110,7 +110,6 @@ const LanguageSelectScreen: React.FC<Props> = ({ onComplete }) => {
         <button
           ref={btnRef}
           className={styles.continueBtn}
-          disabled={!currentLang}
           onClick={handleContinue}
         >
           {t("continue")}
