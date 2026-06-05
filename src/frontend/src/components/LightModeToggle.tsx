@@ -7,8 +7,12 @@ const LightModeToggle: React.FC = () => {
   const { isDark, toggleTheme } = useTheme();
 
   return (
-    <button className={styles.toggleBtn} onClick={toggleTheme} title="Toggle light/dark mode">
-      {isDark ? <FaSun size={18} /> : <FaMoon size={18} />}
+    <button
+      className={styles.toggleBtn}
+      onClick={toggleTheme}
+      aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
+    >
+      {isDark ? <FaSun size={18} aria-hidden="true" /> : <FaMoon size={18} aria-hidden="true" />}
     </button>
   );
 };
