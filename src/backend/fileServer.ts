@@ -60,9 +60,10 @@ export class FileServer extends EventEmitter {
             return;
           }
 
-          // Serve JSZip locally (offline)
+          // Serve JSZip locally (offline) – fixed path for packaged app
           if (url === "/jszip.min.js") {
-            const filePath = path.join(process.cwd(), "node_modules/jszip/dist/jszip.min.js");
+            // Use __dirname to locate the file relative to this backend module
+            const filePath = path.join(__dirname, "../../node_modules/jszip/dist/jszip.min.js");
             try {
               const data = await fs.readFile(filePath);
               res.writeHead(200, { "Content-Type": "application/javascript" });
@@ -74,10 +75,17 @@ export class FileServer extends EventEmitter {
             return;
           }
 
-
           // Serve individual files: /file/ followed by the relative path
           if (url.startsWith("/file/")) {
             const relative = decodeURIComponent(url.slice(6));
+
+            // --- SECURITY: Path traversal guard ---
+            if (relative.includes('..') || path.isAbsolute(relative)) {
+              res.writeHead(403);
+              res.end('Forbidden');
+              return;
+            }
+
             const clientIp = req.socket.remoteAddress || "unknown";
             let fileEntry = this.fileMap.get(relative);
             if (!fileEntry) {
@@ -125,7 +133,6 @@ export class FileServer extends EventEmitter {
               "Content-Disposition",
               `attachment; filename="${encodeURIComponent(fileEntry.fileName)}"`
             );
-
 
             res.setHeader("ETag", etag);
             res.setHeader("Cache-Control", "no-cache, max-age=0");
