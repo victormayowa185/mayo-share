@@ -88,22 +88,23 @@ interface CardProps {
 }
 
 const ActionCard: React.FC<CardProps> = ({ icon, title, description, onClick, color }) => (
-  <div
+  <button
+    type="button"
     className={styles.card}
     onClick={onClick}
-    onMouseEnter={e => {
-      (e.currentTarget as HTMLDivElement).style.borderColor = color;
-      (e.currentTarget as HTMLDivElement).style.transform = 'translateY(-2px)';
+    onMouseEnter={(e) => {
+      e.currentTarget.style.borderColor = color;
+      e.currentTarget.style.transform = 'translateY(-2px)';
     }}
-    onMouseLeave={e => {
-      (e.currentTarget as HTMLDivElement).style.borderColor = '#222';
-      (e.currentTarget as HTMLDivElement).style.transform = 'translateY(0)';
+    onMouseLeave={(e) => {
+      e.currentTarget.style.borderColor = '#222';
+      e.currentTarget.style.transform = 'translateY(0)';
     }}
   >
-    <div className={styles.cardEmoji}>{icon}</div>
+    <div className={styles.cardEmoji} aria-hidden="true">{icon}</div>
     <div className={styles.cardTitle}>{title}</div>
     <div className={styles.cardDescription}>{description}</div>
-  </div>
+  </button>
 );
 
 export default HomeScreen;

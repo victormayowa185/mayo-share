@@ -37,24 +37,38 @@
   justify-content: center;
 }
 
-/* Purple card – always your accent colour */
+/* Unified card styles (button + layout) */
 .card {
-  background: var(--home-card-bg);
-  border: var(--home-card-border);               /* ← dynamic border */
-  border-radius: 16px;
-  padding: 32px 28px;
-  width: 220px;
+  /* Reset default button styles */
+  border: 1px solid #222;
+  background: var(--bg-card);
+  font-family: inherit;
   cursor: pointer;
   text-align: center;
+
+  /* Layout & appearance */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  border-radius: 16px;
+  padding: 32px 24px;
+  width: 100%;
+  max-width: 280px;
+  transition: border-color 0.2s, transform 0.1s;
+
+  /* Use your existing variables */
   color: var(--home-card-text);
-  transition:
-    border-color 0.2s,
-    transform 0.1s;
 }
 
 .card:hover {
-  border-color: var(--home-card-hover-border);   /* purple in dark, none in light */
+  border-color: var(--home-card-hover-border);
   transform: translateY(-2px);
+}
+
+.card:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
 }
 
 .cardEmoji {
@@ -69,7 +83,6 @@
   margin-bottom: 8px;
   color: var(--home-card-text);
 }
-
 
 .cardDescription {
   color: var(--home-card-text-desc);
