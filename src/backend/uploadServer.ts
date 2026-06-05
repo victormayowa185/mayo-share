@@ -290,6 +290,14 @@ export class UploadServer extends EventEmitter {
             req.on("end", async () => {
               try {
                 const { content, filename } = JSON.parse(body);
+
+                // 🛡️ Path traversal guard
+                if (filename.includes('..') || path.isAbsolute(filename)) {
+                  res.writeHead(400);
+                  res.end('Invalid filename');
+                  return;
+                }
+
                 const buffer = Buffer.from(content, "base64");
                 await fs.mkdir(session.saveDir, { recursive: true });
                 const savePath = path.join(session.saveDir, filename);
@@ -444,7 +452,7 @@ export class UploadServer extends EventEmitter {
 
           // ─── Serve GSAP from node_modules (offline) ───
           if (method === "GET" && url === "/gsap.min.js") {
-            const filePath = path.join(process.cwd(), "node_modules/gsap/dist/gsap.min.js");
+            const filePath = path.join(__dirname, "../../node_modules/gsap/dist/gsap.min.js");
             try {
               const data = await fs.readFile(filePath);
               res.writeHead(200, { "Content-Type": "application/javascript" });
