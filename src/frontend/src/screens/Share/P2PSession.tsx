@@ -194,9 +194,7 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
       await pc.setLocalDescription(offer);
       await waitForICE(pc);
 
-      const compact = await window.electronAPI.compressSDP(
-        pc.localDescription!.sdp,
-      );
+      const compact = await window.electronAPI.compressSDP(pc.localDescription!.sdp);
       const port = await window.electronAPI.startAdvertising(compact);
       setSignalingPort(port);
       setAdvertising(true);
@@ -258,9 +256,7 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
       await pc.setLocalDescription(answer);
       await waitForICE(pc);
 
-      const compact = await window.electronAPI.compressSDP(
-        pc.localDescription!.sdp,
-      );
+      const compact = await window.electronAPI.compressSDP(pc.localDescription!.sdp);
       setAnswerCode(compact);
 
       const qrData = await QRCode.toDataURL(compact, {
@@ -661,8 +657,12 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
                       );
                       const offerSDP = await response.text();
                       setOfferInput(offerSDP);
-                      const pc = new RTCPeerConnection({ iceServers: [] });
-                      localPC.current = pc;
+                      // Reuse existing peer connection (created in processOffer)
+                      if (!localPC.current) {
+                        console.error("No peer connection available");
+                        return;
+                      }
+                      const pc = localPC.current;
                       pc.ondatachannel = (event) => {
                         const dc = event.channel;
                         localDC.current = dc;
@@ -672,21 +672,16 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
                         };
                         dc.onmessage = (e) => handleDCMessage(e.data);
                       };
-                      const offer =
-                        await window.electronAPI.decompressSDP(offerSDP);
+                      const offer = await window.electronAPI.decompressSDP(offerSDP);
                       await pc.setRemoteDescription(
-                        new RTCSessionDescription({
-                          type: "offer",
-                          sdp: offer,
-                        }),
+                        new RTCSessionDescription({ type: "offer", sdp: offer }),
                       );
                       const answer = await pc.createAnswer();
                       await pc.setLocalDescription(answer);
                       await waitForICE(pc);
-                      const compactAnswer =
-                        await window.electronAPI.compressSDP(
-                          pc.localDescription!.sdp,
-                        );
+                      const compactAnswer = await window.electronAPI.compressSDP(
+                        pc.localDescription!.sdp,
+                      );
                       setAnswerCode(compactAnswer);
                       const qrData = await QRCode.toDataURL(compactAnswer, {
                         width: 200,

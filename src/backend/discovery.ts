@@ -6,16 +6,24 @@ const SERVICE_NAME = "mayo-share._p2p.local";
 
 function getLocalIP(): string {
   const interfaces = os.networkInterfaces();
+  // Prefer 192.168.x.x (LAN/hotspot)
   for (const iface of Object.values(interfaces)) {
     if (!iface) continue;
     for (const addr of iface) {
       if (
         addr.family === "IPv4" &&
         !addr.internal &&
-        !addr.address.startsWith("192.168.137.") &&
-        !addr.address.startsWith("192.168.2.") &&
-        !addr.address.startsWith("169.254.")
+        addr.address.startsWith("192.168.")
       ) {
+        return addr.address;
+      }
+    }
+  }
+  // Fallback to any non‑internal IPv4
+  for (const iface of Object.values(interfaces)) {
+    if (!iface) continue;
+    for (const addr of iface) {
+      if (addr.family === "IPv4" && !addr.internal) {
         return addr.address;
       }
     }
@@ -26,30 +34,57 @@ function getLocalIP(): string {
 export class DiscoveryManager extends EventEmitter {
   private mdns: any = null;
   private queryInterval: NodeJS.Timeout | null = null;
+  private seenDevices = new Set<string>();
+  private cleanupInterval: NodeJS.Timeout | null = null;
 
   startAdvertising(hostname: string, port: number): void {
     this.stop();
-    this.mdns = mdns();
+    // Bind to all network interfaces
+    this.mdns = mdns({ interfaces: "0.0.0.0" });
     const localIP = getLocalIP();
 
     console.log(`[Discovery] Advertising as "${hostname}" on ${localIP}:${port}`);
 
     this.mdns.on("query", (query: any) => {
-      if (query.questions.some((q: any) => q.name === SERVICE_NAME)) {
+      const hasPtr = query.questions.some(
+        (q: any) => q.name === SERVICE_NAME && q.type === "PTR"
+      );
+      const hasTxt = query.questions.some(
+        (q: any) => q.name === SERVICE_NAME && q.type === "TXT"
+      );
+
+      if (hasPtr || hasTxt) {
         console.log("[Discovery] Got query, responding...");
-        const txtData = hostname + "\0" + port.toString();
+        const txtData = JSON.stringify({ name: hostname, port });
+
         this.mdns!.respond({
           answers: [
+            // PTR record: advertises service existence
+            {
+              name: SERVICE_NAME,
+              type: "PTR",
+              data: hostname + ".local",
+              ttl: 300,
+            },
+            // SRV record: provides port and target hostname
+            {
+              name: hostname + ".local",
+              type: "SRV",
+              data: { port, target: hostname + ".local" },
+              ttl: 300,
+            },
+            // TXT record: custom data (JSON)
             {
               name: SERVICE_NAME,
               type: "TXT",
-              data: [txtData],   // ← must be array
+              data: [txtData],
               ttl: 300,
             },
+            // A record: IP address
             {
               name: hostname + ".local",
               type: "A",
-              data: localIP,     // ← advertise our IP too
+              data: localIP,
               ttl: 300,
             },
           ],
@@ -60,7 +95,13 @@ export class DiscoveryManager extends EventEmitter {
 
   startBrowsing(): void {
     this.stop();
-    this.mdns = mdns();
+    this.mdns = mdns({ interfaces: "0.0.0.0" });
+    this.seenDevices.clear();
+
+    // Clear deduplication cache every 30 seconds
+    this.cleanupInterval = setInterval(() => {
+      this.seenDevices.clear();
+    }, 30000);
 
     console.log("[Discovery] Started browsing for devices...");
 
@@ -68,31 +109,42 @@ export class DiscoveryManager extends EventEmitter {
       for (const answer of response.answers) {
         if (answer.name === SERVICE_NAME && answer.type === "TXT") {
           try {
-            // answer.data is Buffer[] — concat then decode
+            // Concatenate TXT record data (may be split into multiple buffers)
             const raw = Array.isArray(answer.data)
-              ? Buffer.concat(answer.data.map((d: any) => Buffer.isBuffer(d) ? d : Buffer.from(d)))
+              ? Buffer.concat(
+                  answer.data.map((d: any) =>
+                    Buffer.isBuffer(d) ? d : Buffer.from(d)
+                  )
+                )
               : Buffer.from(answer.data);
-            const data = raw.toString("utf8");
-            const [name, port] = data.split("\0").filter(Boolean);
+            const rawString = raw.toString("utf8");
+            const { name, port } = JSON.parse(rawString);
+            const ip = response.address || "127.0.0.1";
+            const portNum = parseInt(port, 10);
 
-            if (name && port) {
-              // response.address = actual IP of the sender — most reliable
-              const ip = response.address || "127.0.0.1";
-              const portNum = parseInt(port, 10);
-              console.log(`[Discovery] Found device: ${name} at ${ip}:${portNum}`);
-              this.emit("device-found", { name, host: ip, port: portNum });
+            const deviceId = `${ip}:${portNum}`;
+            if (this.seenDevices.has(deviceId)) {
+              console.log(`[Discovery] Ignoring duplicate: ${name} at ${ip}:${portNum}`);
+              return;
             }
+            this.seenDevices.add(deviceId);
+
+            console.log(`[Discovery] Found device: ${name} at ${ip}:${portNum}`);
+            this.emit("device-found", { name, host: ip, port: portNum });
           } catch (err) {
-            console.error("[Discovery] Failed to parse TXT record:", err);
+            // Malformed packet – log but don't crash the listener
+            console.error("[Discovery] Invalid TXT record (ignored):", err);
           }
         }
       }
     });
 
-    // Query immediately, then repeat every 5s
+    // Query both PTR and TXT to maximise compatibility
+    this.mdns.query(SERVICE_NAME, "PTR");
     this.mdns.query(SERVICE_NAME, "TXT");
     this.queryInterval = setInterval(() => {
       console.log("[Discovery] Re-querying...");
+      this.mdns?.query(SERVICE_NAME, "PTR");
       this.mdns?.query(SERVICE_NAME, "TXT");
     }, 5000);
   }
@@ -102,9 +154,14 @@ export class DiscoveryManager extends EventEmitter {
       clearInterval(this.queryInterval);
       this.queryInterval = null;
     }
+    if (this.cleanupInterval) {
+      clearInterval(this.cleanupInterval);
+      this.cleanupInterval = null;
+    }
     if (this.mdns) {
       this.mdns.destroy();
       this.mdns = null;
     }
+    this.seenDevices.clear();
   }
 }

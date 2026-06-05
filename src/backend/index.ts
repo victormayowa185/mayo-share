@@ -154,6 +154,18 @@ const ACTIVITY_LOG_PATH = path.join(
   "activity.json",
 );
 
+function getDeviceName(): string {
+  try {
+    const settingsPath = path.join(currentSavePath, "mayo-settings.json");
+    if (fs.existsSync(settingsPath)) {
+      const raw = fs.readFileSync(settingsPath, "utf-8");
+      const settings = JSON.parse(raw);
+      if (settings.deviceName) return settings.deviceName;
+    }
+  } catch { }
+  return os.hostname();
+}
+
 function addActivity(entry: {
   type: "sent" | "received";
   fileName: string;
@@ -1022,7 +1034,10 @@ ipcMain.handle(
     await new Promise<void>((resolve) =>
       signalingServer!.listen(PORT, resolve),
     );
-    discoveryManager.startAdvertising(currentHotspotIP, PORT);
+    
+    // ✅ Use the helper function that reads the device name from settings
+    const deviceName = getDeviceName();   // <-- changed line
+    discoveryManager.startAdvertising(deviceName, PORT);
     return PORT;
   },
 );
