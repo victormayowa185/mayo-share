@@ -170,17 +170,9 @@ export class FileServer extends EventEmitter {
               return;
             }
 
-
-
-
             res.setHeader("Content-Type", "application/octet-stream");
             res.setHeader("Content-Length", fileSize);
             let stream = createReadStream(fileEntry.filePath, { highWaterMark: 1024 * 1024 });
-
-
-
-
-
 
             const fileIndex = this.files.indexOf(fileEntry);
             this.emit("download-started", fileIndex, fileEntry.fileName);
@@ -372,8 +364,6 @@ function buildDownloadPage(files: SharedFile[]): string {
       }
       if (node.file) {
         const f = node.file;
-        const isExe = f.fileName.toLowerCase().endsWith('.exe');
-        const displayNote = isExe ? ' <span class="rename-hint">(rename to .exe after download)</span>' : '';
         return `
           <li class="tree-file">
             <div class="tree-file-row">
@@ -383,7 +373,7 @@ function buildDownloadPage(files: SharedFile[]): string {
                     <path d="M440 432H72a40 40 0 01-40-40V120a40 40 0 0140-40h75.89a40 40 0 0122.19 6.72l27.84 18.56a40 40 0 0022.19 6.72H440a40 40 0 0140 40v240a40 40 0 01-40 40zM32 192h448"/>
                   </svg>
                 </span>
-                <span class="file-name">${escapeHtml(f.fileName)}</span>${displayNote}
+                <span class="file-name">${escapeHtml(f.fileName)}</span>
               </span>
               <span class="size">${formatBytes(f.fileSize)}</span>
               <span class="action">
@@ -411,10 +401,7 @@ function buildDownloadPage(files: SharedFile[]): string {
                 <path d="M440 432H72a40 40 0 01-40-40V120a40 40 0 0140-40h75.89a40 40 0 0122.19 6.72l27.84 18.56a40 40 0 0022.19 6.72H440a40 40 0 0140 40v240a40 40 0 01-40 40zM32 192h448"/>
               </svg>
             </span>
-            <span class="file-name">${escapeHtml(f.fileName)}${(() => {
-              const isExe = f.fileName.toLowerCase().endsWith('.exe');
-              return isExe ? ' <span class="rename-hint">(rename to .exe after download)</span>' : '';
-            })()}</span>
+            <span class="file-name">${escapeHtml(f.fileName)}</span>
           </td>
           <td class="size">${formatBytes(f.fileSize)}</td>
           <td class="action">
@@ -647,14 +634,6 @@ function buildDownloadPage(files: SharedFile[]): string {
       fill: none;
     }
     .zip-total-size { font-size: 0.8rem; opacity: 0.8; }
-
-    /* Rename hint styling - moved outside media query */
-    .rename-hint {
-      color: #f0a500;
-      font-size: 0.75rem;
-      margin-left: 6px;
-      font-weight: normal;
-    }
 
     /* Theme toggle button */
 .theme-toggle {
