@@ -32,8 +32,9 @@ const BackButton: React.FC<Props> = ({ onClick, className }) => {
       ref={buttonRef}
       className={`${styles.backBtn} ${className || ''}`}
       onClick={onClick}
+      aria-label={t('back')}
     >
-      <FaArrowLeft style={{ marginRight: 6 }} /> {t('back')}
+      <FaArrowLeft style={{ marginRight: 6 }} aria-hidden="true" /> {t('back')}
     </button>
   );
 };
