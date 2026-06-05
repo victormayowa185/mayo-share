@@ -29,7 +29,6 @@ const StatusBar: React.FC<Props> = ({
   const { t } = useTranslation();
   const barRef = useRef<HTMLDivElement>(null);
 
-  // Subtle entrance animation – plays once on mount
   useGSAP(() => {
     if (barRef.current) {
       gsap.fromTo(
@@ -42,20 +41,20 @@ const StatusBar: React.FC<Props> = ({
 
   return (
     <footer className={styles.bar} ref={barRef}>
-      <div className={styles.left}>
+      <div className={styles.left} aria-live="polite" aria-atomic="true">
         {connectionLabel ? (
           <span className={styles.hotspotOn}>
-           <FaCircle size={8} style={{ marginRight: 6 }} />
+            <FaCircle size={8} style={{ marginRight: 6 }} aria-hidden="true" />
             {connectionLabel}
           </span>
         ) : hotspotActive ? (
           <span className={styles.hotspotOn}>
-            <FaCircle size={8} color="#4caf50" style={{ marginRight: 6 }} />
+            <FaCircle size={8} color="#4caf50" style={{ marginRight: 6 }} aria-hidden="true" />
             {t("hotspotActive")} · {hotspotIP}
           </span>
         ) : (
           <span className={styles.hotspotOff}>
-           <FaCircle size={8} style={{ marginRight: 6 }} />
+            <FaCircle size={8} style={{ marginRight: 6 }} aria-hidden="true" />
             {t("noNetwork")}
           </span>
         )}
@@ -64,7 +63,7 @@ const StatusBar: React.FC<Props> = ({
       <div className={styles.center}>
         {connectedDevices !== undefined && connectedDevices > 0 && (
           <span className={styles.transfer}>
-            <FaUsers size={14} style={{ marginRight: 4 }} />
+            <FaUsers size={14} style={{ marginRight: 4 }} aria-hidden="true" />
             {t("connectedDevices", { count: connectedDevices })}
           </span>
         )}

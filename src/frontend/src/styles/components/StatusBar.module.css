@@ -47,3 +47,8 @@
   color: var(--text-dim);
   font-size: 0.7rem;
 }
+@media (prefers-reduced-motion: reduce) {
+  .bar {
+    transition: none;
+  }
+}
