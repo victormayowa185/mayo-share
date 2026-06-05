@@ -17,6 +17,7 @@
   "platforms": "Disponible sur :",
   "platformsDetail": "Windows (64‑bits) · macOS à venir · Linux à venir",
   "author": "Auteur",
+  "rateXStars": "Notez {{count}} étoiles",
   "authorName": "Victor Mayowa",
   "contributions": "Contributions",
   "contributionsDetail": "Actuellement un projet solo. Les contributions de la communauté sont les bienvenues via GitHub.",

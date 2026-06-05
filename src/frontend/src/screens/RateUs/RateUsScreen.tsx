@@ -22,10 +22,8 @@ const RateUsScreen: React.FC<Props> = ({ onBack }) => {
   const [submitted, setSubmitted] = useState(false);
   const [syncStatus, setSyncStatus] = useState<string>("");
 
-  // Ref for entrance animation
   const contentRef = useRef<HTMLDivElement>(null);
 
-  // GSAP entrance animation
   useGSAP(() => {
     if (contentRef.current) {
       gsap.fromTo(
@@ -36,7 +34,6 @@ const RateUsScreen: React.FC<Props> = ({ onBack }) => {
     }
   }, []);
 
-  // Load saved rating on mount
   useEffect(() => {
     try {
       const saved = localStorage.getItem(RATING_STORAGE_KEY);
@@ -50,7 +47,6 @@ const RateUsScreen: React.FC<Props> = ({ onBack }) => {
     } catch {}
   }, []);
 
-  // Sync pending rating when online
   useEffect(() => {
     const syncRating = async () => {
       if (!navigator.onLine) return;
@@ -114,22 +110,25 @@ const RateUsScreen: React.FC<Props> = ({ onBack }) => {
           {submitted ? t("thankYouFeedback") : t("enjoyingMayoShare")}
         </p>
 
-        <div className={styles.stars}>
+        {/* Stars as buttons - ADA compliant */}
+        <div className={styles.stars} role="group" aria-label={t("rateUs")}>
           {[1, 2, 3, 4, 5].map((star) => (
-            <FaStar
+            <button
               key={star}
-              size={32}
-              color={
-                star <= (hoverRating || selectedRating) ? "#b169e0" : "#333"
-              }
-              style={{
-                cursor: submitted ? "default" : "pointer",
-                transition: "color 0.15s",
-              }}
+              type="button"
+              className={styles.starBtn}
+              aria-label={t("rateXStars", { count: star })}
+              disabled={submitted}
+              onClick={() => handleStarClick(star)}
               onMouseEnter={() => !submitted && setHoverRating(star)}
               onMouseLeave={() => !submitted && setHoverRating(0)}
-              onClick={() => handleStarClick(star)}
-            />
+            >
+              <FaStar
+                size={32}
+                color={star <= (hoverRating || selectedRating) ? "#b169e0" : "#333"}
+                aria-hidden="true"
+              />
+            </button>
           ))}
         </div>
 
@@ -151,7 +150,7 @@ const RateUsScreen: React.FC<Props> = ({ onBack }) => {
               rel="noopener noreferrer"
               className={styles.sponsorLink}
             >
-              <FaHeart style={{ marginRight: 6 }} />
+              <FaHeart aria-hidden="true" style={{ marginRight: 6 }} />
               {t("sponsorOnGitHub")}
             </a>
           </div>

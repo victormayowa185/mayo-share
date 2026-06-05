@@ -18,6 +18,7 @@
   "platformsDetail": "Windows (64‑位) · macOS 即将推出 · Linux 即将推出",
   "author": "作者",
   "authorName": "Victor Mayowa",
+  "rateXStars": "评 {{count}} 星",
   "contributions": "贡献",
   "contributionsDetail": "目前是个人项目。欢迎通过 GitHub 进行社区贡献。",
   "translations": "翻译",

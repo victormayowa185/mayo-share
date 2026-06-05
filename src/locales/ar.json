@@ -6,6 +6,7 @@
   "changeFolder": "تغيير المجلد",
   "browse": "تصفح",
   "save": "حفظ",
+  "rateXStars": "قيم {{count}} نجوم",
   "cancel": "إلغاء",
   "saveFolderUpdated": "تم تحديث مجلد الحفظ.",
   "saveFailed": "فشل الحفظ",

@@ -17,6 +17,7 @@
   "platforms": "Доступно на:",
   "platformsDetail": "Windows (64‑разрядная) · macOS скоро · Linux скоро",
   "author": "Автор",
+  "rateXStars": "Оцените {{count}} звезд",
   "authorName": "Виктор Майова",
   "contributions": "Вклад",
   "contributionsDetail": "В настоящее время одиночный проект. Приветствуются вклады сообщества через GitHub.",

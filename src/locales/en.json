@@ -228,5 +228,6 @@
   "themeDesc": "Choose how the app looks.",
   "system": "System",
   "light": "Light",
-  "dark": "Dark"
+  "dark": "Dark",
+  "rateXStars": "Rate {{count}} stars"
 }
