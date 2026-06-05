@@ -46,6 +46,7 @@ const SetupStepper: React.FC<Props> = ({ onComplete }) => {
   const [verifyStatus, setVerifyStatus] = useState<
     "idle" | "checking" | "ok" | "fail"
   >("idle");
+  const [wizardError, setWizardError] = useState<string | null>(null);
 
   const cardRef = useRef<HTMLDivElement>(null);
   const stepsIndicatorRef = useRef<HTMLDivElement>(null);
@@ -86,11 +87,15 @@ const SetupStepper: React.FC<Props> = ({ onComplete }) => {
   );
 
   const launchWizard = async () => {
-    const result = await window.electronAPI.launchHardwareWizard();
-    if (!result.success) {
-      alert(
-        "Could not open hardware wizard: " + (result.error || "unknown error"),
-      );
+    try {
+      const result = await window.electronAPI.launchHardwareWizard();
+      if (!result.success) {
+        setWizardError(result.error || t("unknownError"));
+        setTimeout(() => setWizardError(null), 5000);
+      }
+    } catch (err: any) {
+      setWizardError(err.message || t("unknownError"));
+      setTimeout(() => setWizardError(null), 5000);
     }
   };
 
@@ -148,9 +153,17 @@ const SetupStepper: React.FC<Props> = ({ onComplete }) => {
         <p className={styles.note}>{t(step.noteKey)}</p>
 
         {currentStep === 0 && (
-          <button onClick={launchWizard} className={styles.btn}>
-            {t("openHardwareWizard")}
-          </button>
+          <>
+            <button onClick={launchWizard} className={styles.btn}>
+              {t("openHardwareWizard")}
+            </button>
+            {wizardError && (
+              <div className={styles.errorMsg} role="alert">
+                <FaTimesCircle aria-hidden="true" style={{ marginRight: 8 }} />
+                {wizardError}
+              </div>
+            )}
+          </>
         )}
 
         {isLastStep && (
