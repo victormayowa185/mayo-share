@@ -19,7 +19,6 @@ interface Props {
 const SetupStepper: React.FC<Props> = ({ onComplete }) => {
   const { t } = useTranslation();
 
-  // Step definitions – now using translation keys
   const steps = [
     {
       titleKey: "step1Title",
@@ -48,17 +47,13 @@ const SetupStepper: React.FC<Props> = ({ onComplete }) => {
     "idle" | "checking" | "ok" | "fail"
   >("idle");
 
-  // Refs for GSAP animation
   const cardRef = useRef<HTMLDivElement>(null);
   const stepsIndicatorRef = useRef<HTMLDivElement>(null);
   const navRowRef = useRef<HTMLDivElement>(null);
 
-  // Entrance animation – triggers on mount and whenever currentStep changes
   useGSAP(
     () => {
       const tl = gsap.timeline({ defaults: { ease: "power2.out" } });
-
-      // Fade in the step indicator and card
       if (stepsIndicatorRef.current) {
         tl.fromTo(
           stepsIndicatorRef.current,
@@ -75,7 +70,6 @@ const SetupStepper: React.FC<Props> = ({ onComplete }) => {
           "-=0.15",
         );
       }
-      // Fade in the navigation buttons
       if (navRowRef.current) {
         const buttons = navRowRef.current.querySelectorAll("button");
         if (buttons.length > 0) {
@@ -131,12 +125,14 @@ const SetupStepper: React.FC<Props> = ({ onComplete }) => {
       </div>
       <div className={styles.subtitle}>{t("firstTimeSetup")}</div>
 
-      {/* Step indicator */}
+      {/* Step indicator with ARIA labels */}
       <div className={styles.steps} ref={stepsIndicatorRef}>
         {steps.map((_, i) => (
           <div
             key={i}
             className={styles.stepDot}
+            role="status"
+            aria-label={t("stepXofY", { current: i + 1, total: steps.length })}
             style={{ background: i <= currentStep ? "#b169e0" : "#333" }}
           />
         ))}
@@ -168,13 +164,13 @@ const SetupStepper: React.FC<Props> = ({ onComplete }) => {
             </button>
             {verifyStatus === "ok" && (
               <div className={styles.successMsg}>
-                <FaCheckCircle style={{ marginRight: 8 }} />{" "}
+                <FaCheckCircle aria-hidden="true" style={{ marginRight: 8 }} />{" "}
                 {t("setupComplete")}
               </div>
             )}
             {verifyStatus === "fail" && (
               <div className={styles.failMsg}>
-                <FaTimesCircle style={{ marginRight: 8 }} />{" "}
+                <FaTimesCircle aria-hidden="true" style={{ marginRight: 8 }} />{" "}
                 {t("adapterNotFound")}
               </div>
             )}
@@ -186,7 +182,7 @@ const SetupStepper: React.FC<Props> = ({ onComplete }) => {
       <div className={styles.navRow} ref={navRowRef}>
         {currentStep > 0 && (
           <button className={styles.btn} onClick={goBack}>
-            <FaArrowLeft style={{ marginRight: 6 }} /> {t("back")}
+            <FaArrowLeft aria-hidden="true" style={{ marginRight: 6 }} /> {t("back")}
           </button>
         )}
         {!isLastStep && (
@@ -194,7 +190,7 @@ const SetupStepper: React.FC<Props> = ({ onComplete }) => {
             onClick={() => setCurrentStep((s) => s + 1)}
             className={styles.btn}
           >
-            {t("next")} <FaArrowRight style={{ marginLeft: 6 }} />
+            {t("next")} <FaArrowRight aria-hidden="true" style={{ marginLeft: 6 }} />
           </button>
         )}
         {isLastStep && verifyStatus === "ok" && (
@@ -203,10 +199,9 @@ const SetupStepper: React.FC<Props> = ({ onComplete }) => {
             className={styles.btn}
             style={{ background: "#4CAF50" }}
           >
-            {t("enterMayoShare")} <FaArrowRight style={{ marginLeft: 6 }} />
+            {t("enterMayoShare")} <FaArrowRight aria-hidden="true" style={{ marginLeft: 6 }} />
           </button>
         )}
-        {/* Hide Skip when on the last step and verification is done */}
         {!(isLastStep && verifyStatus === "ok") && (
           <button onClick={onComplete} className={styles.ghostBtn}>
             {t("skipForNow")}
