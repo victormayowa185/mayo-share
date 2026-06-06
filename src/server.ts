@@ -1,19 +1,8 @@
 import { createServer, Server, IncomingMessage, ServerResponse } from "http";
-import { promises as fs, statfs } from "fs";
+import { promises as fs, createWriteStream } from "fs";
 import path from "path";
 import { EventEmitter } from "events";
-import { formidable } from "formidable";
-import { promisify } from "util";
 
-const statfsAsync = promisify(statfs);
-
-function formatBytesServer(bytes: number): string {
-  if (bytes === 0) return "0 B";
-  const k = 1024;
-  const sizes = ["B", "KB", "MB", "GB"];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i];
-}
 
 interface Session {
   id: string;
@@ -38,17 +27,14 @@ let RECEIVE_DIR = "C:\\mayo-received";
 export function setReceiveDir(path: string) {
   RECEIVE_DIR = path;
 }
-const PORT = 3001;
+const DEFAULT_PORT = 3001;
+const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024 * 1024; // 10 GB
 
 export class UploadServer extends EventEmitter {
   private server: Server | null = null;
   private sessions = new Map<string, Session>();
   private sseClients = new Map<string, SSEClient>();
-
-  // Admin SSE clients (for desktop real‑time updates)
   private adminClients = new Set<ServerResponse>();
-
-  // File assembly locks - prevent duplicate assembly for same file
   private fileAssemblyLocks = new Map<string, Promise<void>>();
 
   approveSender(sessionId: string) {
@@ -99,294 +85,336 @@ export class UploadServer extends EventEmitter {
     });
   }
 
+  private setCORS(res: ServerResponse) {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  }
+
   async start(ip?: string): Promise<string> {
     await fs.mkdir(RECEIVE_DIR, { recursive: true });
     await fs.mkdir(path.join(RECEIVE_DIR, "chunks"), { recursive: true });
     this.stop();
     await new Promise((r) => setTimeout(r, 100));
 
-    return new Promise((resolve, reject) => {
-      this.server = createServer(
-        async (req: IncomingMessage, res: ServerResponse) => {
-          const getField = (val: string | string[] | undefined): string => {
-            if (Array.isArray(val)) return val[0] || "";
-            return val || "";
-          };
-          const url = req.url || "/";
-          const method = req.method || "GET";
+    let currentPort = DEFAULT_PORT;
+    let usedPort = currentPort;
+    const maxAttempts = 10;
+    let attempts = 0;
 
-          if (method === "GET" && url === "/favicon.ico") {
-            res.writeHead(204);
-            res.end();
-            return;
-          }
-
-          // ─── Admin dashboard (desktop UI) ───
-          if (method === "GET" && (url === "/admin" || url === "/admin.html")) {
-            res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-            res.end(getAdminHTML());
-            return;
-          }
-
-          // ─── Admin SSE stream for real‑time updates ───
-          if (method === "GET" && url === "/admin/events") {
-            res.writeHead(200, {
-              "Content-Type": "text/event-stream",
-              "Cache-Control": "no-cache",
-              Connection: "keep-alive"
-            });
-            this.adminClients.add(res);
-            // Send initial data
-            const sessionsList = Array.from(this.sessions.values()).map(s => ({
-              id: s.id,
-              senderName: s.senderName,
-              status: s.status,
-              deviceType: s.deviceType,
-              currentUpload: s.currentUpload ? {
-                filename: s.currentUpload.filename,
-                totalChunks: s.currentUpload.totalChunks,
-                uploadedChunks: Array.from(s.currentUpload.uploadedChunks)
-              } : null
-            }));
-            res.write(`data: ${JSON.stringify(sessionsList)}\n\n`);
-            req.on("close", () => this.adminClients.delete(res));
-            return;
-          }
-
-          // ─── Check which chunks are already uploaded (for resume) ───
-          if (method === "GET" && url?.startsWith("/upload-status")) {
-            const parsedUrl = new URL(url!, `http://localhost:${PORT}`);
-            const sessionId = parsedUrl.searchParams.get("sessionId");
-            const fileId = parsedUrl.searchParams.get("fileId");
-            const session = this.sessions.get(sessionId || "");
-            if (!session || session.status !== "approved") {
-              res.writeHead(403);
-              res.end("Not approved");
-              return;
-            }
-            const chunkDir = path.join(RECEIVE_DIR, "chunks", fileId || "none");
-            try {
-              const files = await fs.readdir(chunkDir);
-              const uploadedIndices = files
-                .filter(f => f.startsWith("chunk-"))
-                .map(f => parseInt(f.split("-")[1], 10))
-                .filter(n => !isNaN(n));
-              res.writeHead(200, { "Content-Type": "application/json" });
-              res.end(JSON.stringify({ uploadedChunks: uploadedIndices }));
-            } catch {
-              res.writeHead(200, { "Content-Type": "application/json" });
-              res.end(JSON.stringify({ uploadedChunks: [] }));
-            }
-            return;
-          }
-
-          // ─── Session‑aware GET / ───
-          if (
-            method === "GET" &&
-            (url === "/" || url === "" || url?.startsWith("/?sessionId="))
-          ) {
-            const parsedUrl = new URL(url!, `http://localhost:${PORT}`);
-            let sessionId = parsedUrl.searchParams.get("sessionId");
-            if (!sessionId) {
-              sessionId =
-                Date.now().toString(36) +
-                Math.random().toString(36).slice(2, 6);
-              res.writeHead(302, { Location: `/?sessionId=${sessionId}` });
-              res.end();
-              return;
-            }
-            let session = this.sessions.get(sessionId);
-            if (!session) {
-              const saveDir = path.join(RECEIVE_DIR, `Sender-${sessionId}`);
-              session = {
-                id: sessionId,
-                status: "pending",
-                senderName: "",
-                saveDir,
-                deviceType: "",
-              };
-              this.sessions.set(sessionId, session);
-              this.emit("sender-connected", sessionId, session.senderName);
-            }
-            if (session.status === "pending") {
-              res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-              res.end(getWaitingHTML(session.senderName || "Unknown"));
-              return;
-            }
-            if (session.status === "approved") {
-              res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-              res.end(getUploadHTML());
-              return;
-            }
-            if (session.status === "declined") {
-              res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-              res.end(getDeclinedHTML());
-              return;
-            }
-          }
-
-          // ─── SSE endpoint for approval / decline ───
-          if (method === "GET" && url?.startsWith("/events")) {
-            const parsedUrl = new URL(url!, `http://localhost:${PORT}`);
-            const sessionId = parsedUrl.searchParams.get("sessionId");
-            if (!sessionId || !this.sessions.has(sessionId)) {
-              res.writeHead(404);
-              res.end();
-              return;
-            }
-            res.writeHead(200, {
-              "Content-Type": "text/event-stream",
-              "Cache-Control": "no-cache",
-              Connection: "keep-alive",
-              "Access-Control-Allow-Origin": "*",
-            });
-            res.write(":ok\n\n");
-            this.sseClients.set(sessionId, { id: sessionId, res });
-            req.on("close", () => this.sseClients.delete(sessionId));
-            return;
-          }
-
-          // ─── Set sender name ───
-          if (method === "POST" && url?.startsWith("/set-name")) {
-            const parsedUrl = new URL(url!, `http://localhost:${PORT}`);
-            const sessionId = parsedUrl.searchParams.get("sessionId");
-            let body = "";
-            req.on("data", (chunk) => (body += chunk));
-            req.on("end", () => {
-              try {
-                const { name, deviceType } = JSON.parse(body);
-                const session = this.sessions.get(sessionId!);
-                if (session) {
-                  session.senderName = name;
-                  if (deviceType) session.deviceType = deviceType;
-                  this.emit("sender-connected", sessionId, name, session.deviceType);
-                  this.broadcastAdminUpdate();
-                  res.writeHead(200, { "Content-Type": "application/json" });
-                  res.end(JSON.stringify({ ok: true }));
-                } else {
-                  res.writeHead(404);
-                  res.end();
-                }
-              } catch {
-                res.writeHead(400);
+    while (attempts < maxAttempts) {
+      try {
+        await new Promise<void>((resolve, reject) => {
+          this.server = createServer(
+            async (req: IncomingMessage, res: ServerResponse) => {
+              // CORS preflight
+              if (req.method === "OPTIONS") {
+                this.setCORS(res);
+                res.writeHead(204);
                 res.end();
-              }
-            });
-            return;
-          }
-
-          // ─── Simple text/image upload endpoint ───
-          if (method === "POST" && url?.startsWith("/upload-simple")) {
-            const parsedUrl = new URL(url!, `http://localhost:${PORT}`);
-            const sessionId = parsedUrl.searchParams.get("sessionId");
-            const session = this.sessions.get(sessionId || "");
-            if (!session || session.status !== "approved") {
-              res.writeHead(403);
-              res.end("Not approved");
-              return;
-            }
-            let body = "";
-            req.on("data", (chunk) => (body += chunk));
-            req.on("end", async () => {
-              try {
-                const { content, filename } = JSON.parse(body);
-                const buffer = Buffer.from(content, "base64");
-                await fs.mkdir(session.saveDir, { recursive: true });
-                const savePath = path.join(session.saveDir, filename);
-                await fs.writeFile(savePath, buffer);
-                this.emit("file-received", filename);
-                this.broadcastAdminUpdate();
-                res.writeHead(200);
-                res.end("OK");
-              } catch (err) {
-                console.error("Simple upload error:", err);
-                res.writeHead(500);
-                res.end("Error saving file");
-              }
-            });
-            return;
-          }
-
-          // ─── Chunk upload endpoint (with resume support) ───
-          if (method === "POST" && url?.startsWith("/upload-chunk")) {
-            try {
-              const parsedUrl = new URL(url!, `http://localhost:${PORT}`);
-              const sessionId = parsedUrl.searchParams.get("sessionId") || "";
-              const fileId = parsedUrl.searchParams.get("fileId") || "";
-              const chunkIndex = parseInt(parsedUrl.searchParams.get("chunkIndex") || "0", 10);
-              const totalChunks = parseInt(parsedUrl.searchParams.get("totalChunks") || "0", 10);
-              const filename = parsedUrl.searchParams.get("filename") || "file";
-
-              const session = this.sessions.get(sessionId);
-              if (!session || session.status !== "approved") {
-                res.writeHead(403);
-                res.end("Not approved");
                 return;
               }
 
-              // Update session upload tracking
-              if (chunkIndex === 0) {
-                session.currentUpload = {
-                  fileId,
-                  filename,
-                  totalChunks,
-                  uploadedChunks: new Set()
-                };
+              const getField = (val: string | string[] | undefined): string => {
+                if (Array.isArray(val)) return val[0] || "";
+                return val || "";
+              };
+              const url = req.url || "/";
+              const method = req.method || "GET";
+
+              if (method === "GET" && url === "/favicon.ico") {
+                this.setCORS(res);
+                res.writeHead(204);
+                res.end();
+                return;
               }
-              if (session.currentUpload && session.currentUpload.fileId === fileId) {
-                session.currentUpload.uploadedChunks.add(chunkIndex);
+
+              // ─── Admin dashboard (desktop UI) ───
+              if (method === "GET" && (url === "/admin" || url === "/admin.html")) {
+                this.setCORS(res);
+                res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+                res.end(getAdminHTML());
+                return;
               }
 
-              const chunkDir = path.join(RECEIVE_DIR, "chunks", fileId);
-              await fs.mkdir(chunkDir, { recursive: true });
-              const chunkPath = path.join(chunkDir, `chunk-${chunkIndex}`);
+              // ─── Admin SSE stream for real‑time updates ───
+              if (method === "GET" && url === "/admin/events") {
+                this.setCORS(res);
+                res.writeHead(200, {
+                  "Content-Type": "text/event-stream",
+                  "Cache-Control": "no-cache",
+                  Connection: "keep-alive"
+                });
+                this.adminClients.add(res);
+                const sessionsList = Array.from(this.sessions.values()).map(s => ({
+                  id: s.id,
+                  senderName: s.senderName,
+                  status: s.status,
+                  deviceType: s.deviceType,
+                  currentUpload: s.currentUpload ? {
+                    filename: s.currentUpload.filename,
+                    totalChunks: s.currentUpload.totalChunks,
+                    uploadedChunks: Array.from(s.currentUpload.uploadedChunks)
+                  } : null
+                }));
+                res.write(`data: ${JSON.stringify(sessionsList)}\n\n`);
+                req.on("close", () => this.adminClients.delete(res));
+                return;
+              }
 
-              let fileData = Buffer.alloc(0);
-              req.on("data", (chunk) => {
-                fileData = Buffer.concat([fileData, chunk]);
-              });
-
-              req.on("end", async () => {
+              // ─── Check which chunks are already uploaded (for resume) ───
+              if (method === "GET" && url?.startsWith("/upload-status")) {
+                const parsedUrl = new URL(url!, `http://localhost:${usedPort}`);
+                const sessionId = parsedUrl.searchParams.get("sessionId");
+                const fileId = parsedUrl.searchParams.get("fileId");
+                const session = this.sessions.get(sessionId || "");
+                if (!session || session.status !== "approved") {
+                  this.setCORS(res);
+                  res.writeHead(403);
+                  res.end("Not approved");
+                  return;
+                }
+                const chunkDir = path.join(RECEIVE_DIR, "chunks", fileId || "none");
                 try {
-                  await fs.writeFile(chunkPath, fileData);
+                  const files = await fs.readdir(chunkDir);
+                  const uploadedIndices = files
+                    .filter(f => f.startsWith("chunk-"))
+                    .map(f => parseInt(f.split("-")[1], 10))
+                    .filter(n => !isNaN(n));
+                  this.setCORS(res);
+                  res.writeHead(200, { "Content-Type": "application/json" });
+                  res.end(JSON.stringify({ uploadedChunks: uploadedIndices }));
+                } catch {
+                  this.setCORS(res);
+                  res.writeHead(200, { "Content-Type": "application/json" });
+                  res.end(JSON.stringify({ uploadedChunks: [] }));
+                }
+                return;
+              }
+
+              // ─── Session‑aware GET / ───
+              if (
+                method === "GET" &&
+                (url === "/" || url === "" || url?.startsWith("/?sessionId="))
+              ) {
+                const parsedUrl = new URL(url!, `http://localhost:${usedPort}`);
+                let sessionId = parsedUrl.searchParams.get("sessionId");
+                if (!sessionId) {
+                  sessionId =
+                    Date.now().toString(36) +
+                    Math.random().toString(36).slice(2, 6);
+                  this.setCORS(res);
+                  res.writeHead(302, { Location: `/?sessionId=${sessionId}` });
+                  res.end();
+                  return;
+                }
+                let session = this.sessions.get(sessionId);
+                if (!session) {
+                  const saveDir = path.join(RECEIVE_DIR, `Sender-${sessionId}`);
+                  session = {
+                    id: sessionId,
+                    status: "pending",
+                    senderName: "",
+                    saveDir,
+                    deviceType: "",
+                  };
+                  this.sessions.set(sessionId, session);
+                  this.emit("sender-connected", sessionId, session.senderName);
+                }
+                this.setCORS(res);
+                if (session.status === "pending") {
+                  res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+                  res.end(getWaitingHTML(session.senderName || "Unknown"));
+                  return;
+                }
+                if (session.status === "approved") {
+                  res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+                  res.end(getUploadHTML());
+                  return;
+                }
+                if (session.status === "declined") {
+                  res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+                  res.end(getDeclinedHTML());
+                  return;
+                }
+              }
+
+              // ─── SSE endpoint for approval / decline ───
+              if (method === "GET" && url?.startsWith("/events")) {
+                const parsedUrl = new URL(url!, `http://localhost:${usedPort}`);
+                const sessionId = parsedUrl.searchParams.get("sessionId");
+                if (!sessionId || !this.sessions.has(sessionId)) {
+                  this.setCORS(res);
+                  res.writeHead(404);
+                  res.end();
+                  return;
+                }
+                this.setCORS(res);
+                res.writeHead(200, {
+                  "Content-Type": "text/event-stream",
+                  "Cache-Control": "no-cache",
+                  Connection: "keep-alive",
+                  "Access-Control-Allow-Origin": "*",
+                });
+                res.write(":ok\n\n");
+                this.sseClients.set(sessionId, { id: sessionId, res });
+                req.on("close", () => this.sseClients.delete(sessionId));
+                return;
+              }
+
+              // ─── Set sender name ───
+              if (method === "POST" && url?.startsWith("/set-name")) {
+                const parsedUrl = new URL(url!, `http://localhost:${usedPort}`);
+                const sessionId = parsedUrl.searchParams.get("sessionId");
+                let body = "";
+                req.on("data", (chunk) => (body += chunk));
+                req.on("end", () => {
+                  try {
+                    const { name, deviceType } = JSON.parse(body);
+                    const session = this.sessions.get(sessionId!);
+                    if (session) {
+                      session.senderName = name;
+                      if (deviceType) session.deviceType = deviceType;
+                      this.emit("sender-connected", sessionId, name, session.deviceType);
+                      this.broadcastAdminUpdate();
+                      this.setCORS(res);
+                      res.writeHead(200, { "Content-Type": "application/json" });
+                      res.end(JSON.stringify({ ok: true }));
+                    } else {
+                      this.setCORS(res);
+                      res.writeHead(404);
+                      res.end();
+                    }
+                  } catch {
+                    this.setCORS(res);
+                    res.writeHead(400);
+                    res.end();
+                  }
+                });
+                return;
+              }
+
+              // ─── Simple text/image upload endpoint ───
+              if (method === "POST" && url?.startsWith("/upload-simple")) {
+                const parsedUrl = new URL(url!, `http://localhost:${usedPort}`);
+                const sessionId = parsedUrl.searchParams.get("sessionId");
+                const session = this.sessions.get(sessionId || "");
+                if (!session || session.status !== "approved") {
+                  this.setCORS(res);
+                  res.writeHead(403);
+                  res.end("Not approved");
+                  return;
+                }
+                let body = "";
+                req.on("data", (chunk) => (body += chunk));
+                req.on("end", async () => {
+                  try {
+                    const { content, filename } = JSON.parse(body);
+                    const buffer = Buffer.from(content, "base64");
+                    await fs.mkdir(session.saveDir, { recursive: true });
+                    const savePath = path.join(session.saveDir, filename);
+                    await fs.writeFile(savePath, buffer);
+                    this.emit("file-received", filename);
+                    this.broadcastAdminUpdate();
+                    this.setCORS(res);
+                    res.writeHead(200);
+                    res.end("OK");
+                  } catch (err) {
+                    console.error("Simple upload error:", err);
+                    this.setCORS(res);
+                    res.writeHead(500);
+                    res.end("Error saving file");
+                  }
+                });
+                return;
+              }
+
+              // ─── Chunk upload endpoint (with resume support) ───
+              if (method === "POST" && url?.startsWith("/upload-chunk")) {
+                try {
+                  const parsedUrl = new URL(url!, `http://localhost:${usedPort}`);
+                  const sessionId = parsedUrl.searchParams.get("sessionId") || "";
+                  const fileId = parsedUrl.searchParams.get("fileId") || "";
+                  const chunkIndex = parseInt(parsedUrl.searchParams.get("chunkIndex") || "0", 10);
+                  const totalChunks = parseInt(parsedUrl.searchParams.get("totalChunks") || "0", 10);
+                  const filename = parsedUrl.searchParams.get("filename") || "file";
+
+                  const session = this.sessions.get(sessionId);
+                  if (!session || session.status !== "approved") {
+                    this.setCORS(res);
+                    res.writeHead(403);
+                    res.end("Not approved");
+                    return;
+                  }
+
+                  // File size limit check on first chunk
+                  if (chunkIndex === 0) {
+                    const approxSize = totalChunks * (5 * 1024 * 1024); // CHUNK_SIZE = 5MB from client
+                    if (approxSize > MAX_FILE_SIZE_BYTES) {
+                      this.setCORS(res);
+                      res.writeHead(413, { "Content-Type": "text/plain" });
+                      res.end("File too large (max 10GB)");
+                      return;
+                    }
+                  }
+
+                  // Update session upload tracking
+                  if (chunkIndex === 0) {
+                    session.currentUpload = {
+                      fileId,
+                      filename,
+                      totalChunks,
+                      uploadedChunks: new Set()
+                    };
+                  }
+                  if (session.currentUpload && session.currentUpload.fileId === fileId) {
+                    session.currentUpload.uploadedChunks.add(chunkIndex);
+                  }
+
+                  const chunkDir = path.join(RECEIVE_DIR, "chunks", fileId);
+                  await fs.mkdir(chunkDir, { recursive: true });
+                  const chunkPath = path.join(chunkDir, `chunk-${chunkIndex}`);
+
+                  // ✅ FIX #2: Stream the chunk directly to disk
+                  const writeStream = createWriteStream(chunkPath);
+                  req.pipe(writeStream);
+                  await new Promise<void>((resolve, reject) => {
+                    writeStream.on("finish", resolve);
+                    writeStream.on("error", reject);
+                  });
+
                   console.log(`[Server] Chunk ${chunkIndex}/${totalChunks} saved for ${filename}`);
 
                   // Check completeness
                   const chunks = await fs.readdir(chunkDir);
                   if (chunks.length === totalChunks) {
-                    // LOCK: Check if assembly is already in progress for this file
                     if (this.fileAssemblyLocks.has(fileId)) {
-                      // Already assembling, wait for it to complete
                       await this.fileAssemblyLocks.get(fileId);
+                      this.setCORS(res);
                       res.writeHead(200, { "Content-Type": "application/json" });
                       res.end(JSON.stringify({ ok: true, complete: true }));
                       return;
                     }
 
-                    // Create assembly promise and lock it
                     const assemblyPromise = (async () => {
                       try {
                         await fs.mkdir(session.saveDir, { recursive: true });
                         const finalPath = path.join(session.saveDir, filename);
-                        const { createWriteStream } = await import("fs");
-                        const writeStream = createWriteStream(finalPath);
+                        const { createWriteStream: createOutStream } = await import("fs");
+                        const writeStream = createOutStream(finalPath);
 
-                        // OPTION 1: Parallel chunk reading (10 chunks in parallel for speed)
                         const PARALLEL_READS = 10;
                         for (let startIdx = 0; startIdx < totalChunks; startIdx += PARALLEL_READS) {
                           const endIdx = Math.min(startIdx + PARALLEL_READS, totalChunks);
                           const chunkPromises = [];
-
                           for (let i = startIdx; i < endIdx; i++) {
                             chunkPromises.push(fs.readFile(path.join(chunkDir, `chunk-${i}`)));
                           }
-
                           const chunkData = await Promise.all(chunkPromises);
                           for (const data of chunkData) {
                             writeStream.write(data);
                           }
                         }
-
                         writeStream.end();
                         await new Promise<void>((resolve, reject) => {
                           writeStream.on("finish", resolve);
@@ -400,7 +428,6 @@ export class UploadServer extends EventEmitter {
                         }
                         this.broadcastAdminUpdate();
 
-                        // OPTION 4: Async cleanup (don't wait, do in background)
                         (async () => {
                           try {
                             for (let i = 0; i < totalChunks; i++) {
@@ -412,7 +439,6 @@ export class UploadServer extends EventEmitter {
                           }
                         })();
                       } finally {
-                        // Remove lock when assembly is done
                         this.fileAssemblyLocks.delete(fileId);
                       }
                     })();
@@ -420,56 +446,94 @@ export class UploadServer extends EventEmitter {
                     this.fileAssemblyLocks.set(fileId, assemblyPromise);
                     await assemblyPromise;
 
+                    this.setCORS(res);
                     res.writeHead(200, { "Content-Type": "application/json" });
                     res.end(JSON.stringify({ ok: true, complete: true }));
                   } else {
                     this.broadcastAdminUpdate();
+                    this.setCORS(res);
                     res.writeHead(200, { "Content-Type": "application/json" });
                     res.end(JSON.stringify({ ok: true, complete: false }));
                   }
                 } catch (err) {
-                  console.error("Chunk save error:", err);
-                  this.fileAssemblyLocks.delete(fileId);
+                  console.error("Chunk upload error:", err);
+                  this.setCORS(res);
                   res.writeHead(500);
                   res.end("Error saving chunk");
                 }
-              });
-            } catch (err) {
-              console.error("Chunk upload error:", err);
-              res.writeHead(500);
-              res.end("Error");
-            }
-            return;
-          }
+                return;
+              }
 
-          // ─── Serve GSAP from node_modules (offline) ───
-          if (method === "GET" && url === "/gsap.min.js") {
-            const filePath = path.join(process.cwd(), "node_modules/gsap/dist/gsap.min.js");
-            try {
-              const data = await fs.readFile(filePath);
-              res.writeHead(200, { "Content-Type": "application/javascript" });
-              res.end(data);
-            } catch {
+              // ─── APPROVE endpoint (FIX #3) ───
+              if (method === "POST" && url?.startsWith("/approve")) {
+                const parsedUrl = new URL(url!, `http://localhost:${usedPort}`);
+                const sessionId = parsedUrl.searchParams.get("sessionId");
+                if (sessionId) {
+                  this.approveSender(sessionId);
+                }
+                this.setCORS(res);
+                res.writeHead(200, { "Content-Type": "application/json" });
+                res.end(JSON.stringify({ ok: true }));
+                return;
+              }
+
+              // ─── DECLINE endpoint (FIX #3) ───
+              if (method === "POST" && url?.startsWith("/decline")) {
+                const parsedUrl = new URL(url!, `http://localhost:${usedPort}`);
+                const sessionId = parsedUrl.searchParams.get("sessionId");
+                if (sessionId) {
+                  this.declineSender(sessionId);
+                }
+                this.setCORS(res);
+                res.writeHead(200, { "Content-Type": "application/json" });
+                res.end(JSON.stringify({ ok: true }));
+                return;
+              }
+
+              // ─── Serve GSAP from node_modules (offline) ───
+              if (method === "GET" && url === "/gsap.min.js") {
+                const filePath = path.join(process.cwd(), "node_modules/gsap/dist/gsap.min.js");
+                try {
+                  const data = await fs.readFile(filePath);
+                  this.setCORS(res);
+                  res.writeHead(200, { "Content-Type": "application/javascript" });
+                  res.end(data);
+                } catch {
+                  this.setCORS(res);
+                  res.writeHead(404);
+                  res.end();
+                }
+                return;
+              }
+
+              this.setCORS(res);
               res.writeHead(404);
-              res.end();
+              res.end("Not found");
             }
-            return;
+          );
+
+          this.server.listen(currentPort, "0.0.0.0", () => {
+            usedPort = currentPort;
+            resolve();
+          });
+          this.server.on("error", reject);
+        });
+        break; // Success
+      } catch (err: any) {
+        if (err.code === "EADDRINUSE") {
+          currentPort++;
+          attempts++;
+          if (attempts >= maxAttempts) {
+            throw new Error(`No available ports between ${DEFAULT_PORT} and ${DEFAULT_PORT + maxAttempts - 1}`);
           }
-
-          res.writeHead(404);
-          res.end("Not found");
+        } else {
+          throw err;
         }
-      );
+      }
+    }
 
-      this.server.listen(PORT, "0.0.0.0", () => {
-        const usedIP = ip || "192.168.137.1";
-        resolve(`http://${usedIP}:${PORT}`);
-      });
-      this.server.on("error", (err) => {
-        this.server = null;
-        reject(err);
-      });
-    });
+    const usedIP = ip || "192.168.137.1";
+    return `http://${usedIP}:${usedPort}`;
   }
 
   stop(): void {
@@ -481,7 +545,7 @@ export class UploadServer extends EventEmitter {
 }
 
 // ========================
-// HTML GENERATORS
+// HTML GENERATORS (unchanged)
 // ========================
 
 function getAdminHTML(): string {
@@ -915,7 +979,6 @@ function getUploadHTML(): string {
         try {
           const result = await uploadChunk(file, fileId, chunkIdx, totalChunks);
           if (result.complete) {
-            // OPTION 3: Progress Feedback - Show assembling status
             complete = true;
             statusDiv.innerHTML = \`<div class="assembling-notice"><div class="assembling-spinner"></div>Assembling file...</div>\`;
           }
@@ -924,7 +987,6 @@ function getUploadHTML(): string {
           updateProgress();
         } catch (err) {
           console.error(\`Failed chunk \${chunkIdx}\`, err);
-          // Pause and ask user to resume
           paused = true;
           statusDiv.innerHTML = \`<span style="color:#ffaa44;">⚠️ Upload paused (chunk \${chunkIdx+1} failed). <button id="resumeBtn" class="resume-btn">Resume</button></span>\`;
           sendBtn.disabled = true;
@@ -932,8 +994,7 @@ function getUploadHTML(): string {
           paused = false;
           statusDiv.innerHTML = \`Resuming...\`;
           sendBtn.disabled = true;
-          // Retry this chunk again
-          index--; // put it back
+          index--;
           continue;
         }
         if (complete) break;
@@ -955,7 +1016,6 @@ function getUploadHTML(): string {
       statusDiv.textContent = \`Preparing file \${i+1} of \${files.length}: \${files[i].name}\`;
       await uploadFile(files[i].file);
       if (i < files.length - 1) {
-        // reset progress bar for next file
         progressFill.style.width = '0%';
         await new Promise(r => setTimeout(r, 500));
       }
@@ -976,7 +1036,6 @@ function getUploadHTML(): string {
     progressFill.style.width = '0%';
 
     try {
-      // Image only
       if (pastedImageData && fileEntries.length === 0) {
         const base64 = pastedImageData.split(',')[1];
         const filename = 'screenshot-' + new Date().toISOString().replace(/[:.]/g, '-') + '.png';
@@ -998,7 +1057,6 @@ function getUploadHTML(): string {
         return;
       }
 
-      // Text only (no files)
       const text = pasteArea.innerText.trim();
       if (fileEntries.length === 0 && text && !pastedImageData) {
         const content = btoa(unescape(encodeURIComponent(text)));
@@ -1020,7 +1078,6 @@ function getUploadHTML(): string {
         return;
       }
 
-      // Files
       await uploadMultipleFiles(fileEntries);
       statusDiv.innerHTML = getSuccessIcon() + ' All files sent!';
       fileEntries = [];
@@ -1040,7 +1097,6 @@ function getUploadHTML(): string {
     }
   });
 
-  // GSAP animation
   window.addEventListener('load', () => {
     gsap.timeline()
       .from('.logo', { opacity: 0, y: -20, duration: 0.5 })
