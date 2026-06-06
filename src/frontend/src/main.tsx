@@ -9,15 +9,30 @@ import "./styles/themes.css";
 import { initTheme } from './themeInit';
 
 const container = document.getElementById("root");
-initTheme();  // ✅ initialise theme once, before React renders
-const root = ReactDOM.createRoot(container!);
+if (!container) {
+  throw new Error("Root element not found – check index.html");
+}
 
-initI18n().then(() => {
-  root.render(
-    <React.StrictMode>
-      <I18nextProvider i18n={i18next}>
-        <App />
-      </I18nextProvider>
-    </React.StrictMode>
-  );
-});
+initTheme();
+const root = ReactDOM.createRoot(container);
+
+initI18n()
+  .then(() => {
+    root.render(
+      <React.StrictMode>
+        <I18nextProvider i18n={i18next}>
+          <App />
+        </I18nextProvider>
+      </React.StrictMode>
+    );
+  })
+  .catch((err) => {
+    console.error("i18n initialization failed, rendering without translations:", err);
+    root.render(
+      <React.StrictMode>
+        <I18nextProvider i18n={i18next}>
+          <App />
+        </I18nextProvider>
+      </React.StrictMode>
+    );
+  });
