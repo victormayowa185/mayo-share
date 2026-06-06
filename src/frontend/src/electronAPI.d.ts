@@ -1,4 +1,4 @@
-export {};
+export { };
 
 interface FolderFile {
   absolute: string;
@@ -30,7 +30,7 @@ declare global {
         output?: string;
         error?: string;
       }>;
-     onDownloadUpdate: (callback: (data: { event: string; fileName: string; clientIp?: string }) => void) => () => void;
+      onDownloadUpdate: (callback: (data: { event: string; fileName: string; clientIp?: string }) => void) => () => void;
       getPlatform: () => Promise<string>;
       launchHardwareWizard: () => Promise<{ success: boolean; error?: string }>;
       submitRating: (data: {
@@ -61,9 +61,6 @@ declare global {
       ) => Promise<string>;
       stopFileServer: () => Promise<void>;
       getFileSize: (filePath: string) => Promise<number>;
-      onDownloadUpdate: (
-        callback: (data: { event: string; fileName: string }) => void,
-      ) => void;
 
       // Upload server (Receive from Browser)
       startUploadServer: () => Promise<string>;
