@@ -7,6 +7,8 @@
   "browse": "Parcourir",
   "save": "Enregistrer",
   "cancel": "Annuler",
+  "deviceNameRequired": "Le nom de l'appareil ne peut pas être vide",
+  "deviceNameUpdated": "Nom de l'appareil mis à jour",
   "saveFolderUpdated": "Dossier de sauvegarde mis à jour.",
   "saveFailed": "Échec de l'enregistrement",
   "deviceName": "Nom de l'appareil",

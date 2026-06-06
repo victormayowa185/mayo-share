@@ -10,6 +10,8 @@
   "saveFolderUpdated": "محفوظ کرنے کا فولڈر اپ ڈیٹ ہو گیا۔",
   "saveFailed": "محفوظ کرنے میں ناکامی",
   "deviceName": "آلے کا نام",
+  "deviceNameRequired": "ڈیوائس کا نام خالی نہیں ہو سکتا",
+  "deviceNameUpdated": "ڈیوائس کا نام اپ ڈیٹ کر دیا گیا",
   "deviceNameDesc": "یہ نام پروفائل مینو اور دیگر جگہوں پر ظاہر ہوگا۔",
   "changeDeviceName": "آلے کا نام تبدیل کریں",
   "about": "بارے میں",

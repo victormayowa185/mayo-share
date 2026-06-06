@@ -7,6 +7,8 @@
   "browse": "Navegar",
   "save": "Salvar",
   "cancel": "Cancelar",
+  "deviceNameRequired": "O nome do dispositivo não pode estar vazio",
+  "deviceNameUpdated": "Nome do dispositivo atualizado",
   "saveFolderUpdated": "Pasta de salvamento atualizada.",
   "saveFailed": "Falha ao salvar",
   "deviceName": "Nome do dispositivo",

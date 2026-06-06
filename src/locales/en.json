@@ -228,5 +228,7 @@
   "dark": "Dark",
   "rateXStars": "Rate {{count}} stars",
   "connectedTo": "Connected to {{ssid}}",
-  "hotspotActive": "Hotspot active · {{ip}}"
+  "hotspotActive": "Hotspot active · {{ip}}",
+  "deviceNameRequired": "Device name cannot be empty",
+  "deviceNameUpdated": "Device name updated"
 }

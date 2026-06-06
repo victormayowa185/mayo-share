@@ -10,6 +10,8 @@
   "saveFolderUpdated": "सेव फ़ोल्डर अपडेट किया गया।",
   "saveFailed": "सहेजने में विफल",
   "deviceName": "डिवाइस का नाम",
+  "deviceNameRequired": "डिवाइस का नाम खाली नहीं हो सकता",
+  "deviceNameUpdated": "डिवाइस का नाम अपडेट किया गया",
   "deviceNameDesc": "यह नाम प्रोफ़ाइल मेनू और अन्य जगहों पर दिखाई देगा।",
   "changeDeviceName": "डिवाइस का नाम बदलें",
   "about": "के बारे में",

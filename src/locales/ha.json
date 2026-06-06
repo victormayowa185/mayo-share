@@ -1,5 +1,7 @@
 {
     "rateXStars": "Kimanta taurari {{count}}",
     "connectedTo": "An haɗa zuwa {{ssid}}",
-    "hotspotActive": "Wurin zafi yana aiki · {{ip}}"
+    "hotspotActive": "Wurin zafi yana aiki · {{ip}}",
+    "deviceNameRequired": "Sunan na'urar ba zai iya zama fanko ba",
+    "deviceNameUpdated": "An sabunta sunan na'urar"
 }

@@ -199,5 +199,7 @@
   "dark": "Òkunkun",
   "rateXStars": "Ṣe àmì {{count}} ìràwọ̀",
   "connectedTo": "Ti a so pọ̀ mọ́ {{ssid}}",
-  "hotspotActive": "Hotspot n ṣiṣẹ́ · {{ip}}"
+  "hotspotActive": "Hotspot n ṣiṣẹ́ · {{ip}}",
+  "deviceNameRequired": "Orukọ ẹrọ ko ṣofo",
+  "deviceNameUpdated": "Orukọ ẹrọ ti ṣe imudojuiwọn"
 }

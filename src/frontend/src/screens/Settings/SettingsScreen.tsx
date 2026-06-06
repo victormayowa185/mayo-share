@@ -28,33 +28,35 @@ const SettingsScreen: React.FC<Props> = ({ onBack }) => {
 
   const cardsRef = useRef<HTMLDivElement>(null);
 
+  // GSAP animation with cleanup
   useGSAP(() => {
     if (cardsRef.current) {
-      const cards = cardsRef.current.querySelectorAll(`.${styles.card}`);
-      gsap.fromTo(
-        cards,
-        { opacity: 0, y: 20 },
-        {
-          opacity: 1,
-          y: 0,
-          duration: 0.35,
-          stagger: 0.1,
-          ease: "power2.out",
-        },
-      );
+      const ctx = gsap.context(() => {
+        const cards = cardsRef.current!.querySelectorAll(`.${styles.card}`);
+        gsap.fromTo(
+          cards,
+          { opacity: 0, y: 20 },
+          {
+            opacity: 1,
+            y: 0,
+            duration: 0.35,
+            stagger: 0.1,
+            ease: "power2.out",
+          }
+        );
+      });
+      return () => ctx.revert();
     }
   }, []);
 
-  // Load saved theme mode from localStorage (single source of truth)
   useEffect(() => {
-    const saved = getTheme(); // uses the shared function
+    const saved = getTheme();
     setThemeMode(saved);
   }, []);
 
-  // Handle theme change – uses the shared applyTheme
   const handleThemeChange = (mode: "system" | "light" | "dark") => {
     setThemeMode(mode);
-    applyTheme(mode); // updates localStorage and data-theme attribute
+    applyTheme(mode);
   };
 
   useEffect(() => {
@@ -104,6 +106,23 @@ const SettingsScreen: React.FC<Props> = ({ onBack }) => {
     }
   };
 
+  const handleDeviceNameSave = async () => {
+    if (!editDeviceName.trim()) {
+      setStatus(t("deviceNameRequired"));
+      setTimeout(() => setStatus(""), 2000);
+      return;
+    }
+    try {
+      await window.electronAPI.setDeviceName(editDeviceName);
+      setDeviceName(editDeviceName);
+      setEditingDevice(false);
+      setStatus(t("deviceNameUpdated"));
+      setTimeout(() => setStatus(""), 2000);
+    } catch (err: any) {
+      setStatus(t("saveFailed") + ": " + err.message);
+    }
+  };
+
   return (
     <div className={styles.container}>
       <BackButton onClick={onBack} />
@@ -133,14 +152,7 @@ const SettingsScreen: React.FC<Props> = ({ onBack }) => {
                 placeholder="My Laptop"
               />
               <div className={styles.editButtons}>
-                <button
-                  className={styles.btn}
-                  onClick={async () => {
-                    await window.electronAPI.setDeviceName(editDeviceName);
-                    setDeviceName(editDeviceName);
-                    setEditingDevice(false);
-                  }}
-                >
+                <button className={styles.btn} onClick={handleDeviceNameSave}>
                   {t("save")}
                 </button>
                 <button

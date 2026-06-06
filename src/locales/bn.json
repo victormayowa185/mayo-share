@@ -7,6 +7,8 @@
   "browse": "ব্রাউজ করুন",
   "save": "সংরক্ষণ করুন",
   "cancel": "বাতিল করুন",
+  "deviceNameRequired": "ডিভাইসের নাম খালি রাখা যাবে না",
+  "deviceNameUpdated": "ডিভাইসের নাম আপডেট করা হয়েছে",
   "saveFolderUpdated": "সংরক্ষণ ফোল্ডার আপডেট করা হয়েছে।",
   "saveFailed": "সংরক্ষণ ব্যর্থ হয়েছে",
   "deviceName": "ডিভাইসের নাম",

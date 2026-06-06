@@ -7,6 +7,8 @@
   "browse": "Examinar",
   "save": "Guardar",
   "cancel": "Cancelar",
+  "deviceNameRequired": "El nombre del dispositivo no puede estar vacío",
+  "deviceNameUpdated": "Nombre del dispositivo actualizado",
   "saveFolderUpdated": "Carpeta de guardado actualizada.",
   "saveFailed": "Error al guardar",
   "deviceName": "Nombre del dispositivo",
