@@ -149,8 +149,12 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
         delete n[id];
         return n;
       });
-      // Cleanup speed tracking
-      delete receiveSpeeds[id];
+      // Cleanup speed tracking – use setter for state
+      setReceiveSpeeds((prev) => {
+        const newSpeeds = { ...prev };
+        delete newSpeeds[id];
+        return newSpeeds;
+      });
       delete lastRecvBytesRef.current[id];
       delete lastRecvTimeRef.current[id];
     }
@@ -386,18 +390,19 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
     return () => document.removeEventListener("paste", handlePaste as any);
   }, [handlePaste]);
 
+  // ✅ Only one useEffect for listeners (with cleanup)
   useEffect(() => {
-    window.electronAPI.onDeviceFound(
-      (device: { name: string; host: string; port: number }) => {
-        setDiscoveredDevices((prev) => [...prev, device]);
-      },
-    );
+    let cleanupDevice: (() => void) | undefined;
+    let cleanupAnswer: (() => void) | undefined;
 
-    window.electronAPI.onAnswerReceived(async (answerSDP: string) => {
+    const deviceHandler = (device: { name: string; host: string; port: number }) => {
+      setDiscoveredDevices((prev) => [...prev, device]);
+    };
+    const answerHandler = async (answerSDP: string) => {
       if (localPC.current) {
         try {
           await localPC.current.setRemoteDescription(
-            new RTCSessionDescription({ type: "answer", sdp: answerSDP }),
+            new RTCSessionDescription({ type: "answer", sdp: answerSDP })
           );
           setSessionStatus(t("dataChannelOpen"));
           showFileArea();
@@ -405,10 +410,19 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
           setSessionStatus(t("invalidAnswer", { message: err.message }));
         }
       }
-    });
+    };
 
-    return () => {};
-  }, []);
+    const maybeCleanupDevice = window.electronAPI.onDeviceFound(deviceHandler);
+    const maybeCleanupAnswer = window.electronAPI.onAnswerReceived(answerHandler);
+
+    if (typeof maybeCleanupDevice === "function") cleanupDevice = maybeCleanupDevice;
+    if (typeof maybeCleanupAnswer === "function") cleanupAnswer = maybeCleanupAnswer;
+
+    return () => {
+      if (cleanupDevice) cleanupDevice();
+      if (cleanupAnswer) cleanupAnswer();
+    };
+  }, [t, showFileArea]);
 
   const sendAll = async () => {
     if (!localDC.current || localDC.current.readyState !== "open") {
@@ -520,8 +534,12 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
 
         localDC.current.send(JSON.stringify({ type: "file-end", id: file.id }));
         await window.electronAPI.clearResumeState(file.id);
-        // Cleanup speed tracking
-        delete sendSpeeds[file.id];
+        // Cleanup speed tracking – use setter for state
+        setSendSpeeds((prev) => {
+          const newSpeeds = { ...prev };
+          delete newSpeeds[file.id];
+          return newSpeeds;
+        });
         delete lastSendBytesRef.current[file.id];
         delete lastSendTimeRef.current[file.id];
       }
@@ -652,35 +670,35 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
                   onClick={async () => {
                     setBrowsing(false);
                     try {
-                      const response = await fetch(
-                        `http://${dev.host}:${dev.port}/sdp`,
-                      );
+                      const response = await fetch(`http://${dev.host}:${dev.port}/sdp`);
                       const offerSDP = await response.text();
                       setOfferInput(offerSDP);
-                      // Reuse existing peer connection (created in processOffer)
+
+                      // Create a new peer connection if none exists
                       if (!localPC.current) {
-                        console.error("No peer connection available");
-                        return;
-                      }
-                      const pc = localPC.current;
-                      pc.ondatachannel = (event) => {
-                        const dc = event.channel;
-                        localDC.current = dc;
-                        dc.onopen = () => {
-                          setSessionStatus(t("dataChannelOpen"));
-                          showFileArea();
+                        const pc = new RTCPeerConnection({ iceServers: [] });
+                        localPC.current = pc;
+                        pc.ondatachannel = (event) => {
+                          const dc = event.channel;
+                          localDC.current = dc;
+                          dc.onopen = () => {
+                            setSessionStatus(t("dataChannelOpen"));
+                            showFileArea();
+                          };
+                          dc.onmessage = (e) => handleDCMessage(e.data);
                         };
-                        dc.onmessage = (e) => handleDCMessage(e.data);
-                      };
+                      }
+
+                      const pc = localPC.current;
                       const offer = await window.electronAPI.decompressSDP(offerSDP);
                       await pc.setRemoteDescription(
-                        new RTCSessionDescription({ type: "offer", sdp: offer }),
+                        new RTCSessionDescription({ type: "offer", sdp: offer })
                       );
                       const answer = await pc.createAnswer();
                       await pc.setLocalDescription(answer);
                       await waitForICE(pc);
                       const compactAnswer = await window.electronAPI.compressSDP(
-                        pc.localDescription!.sdp,
+                        pc.localDescription!.sdp
                       );
                       setAnswerCode(compactAnswer);
                       const qrData = await QRCode.toDataURL(compactAnswer, {
@@ -693,9 +711,7 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
                         body: compactAnswer,
                       });
                     } catch (err: any) {
-                      setSessionStatus(
-                        t("errorOccurred", { message: err.message }),
-                      );
+                      setSessionStatus(t("errorOccurred", { message: err.message }));
                     }
                   }}
                 >
