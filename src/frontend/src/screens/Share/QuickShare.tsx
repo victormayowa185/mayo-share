@@ -55,17 +55,9 @@ const QuickShare: React.FC<Props> = ({ onBack, shareIP }) => {
   const [editingFileId, setEditingFileId] = useState<string | null>(null);
   const [editContent, setEditContent] = useState("");
   const [isSharing, setIsSharing] = useState(false);
-  const [messageText, setMessageText] = useState("");
   const [copied, setCopied] = useState(false);
-  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(
-    new Set(),
-  );
+  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
   const [allExpanded, setAllExpanded] = useState(false);
-
-  // Speed tracking
-  const [uploadSpeed, setUploadSpeed] = useState<number | null>(null);
-  const lastBytesRef = useRef<number>(0);
-  const speedIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const shareLayoutRef = useRef<HTMLDivElement>(null);
   const fileListRef = useRef<HTMLDivElement>(null);
@@ -78,38 +70,40 @@ const QuickShare: React.FC<Props> = ({ onBack, shareIP }) => {
     };
   }, []);
 
-  // Listen for download events
- useEffect(() => {
-  const handleDownloadUpdate = (data: any) => {
-    if (data.event === "started") {
-      setFiles((prev) =>
-        prev.map((f) =>
-          f.name === data.fileName ? { ...f, downloadStatus: "downloading" } : f
-        )
-      );
-    } else if (data.event === "completed") {
-      setFiles((prev) =>
-        prev.map((f) =>
-          f.name === data.fileName ? { ...f, downloadStatus: "done" } : f
-        )
-      );
-      if (data.clientIp) {
-        setDownloadIps((prev) => {
-          const newMap = new Map(prev);
-          const existing = newMap.get(data.fileName) || new Set<string>();
-          existing.add(data.clientIp);
-          newMap.set(data.fileName, existing);
-          return newMap;
-        });
+  // Listen for download events – with cleanup
+  useEffect(() => {
+    const handleDownloadUpdate = (data: any) => {
+      if (data.event === "started") {
+        setFiles((prev) =>
+          prev.map((f) =>
+            f.name === data.fileName ? { ...f, downloadStatus: "downloading" } : f
+          )
+        );
+      } else if (data.event === "completed") {
+        setFiles((prev) =>
+          prev.map((f) =>
+            f.name === data.fileName ? { ...f, downloadStatus: "done" } : f
+          )
+        );
+        if (data.clientIp) {
+          setDownloadIps((prev) => {
+            const newMap = new Map(prev);
+            const existing = newMap.get(data.fileName) || new Set<string>();
+            existing.add(data.clientIp);
+            newMap.set(data.fileName, existing);
+            return newMap;
+          });
+        }
       }
-    }
-  };
+    };
 
-  // Subscribe – no need to store unsubscribe because the API doesn't return one
-  window.electronAPI.onDownloadUpdate(handleDownloadUpdate);
+    // Assume the API returns an unsubscribe function; if not, adjust accordingly
+    const cleanup = window.electronAPI.onDownloadUpdate(handleDownloadUpdate);
+    return () => {
+      if (typeof cleanup === "function") cleanup();
+    };
+  }, []);
 
-  // No cleanup (listener lives for component lifetime)
-}, []);
   // Ctrl+V paste handler
   const handlePaste = useCallback(
     async (e: ClipboardEvent) => {
@@ -127,7 +121,7 @@ const QuickShare: React.FC<Props> = ({ onBack, shareIP }) => {
           const filePath = (f as any).path;
           if (filePath) {
             newFiles.push({
-              id: Date.now().toString() + Math.random(),
+              id: crypto.randomUUID(),
               path: filePath,
               relativePath: f.name,
               name: f.name,
@@ -144,7 +138,7 @@ const QuickShare: React.FC<Props> = ({ onBack, shareIP }) => {
 
       // Case 2: image
       const imageItem = Array.from(clipboard.items).find((item) =>
-        item.type.startsWith("image/"),
+        item.type.startsWith("image/")
       );
       if (imageItem) {
         const blob = imageItem.getAsFile();
@@ -154,15 +148,12 @@ const QuickShare: React.FC<Props> = ({ onBack, shareIP }) => {
             const base64 = (reader.result as string).split(",")[1];
             const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
             const fileName = `screenshot-${timestamp}.png`;
-            const savedPath = await window.electronAPI.saveTempFile(
-              fileName,
-              base64,
-            );
+            const savedPath = await window.electronAPI.saveTempFile(fileName, base64);
             const size = blob.size;
             setFiles((prev) => [
               ...prev,
               {
-                id: Date.now().toString() + Math.random(),
+                id: crypto.randomUUID(),
                 path: savedPath,
                 relativePath: fileName,
                 name: fileName,
@@ -182,15 +173,12 @@ const QuickShare: React.FC<Props> = ({ onBack, shareIP }) => {
         const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
         const fileName = `pasted-text-${timestamp}.txt`;
         const base64 = btoa(unescape(encodeURIComponent(text)));
-        const savedPath = await window.electronAPI.saveTempFile(
-          fileName,
-          base64,
-        );
+        const savedPath = await window.electronAPI.saveTempFile(fileName, base64);
         const size = new Blob([text]).size;
         setFiles((prev) => [
           ...prev,
           {
-            id: Date.now().toString() + Math.random(),
+            id: crypto.randomUUID(),
             path: savedPath,
             relativePath: fileName,
             name: fileName,
@@ -200,7 +188,7 @@ const QuickShare: React.FC<Props> = ({ onBack, shareIP }) => {
         ]);
       }
     },
-    [isSharing],
+    [isSharing]
   );
 
   useEffect(() => {
@@ -212,17 +200,14 @@ const QuickShare: React.FC<Props> = ({ onBack, shareIP }) => {
     const paths = await window.electronAPI.selectFile();
     if (!paths) return;
     const newFiles: FileEntry[] = await Promise.all(
-      paths.map(async (p) => {
-        const name = p.split("\\").pop() || p;
-        return {
-          id: Date.now().toString() + Math.random(),
-          path: p,
-          relativePath: name,
-          name,
-          size: await window.electronAPI.getFileSize(p),
-          downloadStatus: "idle" as const,
-        };
-      }),
+      paths.map(async (p) => ({
+        id: crypto.randomUUID(),
+        path: p,
+        relativePath: p.split("\\").pop() || p,
+        name: p.split("\\").pop() || p,
+        size: await window.electronAPI.getFileSize(p),
+        downloadStatus: "idle" as const,
+      }))
     );
     setFiles((prev) => [...prev, ...newFiles]);
   };
@@ -231,17 +216,14 @@ const QuickShare: React.FC<Props> = ({ onBack, shareIP }) => {
     const folderFiles = await window.electronAPI.selectFolder();
     if (!folderFiles) return;
     const newFiles: FileEntry[] = await Promise.all(
-      folderFiles.map(async (f) => {
-        const name = f.absolute.split("\\").pop() || f.relative;
-        return {
-          id: Date.now().toString() + Math.random(),
-          path: f.absolute,
-          relativePath: f.relative,
-          name,
-          size: await window.electronAPI.getFileSize(f.absolute),
-          downloadStatus: "idle" as const,
-        };
-      }),
+      folderFiles.map(async (f) => ({
+        id: crypto.randomUUID(),
+        path: f.absolute,
+        relativePath: f.relative,
+        name: f.absolute.split("\\").pop() || f.relative,
+        size: await window.electronAPI.getFileSize(f.absolute),
+        downloadStatus: "idle" as const,
+      }))
     );
     setFiles((prev) => [...prev, ...newFiles]);
   };
@@ -264,8 +246,8 @@ const QuickShare: React.FC<Props> = ({ onBack, shareIP }) => {
       await window.electronAPI.writeTextFile(file.path, editContent);
       setFiles((prev) =>
         prev.map((f) =>
-          f.id === file.id ? { ...f, size: new Blob([editContent]).size } : f,
-        ),
+          f.id === file.id ? { ...f, size: new Blob([editContent]).size } : f
+        )
       );
       setEditingFileId(null);
       setEditContent("");
@@ -308,9 +290,7 @@ const QuickShare: React.FC<Props> = ({ onBack, shareIP }) => {
       setExpandedFolders(new Set());
       setAllExpanded(false);
     } else {
-      const allFolders = fileGroups
-        .filter((g) => g.folderName !== "")
-        .map((g) => g.folderName);
+      const allFolders = fileGroups.filter((g) => g.folderName !== "").map((g) => g.folderName);
       setExpandedFolders(new Set(allFolders));
       setAllExpanded(true);
     }
@@ -320,34 +300,26 @@ const QuickShare: React.FC<Props> = ({ onBack, shareIP }) => {
     if (files.length === 0) return;
     try {
       const payload = files.map((f) =>
-        f.relativePath !== f.name
-          ? { absolute: f.path, relative: f.relativePath }
-          : f.path,
+        f.relativePath !== f.name ? { absolute: f.path, relative: f.relativePath } : f.path
       );
-      const url = await window.electronAPI.startFileServer(payload, shareIP);
+      // Ensure we have a valid IP – fallback to local IP if shareIP is empty
+      let ip = shareIP;
+      if (!ip) {
+        ip = await window.electronAPI.getLocalIP();
+        if (!ip) ip = undefined;
+      }
+      const url = await window.electronAPI.startFileServer(payload, ip);
       setShareUrl(url);
       setIsSharing(true);
 
-      // Directly detect theme from data-theme attribute (reliable fix)
-      const isDarkMode = document.documentElement.getAttribute('data-theme') === 'dark';
-      const qrLightColor = isDarkMode ? '#0A0A0A' : '#FFFFFF';
-
+      const isDarkMode = document.documentElement.getAttribute("data-theme") === "dark";
+      const qrLightColor = isDarkMode ? "#0A0A0A" : "#FFFFFF";
       const qrData = await QRCode.toDataURL(url, {
         width: 220,
         margin: 2,
         color: { dark: "#b169e0", light: qrLightColor },
       });
       setQrDataUrl(qrData);
-
-      // Reset speed tracking
-      setUploadSpeed(null);
-      lastBytesRef.current = 0;
-      if (speedIntervalRef.current) clearInterval(speedIntervalRef.current);
-      speedIntervalRef.current = setInterval(() => {
-        // Note: resumable is defined later in the HTML, but we cannot access it here.
-        // The speed calculation needs to be done in the Resumable progress handler.
-        // We'll move speed calculation there.
-      }, 1000);
     } catch (err: any) {
       alert("Error: " + err.message);
     }
@@ -361,12 +333,6 @@ const QuickShare: React.FC<Props> = ({ onBack, shareIP }) => {
     setIsSharing(false);
     setCopied(false);
     setFiles((prev) => prev.map((f) => ({ ...f, downloadStatus: "idle" })));
-    if (speedIntervalRef.current) {
-      clearInterval(speedIntervalRef.current);
-      speedIntervalRef.current = null;
-    }
-    setUploadSpeed(null);
-    lastBytesRef.current = 0;
   };
 
   const copyLink = () => {
@@ -376,18 +342,18 @@ const QuickShare: React.FC<Props> = ({ onBack, shareIP }) => {
     });
   };
 
-  // ── GSAP animations (unchanged) ─────────────────────
+  // ── GSAP animations ─────────────────────────────────
   useGSAP(
     () => {
       if (isSharing && shareLayoutRef.current) {
         gsap.fromTo(
           shareLayoutRef.current,
           { opacity: 0, y: 20 },
-          { opacity: 1, y: 0, duration: 0.4, ease: "power2.out" },
+          { opacity: 1, y: 0, duration: 0.4, ease: "power2.out" }
         );
       }
     },
-    { dependencies: [isSharing] },
+    { dependencies: [isSharing] }
   );
 
   useGSAP(
@@ -402,11 +368,11 @@ const QuickShare: React.FC<Props> = ({ onBack, shareIP }) => {
             stagger: 0.03,
             duration: 0.3,
             ease: "power2.out",
-          },
+          }
         );
       }
     },
-    { dependencies: [files, isSharing] },
+    { dependencies: [files, isSharing] }
   );
 
   useEffect(() => {
@@ -465,7 +431,6 @@ const QuickShare: React.FC<Props> = ({ onBack, shareIP }) => {
 
   const [isDragging, setIsDragging] = useState(false);
 
-  // Drag‑and‑drop handlers
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -490,15 +455,15 @@ const QuickShare: React.FC<Props> = ({ onBack, shareIP }) => {
     const newFiles: FileEntry[] = [];
     for (let i = 0; i < droppedFiles.length; i++) {
       const f = droppedFiles[i];
-      const filePath = (f as any).path; // Electron exposes the full path
+      const filePath = (f as any).path;
       if (filePath) {
         const name = f.name || filePath.split("\\").pop() || filePath;
         let size = f.size;
         try {
           size = await window.electronAPI.getFileSize(filePath);
-        } catch { }
+        } catch {}
         newFiles.push({
-          id: Date.now().toString() + Math.random(),
+          id: crypto.randomUUID(),
           path: filePath,
           relativePath: name,
           name,
@@ -538,14 +503,14 @@ const QuickShare: React.FC<Props> = ({ onBack, shareIP }) => {
               opacity: 1,
               duration: 0.3,
               ease: "power2.out",
-            },
+            }
           );
         }
       });
     }
   };
 
-  // ── Render helpers (with translations) ──────────────
+  // ── Render helpers ──────────────────────────────
   const renderFileRow = (file: FileEntry) => (
     <div key={file.id} className={styles.fileRow}>
       {editingFileId === file.id ? (
@@ -574,9 +539,7 @@ const QuickShare: React.FC<Props> = ({ onBack, shareIP }) => {
           <span className={styles.fileRowName}>{file.name}</span>
           <span className={styles.fileRowSize}>{formatBytes(file.size)}</span>
           <span className={styles.fileRowStatus}>
-            {file.downloadStatus === "downloading" && (
-              <div className={styles.miniSpinner} />
-            )}
+            {file.downloadStatus === "downloading" && <div className={styles.miniSpinner} />}
             {file.downloadStatus === "done" && (
               <div className={styles.downloadBadge} data-filename={file.name}>
                 <FaCheckCircle color="#4CAF50" size={16} />
@@ -631,8 +594,7 @@ const QuickShare: React.FC<Props> = ({ onBack, shareIP }) => {
             </span>
             <span className={styles.folderName}>{group.folderName}</span>
             <span className={styles.folderMeta}>
-              {t("fileCount", { count: group.files.length })} ·{" "}
-              {formatBytes(totalSize)}
+              {t("fileCount", { count: group.files.length })} · {formatBytes(totalSize)}
             </span>
           </div>
           <div
@@ -652,26 +614,6 @@ const QuickShare: React.FC<Props> = ({ onBack, shareIP }) => {
     });
   };
 
-  // Inject speed display into the status element (the status element is in the HTML generated by backend)
-  // We'll modify the status text inside the React component – the backend HTML is separate.
-  // Actually, the progress display is already in React's status element (the one with id "status").
-  // We can update it from React. But note that Resumable.js also updates #status.textContent.
-  // To avoid conflict, we'll use a custom status area in the React component.
-  // Since the backend HTML is static, we cannot easily modify it from React.
-  // Simpler: Remove the backend's status element? No, it's in the server-generated page.
-  // Alternative: Use a custom status display inside the React component, separate from the server's.
-  // But the server's page is only shown when sharing is active? Actually, the upload page is served by the backend,
-  // not the React frontend. So we cannot control that from React.
-  // Wait – QuickShare is the React component for the sender. The upload happens via the backend's HTML page.
-  // The `isSharing` state shows a different UI (the QR code + file list). The upload progress is handled by the backend HTML's Resumable.
-  // Therefore, we cannot display speed in the React component because the upload happens in the backend's page.
-  // This is a limitation. However, we can add a speed display in the backend's upload HTML (getUploadHTML in uploadServer.ts) – but that would require changing that HTML string.
-  // The optimization to add speed display is more complex and might be beyond scope. Let's skip it for now.
-
-  // For now, we'll not implement speed display in QuickShare because the upload UI is not in React.
-  // Instead, we'll focus on adding speed display in the backend's upload page (uploadServer.ts) later.
-  // So no changes to this file for speed display.
-
   return (
     <div
       className={`${styles.container} ${isDragging ? styles.dragOver : ""}`}
@@ -690,7 +632,6 @@ const QuickShare: React.FC<Props> = ({ onBack, shareIP }) => {
         {isSharing ? t("shareLinkOrQR") : t("addFilesThenStart")}
       </p>
 
-      {/* File list – before sharing */}
       {files.length > 0 && !isSharing && (
         <div className={styles.fileList} ref={fileListRef}>
           {hasFolders && (
@@ -705,7 +646,6 @@ const QuickShare: React.FC<Props> = ({ onBack, shareIP }) => {
         </div>
       )}
 
-      {/* Action buttons — before sharing */}
       {!isSharing && (
         <div className={styles.actionRow}>
           <button className={styles.btn} onClick={addFiles}>
@@ -716,15 +656,13 @@ const QuickShare: React.FC<Props> = ({ onBack, shareIP }) => {
           </button>
           {files.length > 0 && (
             <button className={styles.shareBtn} onClick={startSharing}>
-              {t("startSharing")} ({files.length}{" "}
-              {t("fileCount", { count: files.length })}) —{" "}
+              {t("startSharing")} ({files.length} {t("fileCount", { count: files.length })}) —{" "}
               {formatBytes(files.reduce((sum, f) => sum + f.size, 0))}
             </button>
           )}
         </div>
       )}
 
-      {/* Sharing panel: two‑column layout */}
       {isSharing && (
         <div className={styles.shareLayout} ref={shareLayoutRef}>
           <div className={styles.fileColumn} ref={fileListRef}>
@@ -754,11 +692,7 @@ const QuickShare: React.FC<Props> = ({ onBack, shareIP }) => {
               <button className={styles.copyBtn} onClick={copyLink}>
                 {copied ? (
                   <>
-                    <FaCheckCircle
-                      style={{ marginRight: 4 }}
-                      color="#4CAF50"
-                      size={14}
-                    />{" "}
+                    <FaCheckCircle style={{ marginRight: 4 }} color="#4CAF50" size={14} />{" "}
                     {t("copied")}
                   </>
                 ) : (
