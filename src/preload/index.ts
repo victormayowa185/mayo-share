@@ -5,34 +5,54 @@ interface FolderFile {
   relative: string;
 }
 
+interface ActivityEntry {
+  type: string;
+  fileName: string;
+  timestamp: string;
+}
+
 contextBridge.exposeInMainWorld("electronAPI", {
   checkHotspotStatus: () => ipcRenderer.invoke("check-hotspot-status"),
   getWifiSSID: (): Promise<string | null> =>
     ipcRenderer.invoke("get-wifi-ssid"),
-  getActivity: (): Promise<any[]> => ipcRenderer.invoke("get-activity"),
-  onActivityUpdated: (callback: (entry: any) => void) => {
-    ipcRenderer.on("activity-updated", (_event, entry) => callback(entry));
+  getActivity: (): Promise<ActivityEntry[]> => ipcRenderer.invoke("get-activity"),
+
+  onActivityUpdated: (callback: (entry: ActivityEntry) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, entry: ActivityEntry) => callback(entry);
+    ipcRenderer.on("activity-updated", handler);
+    return () => ipcRenderer.removeListener("activity-updated", handler);
   },
-  onDeviceNameChanged: (callback: (name: string) => void) => {
-    ipcRenderer.on("device-name-changed", (_event, name) => callback(name));
+
+  onDeviceNameChanged: (callback: (name: string) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, name: string) => callback(name);
+    ipcRenderer.on("device-name-changed", handler);
+    return () => ipcRenderer.removeListener("device-name-changed", handler);
   },
-  onDownloadProgress: (
-  callback: (data: { fileName: string; percent: number }) => void,
-) => {
-  ipcRenderer.on("download-progress", (_event, data) => callback(data));
-},
+
+  onDownloadProgress: (callback: (data: { fileName: string; percent: number }) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, data: any) => callback(data);
+    ipcRenderer.on("download-progress", handler);
+    return () => ipcRenderer.removeListener("download-progress", handler);
+  },
+
   startFileServer: (files: (string | FolderFile)[], ip?: string, message?: string): Promise<string> =>
-  ipcRenderer.invoke("start-file-server", files, ip, message),
-  getPlatform: () => process.platform,
+    ipcRenderer.invoke("start-file-server", files, ip, message),
+
+  getPlatform: () => ipcRenderer.invoke("get-platform"),
+
   submitRating: (data: any) => ipcRenderer.invoke("submit-rating", data),
   getTranslations: (lang: string) =>
     ipcRenderer.invoke("get-translations", lang),
   launchHardwareWizard: () => ipcRenderer.invoke("launch-hardware-wizard"),
   setDeviceName: (name: string) => ipcRenderer.invoke("set-device-name", name),
   clearActivity: () => ipcRenderer.invoke("clear-activity"),
-  onActivityCleared: (callback: () => void) => {
-    ipcRenderer.on("activity-cleared", () => callback());
+
+  onActivityCleared: (callback: () => void): (() => void) => {
+    const handler = () => callback();
+    ipcRenderer.on("activity-cleared", handler);
+    return () => ipcRenderer.removeListener("activity-cleared", handler);
   },
+
   getLanguage: () => ipcRenderer.invoke("get-language"),
   setLanguage: (lang: string) => ipcRenderer.invoke("set-language", lang),
   getSavePath: () => ipcRenderer.invoke("get-save-path"),
@@ -51,20 +71,23 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.invoke("select-folder"),
 
   getLocalIP: (): Promise<string | null> => ipcRenderer.invoke("get-local-ip"),
+
   // ---------- Discovery (mDNS) ----------
   startAdvertising: (sdpOffer: string): Promise<number> =>
     ipcRenderer.invoke("start-advertising", sdpOffer),
   startBrowsing: (): Promise<void> => ipcRenderer.invoke("start-browsing"),
   stopDiscovery: (): Promise<void> => ipcRenderer.invoke("stop-discovery"),
-  onDeviceFound: (
-    callback: (device: { name: string; host: string; port: number }) => void,
-  ) => {
-    ipcRenderer.on("device-found", (_event, device) => callback(device));
+
+  onDeviceFound: (callback: (device: { name: string; host: string; port: number }) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, device: any) => callback(device);
+    ipcRenderer.on("device-found", handler);
+    return () => ipcRenderer.removeListener("device-found", handler);
   },
-  onAnswerReceived: (callback: (answerSDP: string) => void) => {
-    ipcRenderer.on("answer-received", (_event, answerSDP) =>
-      callback(answerSDP),
-    );
+
+  onAnswerReceived: (callback: (answerSDP: string) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, answerSDP: string) => callback(answerSDP);
+    ipcRenderer.on("answer-received", handler);
+    return () => ipcRenderer.removeListener("answer-received", handler);
   },
 
   approveSender: (sessionId: string) =>
@@ -72,29 +95,31 @@ contextBridge.exposeInMainWorld("electronAPI", {
   declineSender: (sessionId: string) =>
     ipcRenderer.invoke("decline-sender", sessionId),
 
-  // Listen for new pending senders
-  onSenderConnected: (
-    callback: (data: { sessionId: string; senderName: string }) => void,
-  ) => {
-    ipcRenderer.on("sender-connected", (_event, data) => callback(data));
+  onSenderConnected: (callback: (data: { sessionId: string; senderName: string; deviceType: string }) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, data: any) => callback(data);
+    ipcRenderer.on("sender-connected", handler);
+    return () => ipcRenderer.removeListener("sender-connected", handler);
   },
+
   stopFileServer: () => ipcRenderer.invoke("stop-file-server"),
   getFileSize: (filePath: string) =>
     ipcRenderer.invoke("get-file-size", filePath),
-  onDownloadUpdate: (
-    callback: (data: { event: string; fileName: string }) => void,
-  ) => {
-    ipcRenderer.on("download-update", (_event, data) => callback(data));
+
+  onDownloadUpdate: (callback: (data: { event: string; fileName: string; clientIp?: string }) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, data: any) => callback(data);
+    ipcRenderer.on("download-update", handler);
+    return () => ipcRenderer.removeListener("download-update", handler);
   },
 
   // ---------- Upload server (Receive from Browser) ----------
-  startUploadServer: (): Promise<string> =>
-    ipcRenderer.invoke("start-upload-server"),
+  startUploadServer: (ip?: string): Promise<string> =>
+    ipcRenderer.invoke("start-upload-server", ip),
   stopUploadServer: () => ipcRenderer.invoke("stop-upload-server"),
-  onUploadUpdate: (
-    callback: (data: { event: string; fileName: string }) => void,
-  ) => {
-    ipcRenderer.on("upload-update", (_event, data) => callback(data));
+
+  onUploadUpdate: (callback: (data: { event: string; fileName: string }) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, data: any) => callback(data);
+    ipcRenderer.on("upload-update", handler);
+    return () => ipcRenderer.removeListener("upload-update", handler);
   },
 
   compressSDP: (sdp: string) => ipcRenderer.invoke("compress-sdp", sdp),
