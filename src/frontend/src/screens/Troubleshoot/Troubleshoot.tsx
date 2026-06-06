@@ -33,10 +33,8 @@ const TroubleshootScreen: React.FC<Props> = ({ onBack }) => {
   const [diagnosisResult, setDiagnosisResult] = useState<NetworkDiagnosis | null>(null);
   const [diagnosisWorking, setDiagnosisWorking] = useState(false);
 
-  // Refs for GSAP
   const cardsRef = useRef<HTMLDivElement>(null);
 
-  // GSAP entrance animation – stagger cards into view
   useGSAP(() => {
     if (cardsRef.current) {
       const cards = cardsRef.current.querySelectorAll(`.${styles.card}`);
@@ -63,7 +61,6 @@ const TroubleshootScreen: React.FC<Props> = ({ onBack }) => {
         setFirewallStatus('success');
         setFirewallMessage(result.output || t('firewallRuleAdded'));
       } else {
-        // Check if it's a permission error
         if (result.error && result.error.includes('administrator')) {
           setFirewallStatus('needsAdmin');
           setFirewallMessage(t('runAsAdmin'));
@@ -159,7 +156,7 @@ const TroubleshootScreen: React.FC<Props> = ({ onBack }) => {
         </div>
 
         {/* ── Smart Fallback Advice ── */}
-        {diagnosisResult && diagnosisResult.profileCategory === 'Public' && (
+        {diagnosisResult && diagnosisResult.profileCategory?.toLowerCase() === 'public' && (
           <div className={styles.card}>
             <div className={styles.cardHeader}>
               <FaWrench size={20} color="#b169e0" />
