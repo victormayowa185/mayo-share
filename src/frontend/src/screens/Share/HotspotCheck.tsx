@@ -96,35 +96,56 @@ const HotspotCheck: React.FC<Props> = ({
         opacity: 0,
         y: -20,
         duration: 0.25,
-        onComplete: () => {
+        onComplete: async () => {
           setShowHotspotUI(true);
+          setRunning(true);
+          setErrorMessage("");
+          try {
+            const result = await window.electronAPI.startHotspot();
+            if (result.includes("SUCCESS")) {
+              setSuccess(true);
+              const ipMatch = result.match(/Hotspot IP \(for sharing\):\s*([\d.]+)/);
+              if (ipMatch && ipMatch[1]) {
+                const ip = ipMatch[1];
+                onHotspotStarted(ip);
+                onConnectionChange(t("hotspotActive", { ip }));
+              } else {
+                throw new Error("Could not determine hotspot IP");
+              }
+            } else {
+              setErrorMessage(t("hotspotFailed"));
+            }
+          } catch (err: any) {
+            setErrorMessage(t("errorOccurred") + ": " + (err.message || err));
+          } finally {
+            setRunning(false);
+          }
         },
       });
     } else {
       setShowHotspotUI(true);
-    }
-
-    setRunning(true);
-    setErrorMessage("");
-    try {
-      const result = await window.electronAPI.startHotspot();
-      if (result.includes("SUCCESS")) {
-        setSuccess(true);
-        const ipMatch = result.match(/Hotspot IP \(for sharing\):\s*([\d.]+)/);
-        if (ipMatch && ipMatch[1]) {
-          const ip = ipMatch[1];
-          onHotspotStarted(ip);
-          onConnectionChange(t("hotspotActive", { ip }));
+      setRunning(true);
+      setErrorMessage("");
+      try {
+        const result = await window.electronAPI.startHotspot();
+        if (result.includes("SUCCESS")) {
+          setSuccess(true);
+          const ipMatch = result.match(/Hotspot IP \(for sharing\):\s*([\d.]+)/);
+          if (ipMatch && ipMatch[1]) {
+            const ip = ipMatch[1];
+            onHotspotStarted(ip);
+            onConnectionChange(t("hotspotActive", { ip }));
+          } else {
+            throw new Error("Could not determine hotspot IP");
+          }
         } else {
-          throw new Error("Could not determine hotspot IP");
+          setErrorMessage(t("hotspotFailed"));
         }
-      } else {
-        setErrorMessage(t("hotspotFailed"));
+      } catch (err: any) {
+        setErrorMessage(t("errorOccurred") + ": " + (err.message || err));
+      } finally {
+        setRunning(false);
       }
-    } catch (err: any) {
-      setErrorMessage(t("errorOccurred") + ": " + (err.message || err));
-    } finally {
-      setRunning(false);
     }
   };
 
