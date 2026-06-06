@@ -17,6 +17,8 @@
   "platforms": "可用平台：",
   "platformsDetail": "Windows (64‑位) · macOS 即将推出 · Linux 即将推出",
   "author": "作者",
+  "connectedTo": "已连接到 {{ssid}}",
+  "hotspotActive": "热点已激活 · {{ip}}",
   "authorName": "Victor Mayowa",
   "rateXStars": "评 {{count}} 星",
   "contributions": "贡献",

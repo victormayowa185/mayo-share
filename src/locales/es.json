@@ -13,6 +13,8 @@
   "deviceNameDesc": "Este nombre aparecerá en el menú de perfil y en otros lugares.",
   "changeDeviceName": "Cambiar nombre del dispositivo",
   "about": "Acerca de",
+  "connectedTo": "Conectado a {{ssid}}",
+  "hotspotActive": "Punto de acceso activo · {{ip}}",
   "aboutDescription": "MAYO Share es una aplicación de transferencia de archivos sin conexión, gratuita y de código abierto para Windows. Te permite enviar y recibir archivos sin internet, usando tu Wi‑Fi local o un hotspot. Está diseñada para escuelas, oficinas y áreas remotas donde los datos son caros o no están disponibles.",
   "platforms": "Disponible en:",
   "platformsDetail": "Windows (64‑bits) · macOS próximamente · Linux próximamente",

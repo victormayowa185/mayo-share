@@ -192,10 +192,12 @@
   "activityDescription": "Àwọn gbigbe faili rẹ tuntun yoo hàn nibi.",
   "noRecentActivity": "Kò sí akisimila tuntun.",
   "clearHistory": "Mú Ìtàn Kúrò",
-"theme": "Akori",
-"themeDesc": "Yan bi app yoo ṣe ri.",
-"system": "Eto",
-"light": "Imọlẹ",
-"dark": "Òkunkun",
-"rateXStars": "Ṣe àmì {{count}} ìràwọ̀"
+  "theme": "Akori",
+  "themeDesc": "Yan bi app yoo ṣe ri.",
+  "system": "Eto",
+  "light": "Imọlẹ",
+  "dark": "Òkunkun",
+  "rateXStars": "Ṣe àmì {{count}} ìràwọ̀",
+  "connectedTo": "Ti a so pọ̀ mọ́ {{ssid}}",
+  "hotspotActive": "Hotspot n ṣiṣẹ́ · {{ip}}"
 }

@@ -1,3 +1,5 @@
 {
-    "rateXStars": "Nye {{count}} kpakpando"
+    "rateXStars": "Nye {{count}} kpakpando",
+    "connectedTo": "Ejikọrọ na {{ssid}}",
+"hotspotActive": "Ebe mgbanye ọkụ na-arụ ọrụ · {{ip}}"
 }

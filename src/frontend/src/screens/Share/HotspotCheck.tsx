@@ -10,7 +10,6 @@ import { useGSAP } from "@gsap/react";
 import BackButton from "../../components/BackButton";
 import styles from "../../styles/screens/HotspotCheck.module.css";
 
-// Register the hook so GSAP can clean up automatically
 gsap.registerPlugin(useGSAP);
 
 interface Props {
@@ -36,63 +35,62 @@ const HotspotCheck: React.FC<Props> = ({
   const [checkingNetwork, setCheckingNetwork] = useState(true);
   const [showHotspotUI, setShowHotspotUI] = useState(false);
 
-  // Refs for the two main containers
   const networkContainer = useRef<HTMLDivElement>(null);
   const hotspotContainer = useRef<HTMLDivElement>(null);
   const successContainer = useRef<HTMLDivElement>(null);
 
-  // Detect existing Wi‑Fi on mount
   useEffect(() => {
     const checkNetwork = async () => {
       try {
         const ip = await window.electronAPI.getLocalIP();
         if (ip) {
           setLocalIP(ip);
-          try {
-            const name = await window.electronAPI.getWifiSSID();
-            setSsid(name || "Wi-Fi");
-          } catch {
-            setSsid("Wi-Fi");
-          }
-          onConnectionChange(`Connected to ${ssid || "Wi-Fi"}`);
+          const name = await window.electronAPI.getWifiSSID();
+          const ssidName = name || "Wi-Fi";
+          setSsid(ssidName);
+          // Use i18n key instead of hardcoded string
+          onConnectionChange(t("connectedTo", { ssid: ssidName }));
         }
       } finally {
         setCheckingNetwork(false);
       }
     };
     checkNetwork();
-  }, []);
+  }, [onConnectionChange, t]);
 
-  // Animate in the hotspot UI when it appears
   useGSAP(
     () => {
       if (showHotspotUI && hotspotContainer.current) {
-        gsap.fromTo(
-          hotspotContainer.current,
-          { opacity: 0, y: 20 },
-          { opacity: 1, y: 0, duration: 0.35, ease: "power2.out" },
-        );
+        const ctx = gsap.context(() => {
+          gsap.fromTo(
+            hotspotContainer.current,
+            { opacity: 0, y: 20 },
+            { opacity: 1, y: 0, duration: 0.35, ease: "power2.out" }
+          );
+        });
+        return () => ctx.revert();
       }
     },
-    { dependencies: [showHotspotUI] },
+    { dependencies: [showHotspotUI] }
   );
 
-  // Animate in the success message when hotspot finishes
   useGSAP(
     () => {
       if (success && successContainer.current) {
-        gsap.fromTo(
-          successContainer.current,
-          { opacity: 0, scale: 0.95 },
-          { opacity: 1, scale: 1, duration: 0.35, ease: "back.out(1.4)" },
-        );
+        const ctx = gsap.context(() => {
+          gsap.fromTo(
+            successContainer.current,
+            { opacity: 0, scale: 0.95 },
+            { opacity: 1, scale: 1, duration: 0.35, ease: "back.out(1.4)" }
+          );
+        });
+        return () => ctx.revert();
       }
     },
-    { dependencies: [success] },
+    { dependencies: [success] }
   );
 
   const startHotspot = async () => {
-    // Animate out the network‑found UI if it's visible
     if (networkContainer.current) {
       gsap.to(networkContainer.current, {
         opacity: 0,
@@ -113,9 +111,13 @@ const HotspotCheck: React.FC<Props> = ({
       if (result.includes("SUCCESS")) {
         setSuccess(true);
         const ipMatch = result.match(/Hotspot IP \(for sharing\):\s*([\d.]+)/);
-        const ip = ipMatch && ipMatch[1] ? ipMatch[1] : "192.168.137.1";
-        onHotspotStarted(ip);
-        onConnectionChange(`Hotspot active · ${ip}`);
+        if (ipMatch && ipMatch[1]) {
+          const ip = ipMatch[1];
+          onHotspotStarted(ip);
+          onConnectionChange(t("hotspotActive", { ip }));
+        } else {
+          throw new Error("Could not determine hotspot IP");
+        }
       } else {
         setErrorMessage(t("hotspotFailed"));
       }
@@ -134,7 +136,6 @@ const HotspotCheck: React.FC<Props> = ({
     );
   }
 
-  // Existing network found – before switching to hotspot UI
   if (localIP && !showHotspotUI) {
     return (
       <div className={styles.container} ref={networkContainer}>
@@ -169,7 +170,6 @@ const HotspotCheck: React.FC<Props> = ({
     );
   }
 
-  // Hotspot UI (starting or started)
   return (
     <div className={styles.container} ref={hotspotContainer}>
       <BackButton onClick={onBack} />

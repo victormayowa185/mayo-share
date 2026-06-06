@@ -1,3 +1,5 @@
 {
-    "rateXStars": "Kimanta taurari {{count}}"
+    "rateXStars": "Kimanta taurari {{count}}",
+    "connectedTo": "An haɗa zuwa {{ssid}}",
+    "hotspotActive": "Wurin zafi yana aiki · {{ip}}"
 }

@@ -17,6 +17,8 @@
   "platforms": "دستیاب پلیٹ فارمز:",
   "platformsDetail": "ونڈوز (64‑بٹ) · macOS جلد آرہا ہے · Linux جلد آرہا ہے",
   "author": "مصنف",
+  "connectedTo": "{{ssid}} سے منسلک",
+  "hotspotActive": "ہاٹ سپاٹ فعال ہے · {{ip}}",
   "rateXStars": "{{count}} ستاروں کی درجہ بندی کریں",
   "authorName": "وکٹر مایووا",
   "contributions": "شراکتیں",

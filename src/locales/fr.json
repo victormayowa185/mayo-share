@@ -17,6 +17,8 @@
   "platforms": "Disponible sur :",
   "platformsDetail": "Windows (64‑bits) · macOS à venir · Linux à venir",
   "author": "Auteur",
+  "connectedTo": "Connecté à {{ssid}}",
+  "hotspotActive": "Point d'accès actif · {{ip}}",
   "rateXStars": "Notez {{count}} étoiles",
   "authorName": "Victor Mayowa",
   "contributions": "Contributions",

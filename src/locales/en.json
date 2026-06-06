@@ -213,15 +213,12 @@
   "step1Title": "Open Add Hardware Wizard",
   "step1Instruction": "Click the button below to open the Hardware Wizard. When the window opens, click the \"Action\" menu and select \"Add legacy hardware\". Then click \"Next\".",
   "step1Note": "The wizard will now guide you through installing the necessary loopback adapter.",
-
   "step2Title": "Select Hardware Type",
   "step2Instruction": "In the wizard, choose \"Install the hardware that I manually select from a list\" and click Next. Then select \"Network adapters\" and click Next again.",
   "step2Note": "The next screen will let you pick the specific network adapter.",
-
   "step3Title": "Select the Loopback Adapter",
   "step3Instruction": "In the Manufacturer list, choose \"Microsoft\". In the Model list, choose \"Microsoft KM-TEST Loopback Adapter\". Click Next, then Finish to install.",
   "step3Note": "The adapter will be installed automatically once you click Finish.",
-
   "chooseLanguage": "Choose your language",
   "continue": "Continue",
   "theme": "Theme",
@@ -229,5 +226,7 @@
   "system": "System",
   "light": "Light",
   "dark": "Dark",
-  "rateXStars": "Rate {{count}} stars"
+  "rateXStars": "Rate {{count}} stars",
+  "connectedTo": "Connected to {{ssid}}",
+  "hotspotActive": "Hotspot active · {{ip}}"
 }

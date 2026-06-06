@@ -6,6 +6,8 @@
   "changeFolder": "تغيير المجلد",
   "browse": "تصفح",
   "save": "حفظ",
+  "connectedTo": "متصل بـ {{ssid}}",
+  "hotspotActive": "نقطة الاتصال نشطة · {{ip}}",
   "rateXStars": "قيم {{count}} نجوم",
   "cancel": "إلغاء",
   "saveFolderUpdated": "تم تحديث مجلد الحفظ.",
