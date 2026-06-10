@@ -11,7 +11,7 @@
     "build:frontend": "vite build",
     "build": "npm run build:backend && npm run copy:locales && npm run build:preload && npm run build:frontend",
     "start": "npm run build && electron .",
-    "dist": "npm run build && electron-builder"
+    "dist": "npm run build && electron-builder"zz
   },
   "build": {
     "appId": "com.mayo.share",
