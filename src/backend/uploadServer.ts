@@ -259,6 +259,9 @@ export class UploadServer extends EventEmitter {
                 if (session) {
                   session.senderName = name;
                   if (deviceType) session.deviceType = deviceType;
+                  // ✅ Now we have the real name — update saveDir so files land in Sender-John not Sender-abc123
+                  const safeName = name.replace(/[^a-zA-Z0-9_\- ]/g, "").trim() || sessionId!;
+                  session.saveDir = path.join(RECEIVE_DIR, `Sender-${safeName}`);
                   this.emit("sender-connected", sessionId, name, session.deviceType);
                   this.broadcastAdminUpdate();
                   res.writeHead(200, { "Content-Type": "application/json" });
@@ -379,20 +382,12 @@ export class UploadServer extends EventEmitter {
                         const { createWriteStream } = await import("fs");
                         const writeStream = createWriteStream(finalPath);
 
-                        // OPTION 1: Parallel chunk reading (10 chunks in parallel for speed)
-                        const PARALLEL_READS = 10;
-                        for (let startIdx = 0; startIdx < totalChunks; startIdx += PARALLEL_READS) {
-                          const endIdx = Math.min(startIdx + PARALLEL_READS, totalChunks);
-                          const chunkPromises = [];
-
-                          for (let i = startIdx; i < endIdx; i++) {
-                            chunkPromises.push(fs.readFile(path.join(chunkDir, `chunk-${i}`)));
-                          }
-
-                          const chunkData = await Promise.all(chunkPromises);
-                          for (const data of chunkData) {
-                            writeStream.write(data);
-                          }
+                        // ✅ Read chunks in correct numeric order (0, 1, 2 ... not alphabetical)
+                        for (let i = 0; i < totalChunks; i++) {
+                          const data = await fs.readFile(path.join(chunkDir, `chunk-${i}`));
+                          await new Promise<void>((resolve, reject) => {
+                            writeStream.write(data, (err) => err ? reject(err) : resolve());
+                          });
                         }
 
                         writeStream.end();
