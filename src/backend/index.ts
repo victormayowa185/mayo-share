@@ -997,6 +997,9 @@ ipcMain.handle("select-save-folder", async (): Promise<string | null> => {
 });
 
 ipcMain.handle("ping", async () => "pong");
+ipcMain.handle("get-platform", async (): Promise<string> => {
+  return process.platform;
+});
 // ---------- Discovery (mDNS + signaling server) ----------
 let signalingServer: http.Server | null = null;
 let storedOfferSDP = "";
@@ -1034,7 +1037,7 @@ ipcMain.handle(
     await new Promise<void>((resolve) =>
       signalingServer!.listen(PORT, resolve),
     );
-    
+
     // ✅ Use the helper function that reads the device name from settings
     const deviceName = getDeviceName();   // <-- changed line
     discoveryManager.startAdvertising(deviceName, PORT);

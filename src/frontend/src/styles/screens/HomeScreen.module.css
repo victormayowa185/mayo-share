@@ -40,8 +40,8 @@
 /* Unified card styles (button + layout) */
 .card {
   /* Reset default button styles */
-  border: 1px solid #222;
-  background: var(--bg-card);
+  border: 1px solid var(--card-border);
+  background: var(--card-bg);
   font-family: inherit;
   cursor: pointer;
   text-align: center;
@@ -54,7 +54,7 @@
   border-radius: 16px;
   padding: 32px 24px;
   width: 100%;
-  max-width: 280px;
+  max-width: 240px;
   transition: border-color 0.2s, transform 0.1s;
 
   /* Use your existing variables */
@@ -62,8 +62,7 @@
 }
 
 .card:hover {
-  border-color: var(--home-card-hover-border);
-  transform: translateY(-2px);
+  transform: translateY(-4px);
 }
 
 .card:focus-visible {
