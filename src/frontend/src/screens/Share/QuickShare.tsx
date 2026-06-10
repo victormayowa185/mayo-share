@@ -196,10 +196,22 @@ const QuickShare: React.FC<Props> = ({ onBack, shareIP }) => {
     return () => document.removeEventListener("paste", handlePaste as any);
   }, [handlePaste]);
 
+  // ✅ Files that are incomplete/temp and should never be shared
+  const isInvalidFile = (name: string) => {
+    const lower = name.toLowerCase();
+    return (
+      lower.endsWith(".crdownload") ||   // Chrome partial download
+      lower.endsWith(".part") ||          // Firefox partial download
+      lower.endsWith(".tmp") ||           // temp files
+      lower.endsWith(".download") ||      // Safari partial download
+      lower.startsWith("~$")             // Office temp files
+    );
+  };
+
   const addFiles = async () => {
     const paths = await window.electronAPI.selectFile();
     if (!paths) return;
-    const newFiles: FileEntry[] = await Promise.all(
+    const allFiles: FileEntry[] = await Promise.all(
       paths.map(async (p) => ({
         id: crypto.randomUUID(),
         path: p,
@@ -209,7 +221,12 @@ const QuickShare: React.FC<Props> = ({ onBack, shareIP }) => {
         downloadStatus: "idle" as const,
       }))
     );
-    setFiles((prev) => [...prev, ...newFiles]);
+    const validFiles = allFiles.filter((f) => !isInvalidFile(f.name));
+    const skipped = allFiles.length - validFiles.length;
+    if (skipped > 0) {
+      alert(`${skipped} file(s) skipped — incomplete or temporary files cannot be shared.`);
+    }
+    setFiles((prev) => [...prev, ...validFiles]);
   };
 
   const addFolder = async () => {
@@ -462,14 +479,16 @@ const QuickShare: React.FC<Props> = ({ onBack, shareIP }) => {
         try {
           size = await window.electronAPI.getFileSize(filePath);
         } catch {}
-        newFiles.push({
-          id: crypto.randomUUID(),
-          path: filePath,
-          relativePath: name,
-          name,
-          size,
-          downloadStatus: "idle",
-        });
+        if (!isInvalidFile(name)) {
+          newFiles.push({
+            id: crypto.randomUUID(),
+            path: filePath,
+            relativePath: name,
+            name,
+            size,
+            downloadStatus: "idle",
+          });
+        }
       }
     }
     if (newFiles.length > 0) {

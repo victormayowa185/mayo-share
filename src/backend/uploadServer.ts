@@ -115,6 +115,17 @@ export class UploadServer extends EventEmitter {
           const url = req.url || "/";
           const method = req.method || "GET";
 
+          // ✅ Global CORS — required for mobile browsers (they send OPTIONS preflight)
+          res.setHeader("Access-Control-Allow-Origin", "*");
+          res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+          res.setHeader("Access-Control-Allow-Headers", "Content-Type, X-Requested-With");
+
+          if (method === "OPTIONS") {
+            res.writeHead(204);
+            res.end();
+            return;
+          }
+
           if (method === "GET" && url === "/favicon.ico") {
             res.writeHead(204);
             res.end();

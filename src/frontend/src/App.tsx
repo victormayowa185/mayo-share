@@ -34,6 +34,7 @@ export type Screen =
 
 const App: React.FC = () => {
   const [screen, setScreen] = useState<Screen>("home");
+  const [screenHistory, setScreenHistory] = useState<Screen[]>([]);
   const [setupComplete, setSetupComplete] = useState<boolean | null>(null);
   const [languageSet, setLanguageSet] = useState<boolean | null>(null);
   const [hotspotActive, setHotspotActive] = useState(false);
@@ -41,6 +42,26 @@ const App: React.FC = () => {
   const [connectedDevicesCount, setConnectedDevicesCount] = useState(0);
   const [connectionLabel, setConnectionLabel] = useState<string | null>(null);
   const [platform, setPlatform] = useState<string | null>(null);
+
+  // Navigate to a new screen, pushing current to history
+  const navigateTo = (next: Screen) => {
+    setScreenHistory((prev) => [...prev, screen]);
+    setScreen(next);
+  };
+
+  // Go back to previous screen in history, or home if empty
+  const navigateBack = () => {
+    setScreenHistory((prev) => {
+      if (prev.length === 0) {
+        setScreen("home");
+        return prev;
+      }
+      const history = [...prev];
+      const last = history.pop()!;
+      setScreen(last);
+      return history;
+    });
+  };
 
   // ❌ Theme logic completely removed – now handled by main.tsx (initTheme) and index.html inline script.
   // ❌ No applyTheme function, no theme useEffect here.
@@ -117,6 +138,7 @@ const App: React.FC = () => {
     } else {
       setSetupComplete(false);
     }
+    setScreenHistory([]);
     setScreen("home");
   };
 
@@ -168,20 +190,20 @@ const App: React.FC = () => {
       }}
     >
       <div style={{ flex: 1 }}>
-        <TopBar onNavigate={setScreen} />
+        <TopBar onNavigate={navigateTo} />
         {screen === "home" && (
           <HomeScreen
             currentScreen={screen}
-            setScreen={setScreen}
+            setScreen={navigateTo}
             // @ts-ignore
             onHelpClick={resetSetup}
           />
         )}
         {screen === "share-hotspot-check" && (
           <HotspotCheck
-            onReady={() => setScreen("share-method-picker")}
+            onReady={() => navigateTo("share-method-picker")}
             onBack={() => {
-              setScreen("home");
+              navigateBack();
               setConnectionLabel(null);
             }}
             onHotspotStarted={onHotspotStarted}
@@ -190,30 +212,30 @@ const App: React.FC = () => {
         )}
         {screen === "share-method-picker" && (
           <TransferMethodPicker
-            onSelectP2P={() => setScreen("share-p2p")}
-            onSelectQuick={() => setScreen("share-quick")}
-            onBack={() => setScreen("share-hotspot-check")}
+            onSelectP2P={() => navigateTo("share-p2p")}
+            onSelectQuick={() => navigateTo("share-quick")}
+            onBack={navigateBack}
           />
         )}
         {screen === "share-quick" && (
           <QuickShare
-            onBack={() => setScreen("share-method-picker")}
+            onBack={navigateBack}
             shareIP={hotspotIP}
           />
         )}
         {screen === "share-p2p" && (
-          <P2PSession onBack={() => setScreen("share-method-picker")} />
+          <P2PSession onBack={navigateBack} />
         )}
         {screen === "receive" && (
           <ReceiveMethodPicker
-            onSelectBrowser={() => setScreen("receive-browser")}
-            onSelectP2P={() => setScreen("receive-p2p")}
-            onBack={() => setScreen("home")}
+            onSelectBrowser={() => navigateTo("receive-browser")}
+            onSelectP2P={() => navigateTo("receive-p2p")}
+            onBack={navigateBack}
           />
         )}
         {screen === "receive-browser" && (
           <ReceiveFromBrowser
-            onBack={() => setScreen("receive")}
+            onBack={navigateBack}
             onSenderApproved={() =>
               setConnectedDevicesCount((prev) => prev + 1)
             }
@@ -221,26 +243,26 @@ const App: React.FC = () => {
           />
         )}
         {screen === "receive-p2p" && (
-          <P2PSession onBack={() => setScreen("receive")} />
+          <P2PSession onBack={navigateBack} />
         )}
         {screen === "activity" && (
-          <ActivityScreen onBack={() => setScreen("home")} />
+          <ActivityScreen onBack={navigateBack} />
         )}
         {screen === "support" && (
           <SupportScreen
-            onBack={() => setScreen("home")}
+            onBack={navigateBack}
             onReplayOnboarding={resetSetup}
              // @ts-ignore
-            onNavigateTo={setScreen}
+            onNavigateTo={navigateTo}
           />
         )}
         {screen === "settings" && (
-          <SettingsScreen onBack={() => setScreen("home")} />
+          <SettingsScreen onBack={navigateBack} />
         )}
         {screen === "troubleshoot" && (
-          <TroubleshootScreen onBack={() => setScreen("support")} />
+          <TroubleshootScreen onBack={navigateBack} />
         )}
-        {screen === "rate" && <RateUsScreen onBack={() => setScreen("home")} />}
+        {screen === "rate" && <RateUsScreen onBack={navigateBack} />}
       </div>
 
       <StatusBar
