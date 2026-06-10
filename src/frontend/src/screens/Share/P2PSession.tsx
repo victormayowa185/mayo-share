@@ -83,7 +83,7 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
   // Ref for the mode‑chooser section
   const modeChooserRef = useRef<HTMLDivElement>(null);
 
-  const showFileArea = () => setConnected(true);
+  const showFileArea = useCallback(() => setConnected(true), []);
 
   // ── Data channel handler ────────────────────────────
   const handleDCMessage = async (raw: string) => {
@@ -400,7 +400,11 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
     let cleanupAnswer: (() => void) | undefined;
 
     const deviceHandler = (device: { name: string; host: string; port: number }) => {
-      setDiscoveredDevices((prev) => [...prev, device]);
+      setDiscoveredDevices((prev) => {
+        const id = `${device.host}:${device.port}`;
+        if (prev.some(d => `${d.host}:${d.port}` === id)) return prev;
+        return [...prev, device];
+      });
     };
     const answerHandler = async (answerSDP: string) => {
       if (localPC.current) {
@@ -426,7 +430,7 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
       if (cleanupDevice) cleanupDevice();
       if (cleanupAnswer) cleanupAnswer();
     };
-  }, [t, showFileArea]);
+  }, [t]);
 
   const sendAll = async () => {
     if (!localDC.current || localDC.current.readyState !== "open") {
@@ -678,7 +682,6 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
                       const offerSDP = await response.text();
                       setOfferInput(offerSDP);
 
-                      // Create a new peer connection if none exists
                       if (!localPC.current) {
                         const pc = new RTCPeerConnection({
                           iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
@@ -703,19 +706,18 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
                       const answer = await pc.createAnswer();
                       await pc.setLocalDescription(answer);
                       await waitForICE(pc);
-                      const compactAnswer = await window.electronAPI.compressSDP(
-                        pc.localDescription!.sdp
-                      );
-                      setAnswerCode(compactAnswer);
-                      const qrData = await QRCode.toDataURL(compactAnswer, {
-                        width: 200,
-                        margin: 2,
-                      });
-                      setAnswerQrDataUrl(qrData);
-                      await fetch(`http://${dev.host}:${dev.port}/answer`, {
-                        method: "POST",
-                        body: compactAnswer,
-                      });
+                      const compactAnswer = await window.electronAPI.compressSDP(pc.localDescription!.sdp);
+
+                      try {
+                        await fetch(`http://${dev.host}:${dev.port}/answer`, { method: "POST", body: compactAnswer });
+                        setSessionStatus(t("dataChannelOpen"));
+                        showFileArea();
+                      } catch (err: any) {
+                        setAnswerCode(compactAnswer);
+                        const qrData = await QRCode.toDataURL(compactAnswer, { width: 200, margin: 2 });
+                        setAnswerQrDataUrl(qrData);
+                        setSessionStatus(t("errorOccurred", { message: err.message }));
+                      }
                     } catch (err: any) {
                       setSessionStatus(t("errorOccurred", { message: err.message }));
                     }

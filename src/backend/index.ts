@@ -147,12 +147,16 @@ async function getBestIP(): Promise<string> {
 }
 
 // ---------- Activity logging ----------
-const ACTIVITY_LOG_PATH = path.join(
-  process.platform === "win32"
-    ? "C:\\mayo-received"
-    : path.join(os.homedir(), "mayo-received"),
-  "activity.json",
-);
+// ---------- Settings: save path - MOVE THIS TO TOP after imports ----------
+const defaultSaveDir = process.platform === "win32"
+  ? "C:\\mayo-received"
+  : path.join(os.homedir(), "mayo-received");
+let currentSavePath = defaultSaveDir;
+
+// ---------- Activity logging ----------
+function getActivityLogPath() {
+  return path.join(currentSavePath, "activity.json");
+}
 
 function getDeviceName(): string {
   try {
@@ -172,20 +176,19 @@ function addActivity(entry: {
   timestamp: string;
 }) {
   let log: any[] = [];
+  const logPath = getActivityLogPath(); // ← dynamic now
   try {
-    const raw = fs.readFileSync(ACTIVITY_LOG_PATH, "utf-8");
+    const raw = fs.readFileSync(logPath, "utf-8");
     log = JSON.parse(raw);
   } catch { }
   log.unshift(entry);
-  // Keep only the last 200 entries
   if (log.length > 200) log = log.slice(0, 200);
   try {
-    fs.mkdirSync(path.dirname(ACTIVITY_LOG_PATH), { recursive: true });
-    fs.writeFileSync(ACTIVITY_LOG_PATH, JSON.stringify(log, null, 2), "utf-8");
+    fs.mkdirSync(path.dirname(logPath), { recursive: true }); // ← dynamic
+    fs.writeFileSync(logPath, JSON.stringify(log, null, 2), "utf-8"); // ← dynamic
   } catch (err) {
     console.error("Failed to write activity log:", err);
   }
-  // Optionally send the update to the renderer for live refresh
   mainWindow?.webContents.send("activity-updated", entry);
 }
 
@@ -889,7 +892,7 @@ ipcMain.handle(
 // Place near other ipcMain.handle calls
 ipcMain.handle("get-activity", async (): Promise<any[]> => {
   try {
-    const raw = fs.readFileSync(ACTIVITY_LOG_PATH, "utf-8");
+    const raw = fs.readFileSync(getActivityLogPath(), "utf-8");
     return JSON.parse(raw);
   } catch {
     return [];
@@ -898,7 +901,7 @@ ipcMain.handle("get-activity", async (): Promise<any[]> => {
 
 ipcMain.handle("clear-activity", async (): Promise<void> => {
   try {
-    fs.writeFileSync(ACTIVITY_LOG_PATH, "[]", "utf-8");
+    fs.writeFileSync(getActivityLogPath(), "[]", "utf-8"); // ← fixed
     mainWindow?.webContents.send("activity-cleared");
   } catch (err) {
     console.error("Failed to clear activity log:", err);
@@ -916,12 +919,6 @@ ipcMain.handle(
   },
 );
 
-// ---------- Settings: save path ----------
-const defaultSaveDir =
-  process.platform === "win32"
-    ? "C:\\mayo-received"
-    : path.join(os.homedir(), "mayo-received");
-let currentSavePath = defaultSaveDir;
 
 // Load saved path when app starts
 async function loadSettings() {
