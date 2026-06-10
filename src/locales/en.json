@@ -149,6 +149,8 @@
   "cancel": "Cancel",
   "chooseTransferMethod": "Choose Transfer Method",
   "howToShare": "How would you like to share?",
+  "chooseReceiveMethod": "Choose Receive Method",
+  "howToReceive": "How would you like to receive?",
   "quickShare": "Quick Share",
   "quickShareDesc": "Share files via a link or QR code. The receiver only needs a browser — no app required.",
   "deviceConnect": "Device Connect",

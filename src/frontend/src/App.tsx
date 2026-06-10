@@ -6,7 +6,7 @@ import HotspotCheck from "./screens/Share/HotspotCheck";
 import TransferMethodPicker from "./screens/Share/TransferMethodPicker";
 import QuickShare from "./screens/Share/QuickShare";
 import P2PSession from "./screens/Share/P2PSession";
-import ReceiveScreen from "./screens/Receive/ReceiveScreen";
+import ReceiveMethodPicker from "./screens/Receive/ReceiveMethodPicker";
 import ActivityScreen from "./screens/Activity/ActivityScreen";
 import SupportScreen from "./screens/Support/SupportScreen";
 import RateUsScreen from "./screens/RateUs/RateUsScreen";
@@ -24,6 +24,7 @@ export type Screen =
   | "share-quick"
   | "receive"
   | "receive-browser"
+  | "receive-p2p"
   | "settings"
   | "activity"
   | "support"
@@ -204,16 +205,23 @@ const App: React.FC = () => {
           <P2PSession onBack={() => setScreen("share-method-picker")} />
         )}
         {screen === "receive" && (
-          <ReceiveScreen onBack={() => setScreen("home")} />
+          <ReceiveMethodPicker
+            onSelectBrowser={() => setScreen("receive-browser")}
+            onSelectP2P={() => setScreen("receive-p2p")}
+            onBack={() => setScreen("home")}
+          />
         )}
         {screen === "receive-browser" && (
           <ReceiveFromBrowser
-            onBack={() => setScreen("home")}
+            onBack={() => setScreen("receive")}
             onSenderApproved={() =>
               setConnectedDevicesCount((prev) => prev + 1)
             }
             onStopReceiving={() => setConnectedDevicesCount(0)}
           />
+        )}
+        {screen === "receive-p2p" && (
+          <P2PSession onBack={() => setScreen("receive")} />
         )}
         {screen === "activity" && (
           <ActivityScreen onBack={() => setScreen("home")} />
