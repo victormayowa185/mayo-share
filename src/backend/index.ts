@@ -773,7 +773,7 @@ ipcMain.handle(
   "fix-firewall",
   async (): Promise<{ success: boolean; output?: string; error?: string }> => {
     return new Promise((resolve) => {
-      const cmd = `netsh advfirewall firewall add rule name="MAYO Share" dir=in action=allow protocol=TCP localport=3000,3001`;
+      const cmd = `netsh advfirewall firewall add rule name="MAYO Share" dir=in action=allow protocol=TCP localport=3000,3001,3004`;
       execFile(
         "powershell.exe",
         ["-Command", cmd],

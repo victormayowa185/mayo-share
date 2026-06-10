@@ -183,7 +183,9 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
         return;
       }
 
-      const pc = new RTCPeerConnection({ iceServers: [] });
+      const pc = new RTCPeerConnection({
+        iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
+      });
       localPC.current = pc;
 
       const dc = pc.createDataChannel("mayo-share", { ordered: true });
@@ -240,7 +242,9 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
     setMode("join");
     try {
       const sdp = await window.electronAPI.decompressSDP(offerInput.trim());
-      const pc = new RTCPeerConnection({ iceServers: [] });
+      const pc = new RTCPeerConnection({
+        iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
+      });
       localPC.current = pc;
 
       pc.ondatachannel = (event) => {
@@ -676,7 +680,9 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
 
                       // Create a new peer connection if none exists
                       if (!localPC.current) {
-                        const pc = new RTCPeerConnection({ iceServers: [] });
+                        const pc = new RTCPeerConnection({
+                          iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
+                        });
                         localPC.current = pc;
                         pc.ondatachannel = (event) => {
                           const dc = event.channel;

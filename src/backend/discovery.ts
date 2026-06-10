@@ -33,72 +33,45 @@ function getLocalIP(): string {
 
 export class DiscoveryManager extends EventEmitter {
   private mdns: any = null;
+  private advertiseInterval: NodeJS.Timeout | null = null;
   private queryInterval: NodeJS.Timeout | null = null;
   private seenDevices = new Set<string>();
   private cleanupInterval: NodeJS.Timeout | null = null;
 
   startAdvertising(hostname: string, port: number): void {
     this.stop();
-    // Bind to all network interfaces
     this.mdns = mdns({ interfaces: "0.0.0.0" });
     const localIP = getLocalIP();
 
-    console.log(`[Discovery] Advertising as "${hostname}" on ${localIP}:${port}`);
+    const txtData = JSON.stringify({ name: hostname, port });
+    const announcePacket = {
+      answers: [
+        { name: SERVICE_NAME, type: "PTR", data: hostname + ".local", ttl: 300 },
+        { name: hostname + ".local", type: "SRV", data: { port, target: hostname + ".local" }, ttl: 300 },
+        { name: SERVICE_NAME, type: "TXT", data: [txtData], ttl: 300 },
+        { name: hostname + ".local", type: "A", data: localIP, ttl: 300 },
+      ],
+    };
 
     this.mdns.on("query", (query: any) => {
-      const hasPtr = query.questions.some(
-        (q: any) => q.name === SERVICE_NAME && q.type === "PTR"
+      const relevant = query.questions.some(
+        (q: any) => q.name === SERVICE_NAME && (q.type === "PTR" || q.type === "TXT")
       );
-      const hasTxt = query.questions.some(
-        (q: any) => q.name === SERVICE_NAME && q.type === "TXT"
-      );
-
-      if (hasPtr || hasTxt) {
-        console.log("[Discovery] Got query, responding...");
-        const txtData = JSON.stringify({ name: hostname, port });
-
-        this.mdns!.respond({
-          answers: [
-            // PTR record: advertises service existence
-            {
-              name: SERVICE_NAME,
-              type: "PTR",
-              data: hostname + ".local",
-              ttl: 300,
-            },
-            // SRV record: provides port and target hostname
-            {
-              name: hostname + ".local",
-              type: "SRV",
-              data: { port, target: hostname + ".local" },
-              ttl: 300,
-            },
-            // TXT record: custom data (JSON)
-            {
-              name: SERVICE_NAME,
-              type: "TXT",
-              data: [txtData],
-              ttl: 300,
-            },
-            // A record: IP address
-            {
-              name: hostname + ".local",
-              type: "A",
-              data: localIP,
-              ttl: 300,
-            },
-          ],
-        });
-      }
+      if (relevant) this.mdns!.respond(announcePacket);
     });
+
+    // ✅ Proactively announce on start + repeat every 4s
+    setTimeout(() => this.mdns?.respond(announcePacket), 100);
+    this.advertiseInterval = setInterval(() => this.mdns?.respond(announcePacket), 4000);
   }
 
   startBrowsing(): void {
-    this.stop();
+    if (this.queryInterval) {
+      clearInterval(this.queryInterval);
+      this.queryInterval = null;
+    }
     this.mdns = mdns({ interfaces: "0.0.0.0" });
     this.seenDevices.clear();
-
-    // Clear deduplication cache every 30 seconds
     this.cleanupInterval = setInterval(() => {
       this.seenDevices.clear();
     }, 30000);
@@ -112,10 +85,10 @@ export class DiscoveryManager extends EventEmitter {
             // Concatenate TXT record data (may be split into multiple buffers)
             const raw = Array.isArray(answer.data)
               ? Buffer.concat(
-                  answer.data.map((d: any) =>
-                    Buffer.isBuffer(d) ? d : Buffer.from(d)
-                  )
+                answer.data.map((d: any) =>
+                  Buffer.isBuffer(d) ? d : Buffer.from(d)
                 )
+              )
               : Buffer.from(answer.data);
             const rawString = raw.toString("utf8");
             const { name, port } = JSON.parse(rawString);
@@ -150,6 +123,10 @@ export class DiscoveryManager extends EventEmitter {
   }
 
   stop(): void {
+    if (this.advertiseInterval) {
+      clearInterval(this.advertiseInterval);
+      this.advertiseInterval = null;
+    }
     if (this.queryInterval) {
       clearInterval(this.queryInterval);
       this.queryInterval = null;
