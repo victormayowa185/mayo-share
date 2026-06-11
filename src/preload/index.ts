@@ -72,17 +72,15 @@ contextBridge.exposeInMainWorld("electronAPI", {
 
   getLocalIP: (): Promise<string | null> => ipcRenderer.invoke("get-local-ip"),
 
-  // ---------- Discovery (mDNS) ----------
-  startAdvertising: (sdpOffer: string): Promise<number> =>
-    ipcRenderer.invoke("start-advertising", sdpOffer),
-  startBrowsing: (): Promise<void> => ipcRenderer.invoke("start-browsing"),
-  stopDiscovery: (): Promise<void> => ipcRenderer.invoke("stop-discovery"),
-
-  onDeviceFound: (callback: (device: { name: string; host: string; port: number }) => void): (() => void) => {
-    const handler = (_event: Electron.IpcRendererEvent, device: any) => callback(device);
-    ipcRenderer.on("device-found", handler);
-    return () => ipcRenderer.removeListener("device-found", handler);
-  },
+  // ---------- 4-Digit Code P2P ----------
+  generateCode: (sdpOffer: string): Promise<string> =>
+    ipcRenderer.invoke("generate-code", sdpOffer),
+  joinByCode: (senderIP: string, code: string): Promise<string> =>
+    ipcRenderer.invoke("join-by-code", senderIP, code),
+  submitAnswer: (senderIP: string, code: string, answerSDP: string): Promise<void> =>
+    ipcRenderer.invoke("submit-answer", senderIP, code, answerSDP),
+  stopSignaling: (): Promise<void> =>
+    ipcRenderer.invoke("stop-signaling"),
 
   onAnswerReceived: (callback: (answerSDP: string) => void): (() => void) => {
     const handler = (_event: Electron.IpcRendererEvent, answerSDP: string) => callback(answerSDP);

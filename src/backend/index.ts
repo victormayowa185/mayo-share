@@ -997,75 +997,166 @@ ipcMain.handle("ping", async () => "pong");
 ipcMain.handle("get-platform", async (): Promise<string> => {
   return process.platform;
 });
-// ---------- Discovery (mDNS + signaling server) ----------
+// ---------- 4-Digit Code Signaling ----------
 let signalingServer: http.Server | null = null;
 let storedOfferSDP = "";
+let activeCode = "";   // the 4-digit code currently active
 
+function generateCode(): string {
+  // Cryptographically random 4-digit code (1000–9999)
+  const arr = new Uint32Array(1);
+  require("crypto").randomFillSync(arr);
+  return String(1000 + (arr[0] % 9000));
+}
+
+// Sender calls this: stores their SDP offer, starts HTTP server, returns the 4-digit code
 ipcMain.handle(
-  "start-advertising",
-  async (_event, sdpOffer: string): Promise<number> => {
+  "generate-code",
+  async (_event, sdpOffer: string): Promise<string> => {
     storedOfferSDP = sdpOffer;
+    activeCode = generateCode();
 
-    // Spin up a tiny HTTP server that serves the SDP
     const PORT = 3004;
-    if (signalingServer) signalingServer.close();
+    if (signalingServer) {
+      signalingServer.close();
+      signalingServer = null;
+    }
 
-    signalingServer = require("http").createServer(
+    signalingServer = http.createServer(
       (req: http.IncomingMessage, res: http.ServerResponse) => {
         res.setHeader("Access-Control-Allow-Origin", "*");
-        if (req.method === "GET" && req.url === "/sdp") {
+        res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+        res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+
+        if (req.method === "OPTIONS") {
+          res.writeHead(204);
+          res.end();
+          return;
+        }
+
+        // Joiner fetches SDP using the code: GET /sdp?code=1234
+        if (req.method === "GET" && req.url?.startsWith("/sdp")) {
+          const url = new URL(req.url, `http://localhost:${PORT}`);
+          const code = url.searchParams.get("code");
+          if (code !== activeCode) {
+            res.writeHead(403, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: "wrong_code" }));
+            return;
+          }
           res.writeHead(200, { "Content-Type": "text/plain" });
           res.end(storedOfferSDP);
-        } else if (req.method === "POST" && req.url === "/answer") {
+          return;
+        }
+
+        // Joiner posts their answer SDP: POST /answer?code=1234
+        if (req.method === "POST" && req.url?.startsWith("/answer")) {
+          const url = new URL(req.url, `http://localhost:${PORT}`);
+          const code = url.searchParams.get("code");
+          if (code !== activeCode) {
+            res.writeHead(403, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: "wrong_code" }));
+            return;
+          }
           let body = "";
           req.on("data", (chunk: string) => (body += chunk));
           req.on("end", () => {
-            discoveryManager.emit("answer-received", body);
+            mainWindow?.webContents.send("answer-received", body);
             res.writeHead(200);
             res.end("OK");
           });
-        } else {
-          res.writeHead(404);
-          res.end();
+          return;
         }
+
+        res.writeHead(404);
+        res.end();
       },
     );
 
-    await new Promise<void>((resolve) =>
-      signalingServer!.listen(PORT, resolve),
-    );
+    await new Promise<void>((resolve, reject) => {
+      signalingServer!.on("error", reject);
+      signalingServer!.listen(PORT, "0.0.0.0", resolve);
+    });
 
-    // ✅ Use the helper function that reads the device name from settings
-    const deviceName = getDeviceName();   // <-- changed line
-    discoveryManager.startAdvertising(deviceName, PORT);
-    return PORT;
+    return activeCode;
   },
 );
 
-ipcMain.handle("start-browsing", async (): Promise<void> => {
-  discoveryManager.startBrowsing();
-});
+// Joiner calls this: connect to sender's IP:3004 using the code
+ipcMain.handle(
+  "join-by-code",
+  async (_event, senderIP: string, code: string): Promise<string> => {
+    const PORT = 3004;
+    // Fetch the SDP from the sender's signaling server
+    const sdp = await new Promise<string>((resolve, reject) => {
+      const req = require("http").get(
+        `http://${senderIP}:${PORT}/sdp?code=${code}`,
+        (res: http.IncomingMessage) => {
+          if (res.statusCode === 403) {
+            reject(new Error("wrong_code"));
+            return;
+          }
+          if (res.statusCode !== 200) {
+            reject(new Error(`HTTP ${res.statusCode}`));
+            return;
+          }
+          let data = "";
+          res.on("data", (chunk: string) => (data += chunk));
+          res.on("end", () => resolve(data));
+        },
+      );
+      req.on("error", reject);
+      req.setTimeout(8000, () => {
+        req.destroy();
+        reject(new Error("timeout"));
+      });
+    });
+    return sdp;
+  },
+);
 
-ipcMain.handle("stop-discovery", async (): Promise<void> => {
-  discoveryManager.stop();
+// Joiner calls this to POST their answer SDP back to the sender
+ipcMain.handle(
+  "submit-answer",
+  async (_event, senderIP: string, code: string, answerSDP: string): Promise<void> => {
+    const PORT = 3004;
+    await new Promise<void>((resolve, reject) => {
+      const body = Buffer.from(answerSDP, "utf8");
+      const options = {
+        hostname: senderIP,
+        port: PORT,
+        path: `/answer?code=${code}`,
+        method: "POST",
+        headers: {
+          "Content-Type": "text/plain",
+          "Content-Length": body.length,
+        },
+      };
+      const req = require("http").request(options, (res: http.IncomingMessage) => {
+        if (res.statusCode === 403) {
+          reject(new Error("wrong_code"));
+          return;
+        }
+        res.resume();
+        res.on("end", resolve);
+      });
+      req.on("error", reject);
+      req.setTimeout(8000, () => {
+        req.destroy();
+        reject(new Error("timeout"));
+      });
+      req.write(body);
+      req.end();
+    });
+  },
+);
+
+ipcMain.handle("stop-signaling", async (): Promise<void> => {
   if (signalingServer) {
     signalingServer.close();
     signalingServer = null;
   }
-});
-
-ipcMain.handle(
-  "connect-to-device",
-  async (_event, sdpOffer: string): Promise<string> => {
-    const pc = new (require("electron").BrowserWindow?.webContents?.session
-      ?.webRTC?.RTCPeerConnection)();
-    return "connected";
-  },
-);
-
-// Forward events to renderer
-discoveryManager.on("device-found", (device) => {
-  mainWindow?.webContents.send("device-found", device);
+  activeCode = "";
+  storedOfferSDP = "";
 });
 
 discoveryManager.on("answer-received", (answerSDP: string) => {
@@ -1080,12 +1171,14 @@ app.whenReady().then(async () => {
 });
 
 app.on("before-quit", () => {
-  discoveryManager.stop();
+  if (signalingServer) {
+    signalingServer.close();
+    signalingServer = null;
+  }
   if (powerSaveBlockerId !== null) {
     powerSaveBlocker.stop(powerSaveBlockerId);
     powerSaveBlockerId = null;
   }
-  if (signalingServer) signalingServer.close();
   uploadServer.stop();
   fileServer.stop();
   if (process.platform === "win32") {

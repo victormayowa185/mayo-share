@@ -79,18 +79,12 @@ declare global {
         }) => void,
       ) => void;
 
-      // ---------- Discovery (mDNS) ----------
-      startAdvertising: (sdpOffer: string) => Promise<number>;
-      startBrowsing: () => Promise<void>;
-      stopDiscovery: () => Promise<void>;
-      onDeviceFound: (
-        callback: (device: {
-          name: string;
-          host: string;
-          port: number;
-        }) => void,
-      ) => void;
-      onAnswerReceived: (callback: (answerSDP: string) => void) => void;
+      // ---------- 4-Digit Code P2P ----------
+      generateCode: (sdpOffer: string) => Promise<string>;
+      joinByCode: (senderIP: string, code: string) => Promise<string>;
+      submitAnswer: (senderIP: string, code: string, answerSDP: string) => Promise<void>;
+      stopSignaling: () => Promise<void>;
+      onAnswerReceived: (callback: (answerSDP: string) => void) => (() => void);
       checkHotspotStatus: () => Promise<{ active: boolean; ip: string }>;
       compressSDP: (sdp: string) => Promise<string>;
       decompressSDP: (compact: string) => Promise<string>;

@@ -378,3 +378,97 @@
     max-width: 400px;
   }
 }
+
+/* ── 4-digit code styles ── */
+.codeDisplay {
+  display: flex;
+  gap: 12px;
+  margin: 8px 0 4px 0;
+  justify-content: center;
+}
+
+.codeDigit {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 64px;
+  border-radius: 12px;
+  border: 2px solid var(--accent);
+  background: var(--bg-secondary);
+  color: var(--accent);
+  font-size: 2rem;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
+.digitRow {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  margin: 8px 0;
+}
+
+.digitInput {
+  width: 56px;
+  height: 64px;
+  border-radius: 12px;
+  border: 2px solid var(--border-light);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: 2rem;
+  font-weight: 700;
+  text-align: center;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  caret-color: transparent;
+}
+
+.digitInput:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(177, 105, 224, 0.25);
+}
+
+.ipDisplay {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-light);
+  border-radius: 10px;
+  padding: 10px 16px;
+  max-width: 320px;
+  width: 100%;
+}
+
+.ipText {
+  flex: 1;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: 0.5px;
+}
+
+.ipInput {
+  width: 100%;
+  max-width: 320px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 2px solid var(--border-light);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: 1rem;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.ipInput:focus {
+  border-color: var(--accent);
+}
+
+.errorText {
+  color: #ff6b6b;
+  font-size: 0.85rem;
+  margin-top: 8px;
+  text-align: center;
+}
