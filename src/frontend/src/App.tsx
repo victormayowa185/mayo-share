@@ -63,9 +63,6 @@ const App: React.FC = () => {
     });
   };
 
-  // ❌ Theme logic completely removed – now handled by main.tsx (initTheme) and index.html inline script.
-  // ❌ No applyTheme function, no theme useEffect here.
-
   // Check setup flags and platform on mount
   useEffect(() => {
     const init = async () => {
@@ -223,8 +220,9 @@ const App: React.FC = () => {
             shareIP={hotspotIP}
           />
         )}
+        {/* ✅ SEND P2P – skip chooser, go straight to send mode */}
         {screen === "share-p2p" && (
-          <P2PSession onBack={navigateBack} />
+          <P2PSession onBack={navigateBack} initialMode="send" />
         )}
         {screen === "receive" && (
           <ReceiveMethodPicker
@@ -242,8 +240,9 @@ const App: React.FC = () => {
             onStopReceiving={() => setConnectedDevicesCount(0)}
           />
         )}
+        {/* ✅ RECEIVE P2P – skip chooser, go straight to join mode with auto‑IP */}
         {screen === "receive-p2p" && (
-          <P2PSession onBack={navigateBack} />
+          <P2PSession onBack={navigateBack} initialMode="join" />
         )}
         {screen === "activity" && (
           <ActivityScreen onBack={navigateBack} />

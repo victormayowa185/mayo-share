@@ -1,19 +1,8 @@
 import { createServer, Server, IncomingMessage, ServerResponse } from "http";
-import { promises as fs, statfs } from "fs";
+import { promises as fs } from "fs";
 import path from "path";
 import { EventEmitter } from "events";
 import { formidable } from "formidable";
-import { promisify } from "util";
-
-const statfsAsync = promisify(statfs);
-
-function formatBytesServer(bytes: number): string {
-  if (bytes === 0) return "0 B";
-  const k = 1024;
-  const sizes = ["B", "KB", "MB", "GB"];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i];
-}
 
 interface Session {
   id: string;
@@ -44,11 +33,7 @@ export class UploadServer extends EventEmitter {
   private server: Server | null = null;
   private sessions = new Map<string, Session>();
   private sseClients = new Map<string, SSEClient>();
-
-  // Admin SSE clients (for desktop real‑time updates)
   private adminClients = new Set<ServerResponse>();
-
-  // File assembly locks - prevent duplicate assembly for same file
   private fileAssemblyLocks = new Map<string, Promise<void>>();
 
   approveSender(sessionId: string) {
@@ -108,23 +93,19 @@ export class UploadServer extends EventEmitter {
     return new Promise((resolve, reject) => {
       this.server = createServer(
         async (req: IncomingMessage, res: ServerResponse) => {
-          const getField = (val: string | string[] | undefined): string => {
-            if (Array.isArray(val)) return val[0] || "";
-            return val || "";
-          };
-          const url = req.url || "/";
-          const method = req.method || "GET";
-
-          // ✅ Global CORS — required for mobile browsers (they send OPTIONS preflight)
+          // CORS
           res.setHeader("Access-Control-Allow-Origin", "*");
           res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
           res.setHeader("Access-Control-Allow-Headers", "Content-Type, X-Requested-With");
 
-          if (method === "OPTIONS") {
+          if (req.method === "OPTIONS") {
             res.writeHead(204);
             res.end();
             return;
           }
+
+          const url = req.url || "/";
+          const method = req.method || "GET";
 
           if (method === "GET" && url === "/favicon.ico") {
             res.writeHead(204);
@@ -132,14 +113,14 @@ export class UploadServer extends EventEmitter {
             return;
           }
 
-          // ─── Admin dashboard (desktop UI) ───
+          // Admin dashboard
           if (method === "GET" && (url === "/admin" || url === "/admin.html")) {
             res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
             res.end(getAdminHTML());
             return;
           }
 
-          // ─── Admin SSE stream for real‑time updates ───
+          // Admin SSE
           if (method === "GET" && url === "/admin/events") {
             res.writeHead(200, {
               "Content-Type": "text/event-stream",
@@ -147,7 +128,6 @@ export class UploadServer extends EventEmitter {
               Connection: "keep-alive"
             });
             this.adminClients.add(res);
-            // Send initial data
             const sessionsList = Array.from(this.sessions.values()).map(s => ({
               id: s.id,
               senderName: s.senderName,
@@ -164,7 +144,7 @@ export class UploadServer extends EventEmitter {
             return;
           }
 
-          // ─── Check which chunks are already uploaded (for resume) ───
+          // Upload status (resume)
           if (method === "GET" && url?.startsWith("/upload-status")) {
             const parsedUrl = new URL(url!, `http://localhost:${PORT}`);
             const sessionId = parsedUrl.searchParams.get("sessionId");
@@ -191,17 +171,12 @@ export class UploadServer extends EventEmitter {
             return;
           }
 
-          // ─── Session‑aware GET / ───
-          if (
-            method === "GET" &&
-            (url === "/" || url === "" || url?.startsWith("/?sessionId="))
-          ) {
+          // Session‑aware GET /
+          if (method === "GET" && (url === "/" || url === "" || url?.startsWith("/?sessionId="))) {
             const parsedUrl = new URL(url!, `http://localhost:${PORT}`);
             let sessionId = parsedUrl.searchParams.get("sessionId");
             if (!sessionId) {
-              sessionId =
-                Date.now().toString(36) +
-                Math.random().toString(36).slice(2, 6);
+              sessionId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
               res.writeHead(302, { Location: `/?sessionId=${sessionId}` });
               res.end();
               return;
@@ -236,7 +211,7 @@ export class UploadServer extends EventEmitter {
             }
           }
 
-          // ─── SSE endpoint for approval / decline ───
+          // SSE for approval
           if (method === "GET" && url?.startsWith("/events")) {
             const parsedUrl = new URL(url!, `http://localhost:${PORT}`);
             const sessionId = parsedUrl.searchParams.get("sessionId");
@@ -257,7 +232,7 @@ export class UploadServer extends EventEmitter {
             return;
           }
 
-          // ─── Set sender name ───
+          // Set sender name
           if (method === "POST" && url?.startsWith("/set-name")) {
             const parsedUrl = new URL(url!, `http://localhost:${PORT}`);
             const sessionId = parsedUrl.searchParams.get("sessionId");
@@ -270,7 +245,6 @@ export class UploadServer extends EventEmitter {
                 if (session) {
                   session.senderName = name;
                   if (deviceType) session.deviceType = deviceType;
-                  // ✅ Now we have the real name — update saveDir so files land in Sender-John not Sender-abc123
                   const safeName = name.replace(/[^a-zA-Z0-9_\- ]/g, "").trim() || sessionId!;
                   session.saveDir = path.join(RECEIVE_DIR, `Sender-${safeName}`);
                   this.emit("sender-connected", sessionId, name, session.deviceType);
@@ -289,7 +263,7 @@ export class UploadServer extends EventEmitter {
             return;
           }
 
-          // ─── Simple text/image upload endpoint ───
+          // Simple text/image upload
           if (method === "POST" && url?.startsWith("/upload-simple")) {
             const parsedUrl = new URL(url!, `http://localhost:${PORT}`);
             const sessionId = parsedUrl.searchParams.get("sessionId");
@@ -304,14 +278,11 @@ export class UploadServer extends EventEmitter {
             req.on("end", async () => {
               try {
                 const { content, filename } = JSON.parse(body);
-
-                // 🛡️ Path traversal guard
                 if (filename.includes('..') || path.isAbsolute(filename)) {
                   res.writeHead(400);
                   res.end('Invalid filename');
                   return;
                 }
-
                 const buffer = Buffer.from(content, "base64");
                 await fs.mkdir(session.saveDir, { recursive: true });
                 const savePath = path.join(session.saveDir, filename);
@@ -329,7 +300,7 @@ export class UploadServer extends EventEmitter {
             return;
           }
 
-          // ─── Chunk upload endpoint (with resume support) ───
+          // ✅ FIXED: Chunk upload endpoint using formidable
           if (method === "POST" && url?.startsWith("/upload-chunk")) {
             try {
               const parsedUrl = new URL(url!, `http://localhost:${PORT}`);
@@ -346,7 +317,22 @@ export class UploadServer extends EventEmitter {
                 return;
               }
 
-              // Update session upload tracking
+              // Parse multipart form data
+              const form = formidable({ multiples: false });
+              const [fields, files] = await form.parse(req);
+              const chunkFile = files.chunk?.[0];
+              if (!chunkFile) {
+                res.writeHead(400);
+                res.end("Missing chunk file");
+                return;
+              }
+
+              // Read the actual binary chunk data
+              const chunkData = await fs.readFile(chunkFile.filepath);
+              // Clean up temp file
+              await fs.unlink(chunkFile.filepath).catch(() => {});
+
+              // Update session tracking
               if (chunkIndex === 0) {
                 session.currentUpload = {
                   fileId,
@@ -362,101 +348,81 @@ export class UploadServer extends EventEmitter {
               const chunkDir = path.join(RECEIVE_DIR, "chunks", fileId);
               await fs.mkdir(chunkDir, { recursive: true });
               const chunkPath = path.join(chunkDir, `chunk-${chunkIndex}`);
+              await fs.writeFile(chunkPath, chunkData);
+              console.log(`[Server] Chunk ${chunkIndex}/${totalChunks} saved for ${filename}`);
 
-              let fileData = Buffer.alloc(0);
-              req.on("data", (chunk) => {
-                fileData = Buffer.concat([fileData, chunk]);
-              });
+              // Check completeness
+              const chunks = await fs.readdir(chunkDir);
+              if (chunks.length === totalChunks) {
+                if (this.fileAssemblyLocks.has(fileId)) {
+                  await this.fileAssemblyLocks.get(fileId);
+                  res.writeHead(200, { "Content-Type": "application/json" });
+                  res.end(JSON.stringify({ ok: true, complete: true }));
+                  return;
+                }
 
-              req.on("end", async () => {
-                try {
-                  await fs.writeFile(chunkPath, fileData);
-                  console.log(`[Server] Chunk ${chunkIndex}/${totalChunks} saved for ${filename}`);
+                const assemblyPromise = (async () => {
+                  try {
+                    await fs.mkdir(session.saveDir, { recursive: true });
+                    const finalPath = path.join(session.saveDir, filename);
+                    const { createWriteStream } = await import("fs");
+                    const writeStream = createWriteStream(finalPath);
 
-                  // Check completeness
-                  const chunks = await fs.readdir(chunkDir);
-                  if (chunks.length === totalChunks) {
-                    // LOCK: Check if assembly is already in progress for this file
-                    if (this.fileAssemblyLocks.has(fileId)) {
-                      // Already assembling, wait for it to complete
-                      await this.fileAssemblyLocks.get(fileId);
-                      res.writeHead(200, { "Content-Type": "application/json" });
-                      res.end(JSON.stringify({ ok: true, complete: true }));
-                      return;
+                    // Assemble chunks in correct order
+                    for (let i = 0; i < totalChunks; i++) {
+                      const data = await fs.readFile(path.join(chunkDir, `chunk-${i}`));
+                      await new Promise<void>((resolve, reject) => {
+                        writeStream.write(data, (err) => err ? reject(err) : resolve());
+                      });
                     }
+                    writeStream.end();
+                    await new Promise<void>((resolve, reject) => {
+                      writeStream.on("finish", resolve);
+                      writeStream.on("error", reject);
+                    });
 
-                    // Create assembly promise and lock it
-                    const assemblyPromise = (async () => {
+                    console.log(`[Server] File complete: ${filename}`);
+                    this.emit("file-received", filename);
+                    if (session.currentUpload && session.currentUpload.fileId === fileId) {
+                      session.currentUpload = undefined;
+                    }
+                    this.broadcastAdminUpdate();
+
+                    // Clean up chunks in background
+                    (async () => {
                       try {
-                        await fs.mkdir(session.saveDir, { recursive: true });
-                        const finalPath = path.join(session.saveDir, filename);
-                        const { createWriteStream } = await import("fs");
-                        const writeStream = createWriteStream(finalPath);
-
-                        // ✅ Read chunks in correct numeric order (0, 1, 2 ... not alphabetical)
                         for (let i = 0; i < totalChunks; i++) {
-                          const data = await fs.readFile(path.join(chunkDir, `chunk-${i}`));
-                          await new Promise<void>((resolve, reject) => {
-                            writeStream.write(data, (err) => err ? reject(err) : resolve());
-                          });
+                          await fs.unlink(path.join(chunkDir, `chunk-${i}`));
                         }
-
-                        writeStream.end();
-                        await new Promise<void>((resolve, reject) => {
-                          writeStream.on("finish", resolve);
-                          writeStream.on("error", reject);
-                        });
-
-                        console.log(`[Server] File complete: ${filename}`);
-                        this.emit("file-received", filename);
-                        if (session.currentUpload && session.currentUpload.fileId === fileId) {
-                          session.currentUpload = undefined;
-                        }
-                        this.broadcastAdminUpdate();
-
-                        // OPTION 4: Async cleanup (don't wait, do in background)
-                        (async () => {
-                          try {
-                            for (let i = 0; i < totalChunks; i++) {
-                              await fs.unlink(path.join(chunkDir, `chunk-${i}`));
-                            }
-                            await fs.rmdir(chunkDir);
-                          } catch (err) {
-                            console.error("Cleanup error:", err);
-                          }
-                        })();
-                      } finally {
-                        // Remove lock when assembly is done
-                        this.fileAssemblyLocks.delete(fileId);
+                        await fs.rmdir(chunkDir);
+                      } catch (err) {
+                        console.error("Cleanup error:", err);
                       }
                     })();
-
-                    this.fileAssemblyLocks.set(fileId, assemblyPromise);
-                    await assemblyPromise;
-
-                    res.writeHead(200, { "Content-Type": "application/json" });
-                    res.end(JSON.stringify({ ok: true, complete: true }));
-                  } else {
-                    this.broadcastAdminUpdate();
-                    res.writeHead(200, { "Content-Type": "application/json" });
-                    res.end(JSON.stringify({ ok: true, complete: false }));
+                  } finally {
+                    this.fileAssemblyLocks.delete(fileId);
                   }
-                } catch (err) {
-                  console.error("Chunk save error:", err);
-                  this.fileAssemblyLocks.delete(fileId);
-                  res.writeHead(500);
-                  res.end("Error saving chunk");
-                }
-              });
+                })();
+
+                this.fileAssemblyLocks.set(fileId, assemblyPromise);
+                await assemblyPromise;
+
+                res.writeHead(200, { "Content-Type": "application/json" });
+                res.end(JSON.stringify({ ok: true, complete: true }));
+              } else {
+                this.broadcastAdminUpdate();
+                res.writeHead(200, { "Content-Type": "application/json" });
+                res.end(JSON.stringify({ ok: true, complete: false }));
+              }
             } catch (err) {
               console.error("Chunk upload error:", err);
               res.writeHead(500);
-              res.end("Error");
+              res.end("Error saving chunk");
             }
             return;
           }
 
-          // ─── Serve GSAP from node_modules (offline) ───
+          // Serve GSAP
           if (method === "GET" && url === "/gsap.min.js") {
             const filePath = path.join(__dirname, "../../node_modules/gsap/dist/gsap.min.js");
             try {
@@ -495,7 +461,7 @@ export class UploadServer extends EventEmitter {
 }
 
 // ========================
-// HTML GENERATORS
+// HTML GENERATORS (unchanged)
 // ========================
 
 function getAdminHTML(): string {

@@ -10,6 +10,7 @@ gsap.registerPlugin(useGSAP);
 
 interface Props {
   onBack: () => void;
+  initialMode?: "send" | "join";   // NEW: skip chooser and start directly
 }
 
 interface QueueFile {
@@ -37,24 +38,26 @@ const formatBytes = (b: number) => {
   return parseFloat((b / Math.pow(k, i)).toFixed(1)) + " " + s[i];
 };
 
-const P2PSession: React.FC<Props> = ({ onBack }) => {
+const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
   const { t } = useTranslation();
 
-  // ── Modes: choose → send (shows code) | join (enter code) ──
-  const [mode, setMode] = useState<"choose" | "send" | "join">("choose");
+  // ── Modes: if initialMode provided, start there; otherwise show chooser ──
+  const [mode, setMode] = useState<"choose" | "send" | "join">(
+    initialMode === "send" ? "send" : initialMode === "join" ? "join" : "choose"
+  );
   const [connected, setConnected] = useState(false);
   const [sessionStatus, setSessionStatus] = useState("");
   const [isSending, setIsSending] = useState(false);
 
   // Send mode
-  const [myCode, setMyCode] = useState("");         // 4-digit code shown to sender
+  const [myCode, setMyCode] = useState("");
   const [myIP, setMyIP] = useState("");
   const [codeCopied, setCodeCopied] = useState(false);
   const [waitingForJoiner, setWaitingForJoiner] = useState(false);
 
   // Join mode
-  const [joinIP, setJoinIP] = useState("");          // IP the joiner types
-  const [joinCode, setJoinCode] = useState(["", "", "", ""]);  // 4 digit boxes
+  const [joinIP, setJoinIP] = useState("");
+  const [joinCode, setJoinCode] = useState(["", "", "", ""]);
   const [joinError, setJoinError] = useState("");
   const [joining, setJoining] = useState(false);
 
@@ -79,6 +82,24 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
   const joinPanelRef = useRef<HTMLDivElement>(null);
 
   const showFileArea = useCallback(() => setConnected(true), []);
+
+  // ── AUTO IP DETECTION for join mode ──
+  useEffect(() => {
+    if (mode === "join" && !joinIP) {
+      window.electronAPI.getLocalIP().then((ip) => {
+        if (ip) {
+          // Guess sender IP: assume same subnet, last octet .1 (common router)
+          const parts = ip.split(".");
+          if (parts.length === 4) {
+            parts[3] = "1";
+            setJoinIP(parts.join("."));
+          } else {
+            setJoinIP(ip);
+          }
+        }
+      });
+    }
+  }, [mode, joinIP]);
 
   // ── GSAP animations ──────────────────────────────────
   useGSAP(() => {
@@ -192,7 +213,7 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
     }
   };
 
-  // Listen for answer from joiner (backend sends "answer-received" event)
+  // Listen for answer from joiner
   useEffect(() => {
     const cleanup = window.electronAPI.onAnswerReceived(async (answerSDP: string) => {
       if (!localPC.current) return;
@@ -209,7 +230,7 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
     return cleanup;
   }, [t]);
 
-  // ── JOIN MODE: enter IP + code, fetch SDP, post answer ─
+  // ── JOIN MODE: enter code only (IP auto-filled) ──────
   const handleDigitChange = (index: number, value: string) => {
     const digit = value.replace(/\D/g, "").slice(-1);
     const newCode = [...joinCode];
@@ -244,7 +265,6 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
     setJoinError("");
 
     try {
-      // Fetch sender's SDP using their IP + code
       const compactOffer = await window.electronAPI.joinByCode(joinIP.trim(), code);
       const offerSDP = await window.electronAPI.decompressSDP(compactOffer);
 
@@ -264,8 +284,6 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
       await waitForICE(pc);
 
       const compactAnswer = await window.electronAPI.compressSDP(pc.localDescription!.sdp);
-
-      // Post answer back to sender
       await window.electronAPI.submitAnswer(joinIP.trim(), code, compactAnswer);
       setJoining(false);
       setSessionStatus(t("answerSent"));
@@ -281,7 +299,7 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
     }
   };
 
-  // ── File management ───────────────────────────────────
+  // ── File management (unchanged) ──────────────────────
   const addFiles = async () => {
     const paths = await window.electronAPI.selectFile();
     if (!paths) return;
@@ -421,7 +439,7 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
       <BackButton onClick={onBack} />
       <h2 className={styles.title}>{t("deviceConnect")}</h2>
 
-      {/* ── Mode chooser ── */}
+      {/* Mode chooser – only shown when no initialMode provided */}
       {mode === "choose" && !connected && (
         <div ref={chooseRef}>
           <div className={styles.modeRow}>
@@ -438,21 +456,10 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
         </div>
       )}
 
-      {/* ── SEND MODE: show code ── */}
+      {/* SEND MODE: show only code (no IP) */}
       {mode === "send" && !connected && (
         <div className={styles.createPanel} ref={sendPanelRef}>
-          <p className={styles.label}>{t("shareYourIP")}</p>
-          <div className={styles.ipDisplay}>
-            <span className={styles.ipText}>{myIP}</span>
-            <button
-              className={styles.copyBtn}
-              onClick={() => { navigator.clipboard.writeText(myIP); }}
-            >
-              <FaCopy size={13} />
-            </button>
-          </div>
-
-          <p className={styles.label} style={{ marginTop: 24 }}>{t("yourCode")}</p>
+          <p className={styles.label}>{t("yourCode")}</p>
           <div className={styles.codeDisplay}>
             {myCode ? (
               myCode.split("").map((d, i) => (
@@ -484,14 +491,14 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
         </div>
       )}
 
-      {/* ── JOIN MODE: enter IP + 4-digit code ── */}
+      {/* JOIN MODE: auto‑filled IP + code boxes */}
       {mode === "join" && !connected && (
         <div className={styles.codePanel} ref={joinPanelRef}>
           <p className={styles.label}>{t("enterSenderIPLabel")}</p>
           <input
             className={styles.ipInput}
             type="text"
-            placeholder="e.g. 172.16.4.100"
+            placeholder="e.g. 192.168.1.1"
             value={joinIP}
             onChange={e => setJoinIP(e.target.value)}
             onKeyDown={e => { if (e.key === "Enter") digitRefs.current[0]?.focus(); }}
@@ -530,14 +537,14 @@ const P2PSession: React.FC<Props> = ({ onBack }) => {
         </div>
       )}
 
-      {/* ── Status message ── */}
+      {/* Status message */}
       {sessionStatus && (
         <div className={`${styles.status} ${sessionStatus.toLowerCase().includes("error") ? styles.error : ""}`}>
           {sessionStatus}
         </div>
       )}
 
-      {/* ── Connected: file transfer area ── */}
+      {/* Connected: file transfer area (unchanged) */}
       {connected && (
         <div className={styles.fileArea}>
           <div className={styles.connectedBadge}>
