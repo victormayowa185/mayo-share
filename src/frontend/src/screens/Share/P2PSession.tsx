@@ -1,8 +1,8 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { 
-  FaCircle, FaTimes, FaCheck, 
-  FaChevronDown, FaChevronUp, FaFolderOpen, 
+  FaCircle, FaTimes, FaCheck, FaCopy,
+  FaChevronDown, FaChevronUp, FaChevronRight, FaFolderOpen, 
   FaPlus, FaUpload 
 } from "react-icons/fa";
 import gsap from "gsap";
@@ -41,6 +41,30 @@ const formatBytes = (b: number) => {
   return parseFloat((b / Math.pow(k, i)).toFixed(1)) + " " + s[i];
 };
 
+interface FileGroup {
+  folderName: string;
+  files: QueueFile[];
+}
+
+// ✅ Item 1: group queued files by their top-level folder (based on relative
+// path produced by addFolder, e.g. "MyFolder/sub/file.txt")
+const groupQueueFiles = (files: QueueFile[]): FileGroup[] => {
+  const groupsMap = new Map<string, QueueFile[]>();
+  for (const file of files) {
+    const parts = file.name.split("/");
+    const folder = parts.length > 1 ? parts[0] : "";
+    if (!groupsMap.has(folder)) groupsMap.set(folder, []);
+    groupsMap.get(folder)!.push(file);
+  }
+  const groups: FileGroup[] = [];
+  const rootFiles = groupsMap.get("") || [];
+  for (const [folder, folderFiles] of groupsMap) {
+    if (folder) groups.push({ folderName: folder, files: folderFiles });
+  }
+  if (rootFiles.length > 0) groups.push({ folderName: "", files: rootFiles });
+  return groups;
+};
+
 const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
   const { t } = useTranslation();
 
@@ -55,6 +79,7 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
   const [myCode, setMyCode] = useState("");
   const [myIP, setMyIP] = useState("");
   const [showIPDetails, setShowIPDetails] = useState(false);
+  const [ipCopied, setIpCopied] = useState(false);
   const [waitingForJoiner, setWaitingForJoiner] = useState(false);
 
   // Receiver States
@@ -65,11 +90,18 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
   // Queue States
   const [fileQueue, setFileQueue] = useState<QueueFile[]>([]);
   const [receiveMap, setReceiveMap] = useState<Record<string, ReceiveEntry>>({});
+  // ✅ Item 1: folder collapse state — set of folder names currently collapsed
+  const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(new Set());
+  const [allCollapsed, setAllCollapsed] = useState(false);
   
   const localPC = useRef<RTCPeerConnection | null>(null);
   const localDC = useRef<RTCDataChannel | null>(null);
   const digitRefs = useRef<(HTMLInputElement | null)[]>([]);
   const receivePathsRef = useRef<Record<string, string>>({});
+  // ✅ Item 4 fix: serialize incoming data-channel messages so chunks are
+  // written to disk strictly in order, preventing corrupted/incomplete files.
+  const messageQueueRef = useRef<string[]>([]);
+  const processingRef = useRef(false);
 
   const showFileArea = useCallback(() => setConnected(true), []);
 
@@ -86,11 +118,14 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
     }
   }, [mode]);
 
-  // ── Clipboard Paste ──
+  // ── Clipboard Paste (Item 5: supports files, images, and text) ──
   const handlePaste = useCallback(async (e: ClipboardEvent) => {
     if (!connected || isSending) return;
     const clipboard = e.clipboardData;
-    if (clipboard && clipboard.files.length > 0) {
+    if (!clipboard) return;
+
+    // Case 1: file paths copied from file explorer
+    if (clipboard.files && clipboard.files.length > 0) {
       const newFiles: QueueFile[] = [];
       for (let i = 0; i < clipboard.files.length; i++) {
         const f = clipboard.files[i];
@@ -107,7 +142,52 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
           });
         }
       }
-      setFileQueue(prev => [...prev, ...newFiles]);
+      if (newFiles.length > 0) {
+        setFileQueue(prev => [...prev, ...newFiles]);
+        return;
+      }
+    }
+
+    // Case 2: image data (e.g. screenshot copied to clipboard)
+    const imageItem = Array.from(clipboard.items).find(item => item.type.startsWith("image/"));
+    if (imageItem) {
+      const blob = imageItem.getAsFile();
+      if (blob) {
+        const reader = new FileReader();
+        reader.onload = async () => {
+          const base64 = (reader.result as string).split(",")[1];
+          const fileName = `screenshot-${new Date().toISOString().replace(/[:.]/g, "-")}.png`;
+          const savedPath = await window.electronAPI.saveTempFile(fileName, base64);
+          setFileQueue(prev => [...prev, {
+            id: Math.random().toString(36),
+            name: fileName,
+            path: savedPath,
+            size: blob.size,
+            status: "queued",
+            progress: 0,
+            source: "file",
+          }]);
+        };
+        reader.readAsDataURL(blob);
+        return;
+      }
+    }
+
+    // Case 3: plain text
+    const text = clipboard.getData("text/plain");
+    if (text && text.trim()) {
+      const fileName = `pasted-text-${new Date().toISOString().replace(/[:.]/g, "-")}.txt`;
+      const base64 = btoa(unescape(encodeURIComponent(text)));
+      const savedPath = await window.electronAPI.saveTempFile(fileName, base64);
+      setFileQueue(prev => [...prev, {
+        id: Math.random().toString(36),
+        name: fileName,
+        path: savedPath,
+        size: new Blob([text]).size,
+        status: "queued",
+        progress: 0,
+        source: "file",
+      }]);
     }
   }, [connected, isSending]);
 
@@ -152,6 +232,27 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
   };
 
   const removeFile = (id: string) => setFileQueue(prev => prev.filter(f => f.id !== id));
+
+  // ✅ Item 1: toggle a single folder's collapsed state
+  const toggleFolder = (folderName: string) => {
+    setCollapsedFolders(prev => {
+      const next = new Set(prev);
+      if (next.has(folderName)) next.delete(folderName); else next.add(folderName);
+      return next;
+    });
+  };
+
+  // ✅ Item 1: collapse/expand ALL folders at once (sticky button)
+  const toggleAll = (groups: FileGroup[]) => {
+    const folderNames = groups.filter(g => g.folderName).map(g => g.folderName);
+    if (allCollapsed) {
+      setCollapsedFolders(new Set());
+      setAllCollapsed(false);
+    } else {
+      setCollapsedFolders(new Set(folderNames));
+      setAllCollapsed(true);
+    }
+  };
 
   // ── CORE SENDING LOGIC (WITH BACKPRESSURE FIX) ──
   const sendAll = async () => {
@@ -199,6 +300,8 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
     }
     setIsSending(false);
     setSessionStatus(t("allFilesSent"));
+    // ✅ Item 2: keep sent files visible in the list with "Sent" status —
+    // do NOT clear the queue. New files added later will appear alongside.
   };
 
   // ── DATA CHANNEL RECEIVER SETUP ──
@@ -231,8 +334,22 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
     if (msg.type === "file-end") {
       delete receivePathsRef.current[msg.id];
       setReceiveMap(prev => { const n = { ...prev }; delete n[msg.id]; return n; });
+      setSessionStatus(t("fileReceived", { name: msg.name || "" }));
     }
   }, []);
+
+  // ✅ Item 4 fix: process queued messages strictly one at a time, in order.
+  // Without this, fast-arriving file-chunk messages trigger overlapping
+  // async IPC writes that can land out of order and corrupt the file.
+  const processMessageQueue = useCallback(async () => {
+    if (processingRef.current) return;
+    processingRef.current = true;
+    while (messageQueueRef.current.length > 0) {
+      const next = messageQueueRef.current.shift()!;
+      await handleDCMessage(next);
+    }
+    processingRef.current = false;
+  }, [handleDCMessage]);
 
   const startSendMode = async () => {
     try {
@@ -244,7 +361,7 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
       const dc = pc.createDataChannel("mayo-share", { ordered: true });
       localDC.current = dc;
       dc.onopen = () => { setSessionStatus(t("dataChannelOpen")); showFileArea(); };
-      dc.onmessage = e => handleDCMessage(e.data);
+      dc.onmessage = e => { messageQueueRef.current.push(e.data); processMessageQueue(); };
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
       await new Promise(r => setTimeout(r, 1500)); // Wait for ICE gathering
@@ -254,6 +371,17 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
       setWaitingForJoiner(true);
     } catch (err: any) { setSessionStatus("Error: " + err.message); }
   };
+
+  const waitForICE = (pc: RTCPeerConnection) =>
+    Promise.race([
+      new Promise<void>(resolve => {
+        if (pc.iceGatheringState === "complete") resolve();
+        else pc.addEventListener("icegatheringstatechange", () => {
+          if (pc.iceGatheringState === "complete") resolve();
+        });
+      }),
+      new Promise<void>(resolve => setTimeout(resolve, 1500)),
+    ]);
 
   const connectWithCode = async () => {
     const code = joinCode.join("");
@@ -267,11 +395,15 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
       pc.ondatachannel = event => {
         localDC.current = event.channel;
         localDC.current.onopen = () => { setSessionStatus(t("dataChannelOpen")); showFileArea(); };
-        localDC.current.onmessage = e => handleDCMessage(e.data);
+        localDC.current.onmessage = e => { messageQueueRef.current.push(e.data); processMessageQueue(); };
       };
       await pc.setRemoteDescription(new RTCSessionDescription({ type: "offer", sdp: offerSDP }));
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
+      // ✅ Item 4 fix: wait for ICE gathering to complete before sending answer,
+      // same as the sender does for its offer. Without this, the answer SDP
+      // may have no/incomplete ICE candidates, causing flaky connections.
+      await waitForICE(pc);
       const compactAnswer = await window.electronAPI.compressSDP(pc.localDescription!.sdp);
       await window.electronAPI.submitAnswer(joinIP.trim(), code, compactAnswer);
     } catch (err: any) { setJoining(false); setSessionStatus("Connection Failed"); }
@@ -283,6 +415,44 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
     if (digit && index < 3) digitRefs.current[index + 1]?.focus();
   };
 
+  // ✅ Item 3: Backspace deletes current digit and moves focus to previous box
+  const handleDigitKeyDown = (index: number, e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Backspace") {
+      if (joinCode[index]) {
+        // Clear current digit, stay on this box
+        const newCode = [...joinCode];
+        newCode[index] = "";
+        setJoinCode(newCode);
+      } else if (index > 0) {
+        // Already empty — move to previous box and clear it too
+        const newCode = [...joinCode];
+        newCode[index - 1] = "";
+        setJoinCode(newCode);
+        digitRefs.current[index - 1]?.focus();
+      }
+      e.preventDefault();
+    } else if (e.key === "ArrowLeft" && index > 0) {
+      digitRefs.current[index - 1]?.focus();
+      e.preventDefault();
+    } else if (e.key === "ArrowRight" && index < 3) {
+      digitRefs.current[index + 1]?.focus();
+      e.preventDefault();
+    }
+  };
+
+  // ✅ Item 3: Support pasting a full 4-digit code
+  const handleDigitPaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+    const pasted = e.clipboardData.getData("text").replace(/\D/g, "").slice(0, 4);
+    if (pasted.length > 0) {
+      e.preventDefault();
+      const newCode = ["", "", "", ""];
+      for (let i = 0; i < pasted.length; i++) newCode[i] = pasted[i];
+      setJoinCode(newCode);
+      const nextIndex = Math.min(pasted.length, 3);
+      digitRefs.current[nextIndex]?.focus();
+    }
+  };
+
   useEffect(() => {
     const cleanup = window.electronAPI.onAnswerReceived(async (answerSDP: string) => {
       if (!localPC.current) return;
@@ -292,6 +462,21 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
     });
     return () => { cleanup(); window.electronAPI.stopSignaling?.(); };
   }, []);
+
+  // ✅ Item 1: shared row renderer for both grouped and ungrouped files
+  const renderQueueRow = (f: QueueFile) => (
+    <div key={f.id} className={styles.queueItem}>
+      <div className={styles.queueName}>{f.name}</div>
+      <div className={styles.queueSize}>{formatBytes(f.size)}</div>
+      {f.status === "transferring" && <progress value={f.progress} max="100" className={styles.progress} />}
+      <div className={styles.queueStatus}>
+        {f.status === "done"
+          ? <><FaCheck color="#4CAF50" /> {t("sent")}</>
+          : f.status}
+      </div>
+      {!isSending && f.status !== "done" && <button className={styles.removeBtn} onClick={() => removeFile(f.id)}><FaTimes /></button>}
+    </div>
+  );
 
   return (
     <div className={styles.container}>
@@ -307,7 +492,23 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
           <button onClick={() => setShowIPDetails(!showIPDetails)} className={styles.ghostBtn} style={{ marginTop: 20, border: 'none' }}>
              Advanced Info {showIPDetails ? <FaChevronUp /> : <FaChevronDown />}
           </button>
-          {showIPDetails && <div className={styles.ipDisplay}><code>{myIP}</code></div>}
+          {showIPDetails && (
+            <div className={styles.ipDisplay}>
+              <code>{myIP}</code>
+              <button
+                className={styles.copyBtn}
+                style={{ marginLeft: 10 }}
+                onClick={() => {
+                  navigator.clipboard.writeText(myIP);
+                  setIpCopied(true);
+                  setTimeout(() => setIpCopied(false), 2000);
+                }}
+                title="Copy IP"
+              >
+                {ipCopied ? <FaCheck size={13} /> : <FaCopy size={13} />}
+              </button>
+            </div>
+          )}
           <p className={styles.hint}>{waitingForJoiner ? t("waitingForJoiner") : t("generatingCode")}</p>
         </div>
       )}
@@ -318,7 +519,7 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
           <input className={styles.ipInput} value={joinIP} onChange={e => setJoinIP(e.target.value)} placeholder="192.168.x.x" />
           <p className={styles.label} style={{ marginTop: 20 }}>{t("enterCode")}</p>
           <div className={styles.digitRow}>
-            {joinCode.map((digit, i) => <input key={i} ref={el => (digitRefs.current[i] = el)} className={styles.digitInput} maxLength={1} value={digit} onChange={e => handleDigitChange(i, e.target.value)} />)}
+            {joinCode.map((digit, i) => <input key={i} ref={el => (digitRefs.current[i] = el)} className={styles.digitInput} maxLength={1} value={digit} onChange={e => handleDigitChange(i, e.target.value)} onKeyDown={e => handleDigitKeyDown(i, e)} onPaste={handleDigitPaste} inputMode="numeric" />)}
           </div>
           <button className={styles.btn} onClick={connectWithCode} disabled={joining} style={{ marginTop: 20 }}>{joining ? "Connecting..." : "Connect"}</button>
         </div>
@@ -334,25 +535,56 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
             <button className={styles.ghostBtn} onClick={addFolder} disabled={isSending}><FaFolderOpen /> Add Folder</button>
           </div>
 
-          <div className={styles.queue} style={{ marginTop: 20 }}>
-            {fileQueue.length === 0 ? (
-              <div className={styles.emptyState}>
-                <FaFolderOpen size={40} color="#333" />
-                <p>No files added yet.</p>
-                <p style={{fontSize: '0.8rem'}}>Click buttons above or press Ctrl+V to paste.</p>
+          {/* ✅ Item 3: empty state only shown when there's truly nothing —
+              no queued/sent files AND no incoming files */}
+          {fileQueue.length === 0 && Object.keys(receiveMap).length === 0 && (
+            <div className={styles.emptyState}>
+              <FaFolderOpen size={40} color="#333" />
+              <p>No files added yet.</p>
+              <p style={{fontSize: '0.8rem'}}>Click buttons above or press Ctrl+V to paste.</p>
+            </div>
+          )}
+
+          {fileQueue.length > 0 && (() => {
+            const groups = groupQueueFiles(fileQueue);
+            const hasFolders = groups.some(g => g.folderName !== "");
+            return (
+              <div className={styles.queue} style={{ marginTop: 20 }}>
+                {/* ✅ Item 1: sticky collapse-all bar — stays visible while
+                    scrolling through 1000+ files */}
+                {hasFolders && (
+                  <div className={styles.stickyFolderBar}>
+                    <button className={styles.toggleAllBtn} onClick={() => toggleAll(groups)}>
+                      {allCollapsed ? "Uncollapse All" : "Collapse All"}
+                    </button>
+                  </div>
+                )}
+                {groups.map(group => {
+                  if (group.folderName === "") {
+                    return group.files.map(f => renderQueueRow(f));
+                  }
+                  const collapsed = collapsedFolders.has(group.folderName);
+                  const totalSize = group.files.reduce((s, f) => s + f.size, 0);
+                  return (
+                    <div key={group.folderName} className={styles.folderGroup}>
+                      <div className={styles.folderHeader} onClick={() => toggleFolder(group.folderName)}>
+                        <span className={styles.folderArrow}>{collapsed ? <FaChevronRight /> : <FaChevronDown />}</span>
+                        <span className={styles.folderName}>{group.folderName}</span>
+                        <span className={styles.folderMeta}>{group.files.length} files · {formatBytes(totalSize)}</span>
+                        <button
+                          className={styles.toggleAllBtn}
+                          onClick={(e) => { e.stopPropagation(); toggleFolder(group.folderName); }}
+                        >
+                          {collapsed ? "Uncollapse" : "Collapse"}
+                        </button>
+                      </div>
+                      {!collapsed && group.files.map(f => renderQueueRow(f))}
+                    </div>
+                  );
+                })}
               </div>
-            ) : (
-              fileQueue.map(f => (
-                <div key={f.id} className={styles.queueItem}>
-                  <div className={styles.queueName}>{f.name}</div>
-                  <div className={styles.queueSize}>{formatBytes(f.size)}</div>
-                  {f.status === "transferring" && <progress value={f.progress} max="100" className={styles.progress} />}
-                  <div className={styles.queueStatus}>{f.status === "done" ? <FaCheck color="#4CAF50"/> : f.status}</div>
-                  {!isSending && f.status !== "done" && <button className={styles.removeBtn} onClick={() => removeFile(f.id)}><FaTimes /></button>}
-                </div>
-              ))
-            )}
-          </div>
+            );
+          })()}
 
           {Object.keys(receiveMap).length > 0 && (
             <div className={styles.incomingSection} style={{ marginTop: 20 }}>
@@ -367,9 +599,9 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
             </div>
           )}
 
-          {fileQueue.length > 0 && !isSending && (
+          {fileQueue.some(f => f.status !== "done" && f.status !== "cancelled") && !isSending && (
             <button className={styles.sendBtn} onClick={sendAll} style={{ marginTop: 20, width: '100%', background: '#4CAF50', color: 'white', padding: 15, borderRadius: 10, border: 'none', cursor: 'pointer' }}>
-              <FaUpload /> Send All ({fileQueue.length} files)
+              <FaUpload /> {t("send")} ({formatBytes(fileQueue.filter(f => f.status !== "done" && f.status !== "cancelled").reduce((sum, f) => sum + f.size, 0))})
             </button>
           )}
         </div>

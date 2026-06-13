@@ -652,15 +652,28 @@ const QuickShare: React.FC<Props> = ({ onBack, shareIP }) => {
       </p>
 
       {files.length > 0 && !isSharing && (
-        <div className={styles.fileList} ref={fileListRef}>
-          {hasFolders && (
-            <div className={styles.toggleAllRow}>
+        <div className={styles.stickyActionBar}>
+          <div className={styles.stickyInfo}>
+            <span className={styles.stickyCount}>
+              {files.length} {t("fileCount", { count: files.length })} · {formatBytes(files.reduce((sum, f) => sum + f.size, 0))}
+            </span>
+          </div>
+          <div className={styles.stickyActions}>
+            {hasFolders && (
               <button className={styles.toggleAllBtn} onClick={toggleAll}>
                 <FaLayerGroup size={14} style={{ marginRight: 6 }} />
                 {allExpanded ? t("collapseAll") : t("expandAll")}
               </button>
-            </div>
-          )}
+            )}
+            <button className={styles.shareBtn} onClick={startSharing}>
+              {t("startSharing")} ({formatBytes(files.reduce((sum, f) => sum + f.size, 0))})
+            </button>
+          </div>
+        </div>
+      )}
+
+      {files.length > 0 && !isSharing && (
+        <div className={styles.fileList} ref={fileListRef}>
           {renderGroups()}
         </div>
       )}
@@ -673,12 +686,6 @@ const QuickShare: React.FC<Props> = ({ onBack, shareIP }) => {
           <button className={styles.ghostBtn} onClick={addFolder}>
             {t("addFolder")}
           </button>
-          {files.length > 0 && (
-            <button className={styles.shareBtn} onClick={startSharing}>
-              {t("startSharing")} ({files.length} {t("fileCount", { count: files.length })}) —{" "}
-              {formatBytes(files.reduce((sum, f) => sum + f.size, 0))}
-            </button>
-          )}
         </div>
       )}
 

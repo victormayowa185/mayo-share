@@ -522,3 +522,39 @@
   color: #222;
   border-color: rgba(0,0,0,0.1);
 }
+/* ── Sticky action bar (Item 1) ── */
+.stickyActionBar {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  max-width: 720px;
+  padding: 12px 16px;
+  margin-bottom: 12px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-light);
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+  backdrop-filter: blur(8px);
+}
+
+.stickyInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.stickyCount {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.stickyActions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}

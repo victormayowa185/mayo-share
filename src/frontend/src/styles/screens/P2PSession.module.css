@@ -3,8 +3,10 @@
   flex-direction: column;
   align-items: center;
   width: 100%;
-  padding: 20px 24px 48px 24px;      /* consistent with other pages */
-  min-height: calc(100vh - 60px);    /* fill full viewport minus top bar */
+  padding: 20px 24px 48px 24px;
+  /* consistent with other pages */
+  min-height: calc(100vh - 60px);
+  /* fill full viewport minus top bar */
   background: var(--bg-primary);
   color: var(--text-primary);
 }
@@ -22,8 +24,10 @@
 .title {
   font-size: 1.6rem;
   margin-bottom: 32px;
-  color: var(--p2p-title-color); /* uses new variable */
+  color: var(--p2p-title-color);
+  /* uses new variable */
 }
+
 .modeRow {
   display: flex;
   gap: 16px;
@@ -361,6 +365,7 @@
   0% {
     transform: rotate(0deg);
   }
+
   100% {
     transform: rotate(360deg);
   }
@@ -471,4 +476,82 @@
   font-size: 0.85rem;
   margin-top: 8px;
   text-align: center;
+}
+
+/* ── Item 1: Folder grouping + sticky collapse bar ── */
+.stickyFolderBar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  justify-content: flex-end;
+  padding: 8px 0;
+  margin-bottom: 8px;
+  background: var(--bg-primary);
+  border-bottom: 1px solid var(--border-light);
+}
+
+.toggleAllBtn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border-light);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.toggleAllBtn:hover {
+  background: var(--bg-hover);
+  border-color: var(--accent);
+}
+
+.folderGroup {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 8px;
+  border: 1px solid var(--border-light);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.folderHeader {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  background: var(--bg-secondary);
+  cursor: pointer;
+  user-select: none;
+}
+
+.folderHeader:hover {
+  background: var(--bg-hover);
+}
+
+.folderArrow {
+  display: flex;
+  align-items: center;
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.folderName {
+  flex: 1;
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.folderMeta {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
 }

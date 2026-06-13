@@ -127,6 +127,8 @@
   "addFiles": "Add Files",
   "paste": "Paste (Ctrl+V)",
   "sendAll": "Send All",
+  "send": "Send",
+  "sent": "Sent",
   "sending": "Sending...",
   "queueStatus_queued": "[queued]",
   "queueStatus_done": "[done]",
