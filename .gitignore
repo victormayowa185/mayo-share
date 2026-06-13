@@ -5,3 +5,4 @@ dist/
 Thumbs.db
 src/backend/firebase.ts
 firebase.ts
+repomix-output.xml
