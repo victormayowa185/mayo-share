@@ -34,6 +34,16 @@ interface ReceiveEntry {
   received: number;
 }
 
+// Item 4: a file that has finished downloading on the receiver side,
+// kept around so the "Received" section can still show it after the
+// progress bar disappears.
+interface ReceivedFile {
+  id: string;
+  name: string;
+  size: number;
+  path: string;
+}
+
 const formatBytes = (b: number) => {
   if (b === 0) return "0 B";
   const k = 1024, s = ["B", "KB", "MB", "GB"];
@@ -90,6 +100,8 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
   // Queue States
   const [fileQueue, setFileQueue] = useState<QueueFile[]>([]);
   const [receiveMap, setReceiveMap] = useState<Record<string, ReceiveEntry>>({});
+  // ✅ Item 4: completed downloads, kept visible in a "Received" section
+  const [receivedFiles, setReceivedFiles] = useState<ReceivedFile[]>([]);
   // ✅ Item 1: folder collapse state — set of folder names currently collapsed
   const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(new Set());
   const [allCollapsed, setAllCollapsed] = useState(false);
@@ -98,12 +110,18 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
   const localDC = useRef<RTCDataChannel | null>(null);
   const digitRefs = useRef<(HTMLInputElement | null)[]>([]);
   const receivePathsRef = useRef<Record<string, string>>({});
+  // Mirrors receiveMap for synchronous access inside stable callbacks
+  const receiveMapRef = useRef<Record<string, ReceiveEntry>>({});
   // ✅ Item 4 fix: serialize incoming data-channel messages so chunks are
   // written to disk strictly in order, preventing corrupted/incomplete files.
   const messageQueueRef = useRef<string[]>([]);
   const processingRef = useRef(false);
 
   const showFileArea = useCallback(() => setConnected(true), []);
+
+  useEffect(() => {
+    receiveMapRef.current = receiveMap;
+  }, [receiveMap]);
 
   // ── Connection Logic ──
   useEffect(() => {
@@ -233,6 +251,22 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
 
   const removeFile = (id: string) => setFileQueue(prev => prev.filter(f => f.id !== id));
 
+  // ✅ New: remove every file belonging to a folder in one click, so the
+  // user doesn't have to open the folder and remove files one by one.
+  const removeFolder = (folderName: string) => {
+    setFileQueue(prev => prev.filter(f => {
+      const parts = f.name.split("/");
+      const folder = parts.length > 1 ? parts[0] : "";
+      return folder !== folderName;
+    }));
+    setCollapsedFolders(prev => {
+      if (!prev.has(folderName)) return prev;
+      const next = new Set(prev);
+      next.delete(folderName);
+      return next;
+    });
+  };
+
   // ✅ Item 1: toggle a single folder's collapsed state
   const toggleFolder = (folderName: string) => {
     setCollapsedFolders(prev => {
@@ -332,8 +366,19 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
     }
 
     if (msg.type === "file-end") {
+      const entry = receiveMapRef.current[msg.id];
+      const savedPath = receivePathsRef.current[msg.id] || entry?.path || "";
       delete receivePathsRef.current[msg.id];
       setReceiveMap(prev => { const n = { ...prev }; delete n[msg.id]; return n; });
+      setReceivedFiles(prev => [
+        ...prev,
+        {
+          id: msg.id,
+          name: msg.name || entry?.name || "",
+          size: msg.size ?? entry?.size ?? 0,
+          path: savedPath,
+        },
+      ]);
       setSessionStatus(t("fileReceived", { name: msg.name || "" }));
     }
   }, []);
@@ -497,7 +542,6 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
               <code>{myIP}</code>
               <button
                 className={styles.copyBtn}
-                style={{ marginLeft: 10 }}
                 onClick={() => {
                   navigator.clipboard.writeText(myIP);
                   setIpCopied(true);
@@ -537,7 +581,7 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
 
           {/* ✅ Item 3: empty state only shown when there's truly nothing —
               no queued/sent files AND no incoming files */}
-          {fileQueue.length === 0 && Object.keys(receiveMap).length === 0 && (
+          {fileQueue.length === 0 && Object.keys(receiveMap).length === 0 && receivedFiles.length === 0 && (
             <div className={styles.emptyState}>
               <FaFolderOpen size={40} color="#333" />
               <p>No files added yet.</p>
@@ -546,46 +590,78 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
           )}
 
           {fileQueue.length > 0 && (() => {
-            const groups = groupQueueFiles(fileQueue);
+            const activeFiles = fileQueue.filter(f => f.status !== "done");
+            const sentFiles = fileQueue.filter(f => f.status === "done");
+            const groups = groupQueueFiles(activeFiles);
             const hasFolders = groups.some(g => g.folderName !== "");
             return (
-              <div className={styles.queue} style={{ marginTop: 20 }}>
-                {/* ✅ Item 1: sticky collapse-all bar — stays visible while
-                    scrolling through 1000+ files */}
-                {hasFolders && (
-                  <div className={styles.stickyFolderBar}>
-                    <button className={styles.toggleAllBtn} onClick={() => toggleAll(groups)}>
-                      {allCollapsed ? "Uncollapse All" : "Collapse All"}
-                    </button>
-                  </div>
-                )}
-                {groups.map(group => {
-                  if (group.folderName === "") {
-                    return group.files.map(f => renderQueueRow(f));
-                  }
-                  const collapsed = collapsedFolders.has(group.folderName);
-                  const totalSize = group.files.reduce((s, f) => s + f.size, 0);
-                  return (
-                    <div key={group.folderName} className={styles.folderGroup}>
-                      <div className={styles.folderHeader} onClick={() => toggleFolder(group.folderName)}>
-                        <span className={styles.folderArrow}>{collapsed ? <FaChevronRight /> : <FaChevronDown />}</span>
-                        <span className={styles.folderName}>{group.folderName}</span>
-                        <span className={styles.folderMeta}>{group.files.length} files · {formatBytes(totalSize)}</span>
-                        <button
-                          className={styles.toggleAllBtn}
-                          onClick={(e) => { e.stopPropagation(); toggleFolder(group.folderName); }}
-                        >
-                          {collapsed ? "Uncollapse" : "Collapse"}
+              <>
+                {activeFiles.length > 0 && (
+                  <div className={styles.queue} style={{ marginTop: 20 }}>
+                    {/* "Collapse All" — no longer sticky, see item 3 */}
+                    {hasFolders && (
+                      <div className={styles.stickyFolderBar}>
+                        <button className={styles.toggleAllBtn} onClick={() => toggleAll(groups)}>
+                          {allCollapsed ? "Uncollapse All" : "Collapse All"}
                         </button>
                       </div>
-                      {!collapsed && group.files.map(f => renderQueueRow(f))}
+                    )}
+                    {groups.map(group => {
+                      if (group.folderName === "") {
+                        return group.files.map(f => renderQueueRow(f));
+                      }
+                      const collapsed = collapsedFolders.has(group.folderName);
+                      const totalSize = group.files.reduce((s, f) => s + f.size, 0);
+                      return (
+                        <div key={group.folderName} className={styles.folderGroup}>
+                          {/* This header sticks to the top while scrolling
+                              through this folder's files (item 3) */}
+                          <div className={styles.folderHeader} onClick={() => toggleFolder(group.folderName)}>
+                            <span className={styles.folderArrow}>{collapsed ? <FaChevronRight /> : <FaChevronDown />}</span>
+                            <span className={styles.folderName}>{group.folderName}</span>
+                            <span className={styles.folderMeta}>{group.files.length} files · {formatBytes(totalSize)}</span>
+                            <button
+                              className={styles.toggleAllBtn}
+                              onClick={(e) => { e.stopPropagation(); toggleFolder(group.folderName); }}
+                            >
+                              {collapsed ? "Uncollapse" : "Collapse"}
+                            </button>
+                            {!isSending && (
+                              <button
+                                className={styles.removeFolderBtn}
+                                onClick={(e) => { e.stopPropagation(); removeFolder(group.folderName); }}
+                                title="Remove folder"
+                              >
+                                <FaTimes />
+                              </button>
+                            )}
+                          </div>
+                          {!collapsed && group.files.map(f => renderQueueRow(f))}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* ── Sent section (item 2) ── */}
+                {sentFiles.length > 0 && (
+                  <>
+                    <div className={styles.sectionDivider}>
+                      <span className={styles.sectionLabel}>{t("sent")}</span>
+                      <span className={styles.sectionCount}>
+                        {sentFiles.length} files · {formatBytes(sentFiles.reduce((s, f) => s + f.size, 0))}
+                      </span>
                     </div>
-                  );
-                })}
-              </div>
+                    <div className={styles.queue}>
+                      {sentFiles.map(f => renderQueueRow(f))}
+                    </div>
+                  </>
+                )}
+              </>
             );
           })()}
 
+          {/* ── Receiving in progress ── */}
           {Object.keys(receiveMap).length > 0 && (
             <div className={styles.incomingSection} style={{ marginTop: 20 }}>
               <p className={styles.label}>Incoming Files:</p>
@@ -597,6 +673,30 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
                 </div>
               ))}
             </div>
+          )}
+
+          {/* ── Received section (item 4) — keeps completed downloads
+              visible so the user can see what arrived and still send more ── */}
+          {receivedFiles.length > 0 && (
+            <>
+              <div className={styles.sectionDivider}>
+                <span className={styles.sectionLabel}>{t("receivedFiles")}</span>
+                <span className={styles.sectionCount}>
+                  {receivedFiles.length} files · {formatBytes(receivedFiles.reduce((s, f) => s + f.size, 0))}
+                </span>
+              </div>
+              <div className={styles.queue}>
+                {receivedFiles.map(f => (
+                  <div key={f.id} className={styles.queueItem}>
+                    <div className={styles.queueName}>{f.name}</div>
+                    <div className={styles.queueSize}>{formatBytes(f.size)}</div>
+                    <div className={styles.queueStatus}>
+                      <FaCheck color="#4CAF50" /> {t("sent")}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
           )}
 
           {fileQueue.some(f => f.status !== "done" && f.status !== "cancelled") && !isSending && (

@@ -437,13 +437,21 @@
 .ipDisplay {
   display: flex;
   align-items: center;
-  gap: 10px;
+  justify-content: space-between;
+  gap: 16px;
   background: var(--bg-secondary);
   border: 1px solid var(--border-light);
   border-radius: 10px;
   padding: 10px 16px;
   max-width: 320px;
   width: 100%;
+}
+
+.ipDisplay code {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .ipText {
@@ -478,11 +486,10 @@
   text-align: center;
 }
 
-/* ── Item 1: Folder grouping + sticky collapse bar ── */
+/* ── Item 1: Folder grouping + collapse-all bar ── */
+/* "Collapse All" no longer sticks on scroll — see .folderHeader below,
+   which sticks per-folder as the user scrolls through that folder. */
 .stickyFolderBar {
-  position: sticky;
-  top: 0;
-  z-index: 20;
   display: flex;
   justify-content: flex-end;
   padding: 8px 0;
@@ -519,6 +526,9 @@
   overflow: hidden;
 }
 
+/* Each folder's header sticks to the top while its files are scrolled
+   through, so the collapse control for the folder currently in view is
+   always reachable. */
 .folderHeader {
   display: flex;
   align-items: center;
@@ -527,10 +537,29 @@
   background: var(--bg-secondary);
   cursor: pointer;
   user-select: none;
+  position: sticky;
+  top: 0;
+  z-index: 15;
 }
 
 .folderHeader:hover {
   background: var(--bg-hover);
+}
+
+/* Remove an entire folder (and all its files) in one click */
+.removeFolderBtn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.removeFolderBtn:hover {
+  color: var(--error);
 }
 
 .folderArrow {
@@ -551,6 +580,31 @@
 }
 
 .folderMeta {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+/* ── Sent / Received section dividers ── */
+.sectionDivider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0;
+  margin: 16px 0 8px;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.sectionLabel {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+}
+
+.sectionCount {
   font-size: 0.75rem;
   color: var(--text-secondary);
   white-space: nowrap;
