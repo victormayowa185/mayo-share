@@ -26,6 +26,10 @@ function createWindow() {
 }
 
 // ===== IPC HANDLERS - these fix your crash =====
+// NOTE: get-platform, get-local-ip, get-wifi-ssid, check-hotspot-status are safe stubs.
+// DO NOT add stubs for get-activity, clear-activity, log-p2p-activity here —
+// those are fully implemented in src/backend/index.ts and must not be overridden.
+
 ipcMain.handle('get-platform', () => {
   return process.platform; // 'win32', 'darwin', 'linux'
 });
@@ -34,7 +38,7 @@ ipcMain.handle('get-local-ip', () => {
   const interfaces = os.networkInterfaces();
   for (const name of Object.keys(interfaces)) {
     for (const iface of interfaces[name]!) {
-      if (iface.family === 'IPv4' &&!iface.internal) {
+      if (iface.family === 'IPv4' && !iface.internal) {
         return iface.address;
       }
     }
@@ -52,8 +56,12 @@ ipcMain.handle('check-hotspot-status', async () => {
   return { active: false, ip: null };
 });
 
-// Stub handlers so your app doesn't crash on other calls
-ipcMain.handle('get-activity', () => []);
+// FIX #5: REMOVED the stub `ipcMain.handle('get-activity', () => [])` that was here.
+// That stub was silently swallowing all activity history, making the Activity screen
+// always show empty. The real implementation lives in src/backend/index.ts and reads
+// from the activity.json log file on disk. Removing this stub lets the real handler work.
+
+// These stubs are fine to keep as they don't conflict with index.ts:
 ipcMain.handle('get-language', () => 'en');
 ipcMain.handle('set-language', () => {});
 ipcMain.handle('get-save-path', () => os.homedir());
@@ -63,7 +71,7 @@ ipcMain.handle('ping', () => 'pong');
 app.whenReady().then(createWindow);
 
 app.on('window-all-closed', () => {
-  if (process.platform!== 'darwin') app.quit();
+  if (process.platform !== 'darwin') app.quit();
 });
 
 app.on('activate', () => {

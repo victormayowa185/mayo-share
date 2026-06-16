@@ -29,7 +29,7 @@ const ActivityScreen: React.FC<Props> = ({ onBack }) => {
 
   const loadActivities = async () => {
     const data = await window.electronAPI.getActivity();
-     // @ts-ignore 
+    // @ts-ignore 
     setActivities(data);
   };
 
@@ -39,15 +39,28 @@ const ActivityScreen: React.FC<Props> = ({ onBack }) => {
   };
 
   useEffect(() => {
+    // Load on mount
     loadActivities();
 
-    window.electronAPI.onActivityUpdated(() => {
+    // FIX #5: Store cleanup functions and call them on unmount.
+    // Previously the listeners were never removed, causing memory leaks
+    // and potential duplicate entries. Also, onActivityUpdated now receives
+    // the full updated list OR we just reload — reloading is the safest approach
+    // since the backend already prepends to the log.
+    const cleanupUpdated = window.electronAPI.onActivityUpdated(() => {
+      // Reload the full list from disk whenever an entry is added
       loadActivities();
     });
 
-    window.electronAPI.onActivityCleared(() => {
+    const cleanupCleared = window.electronAPI.onActivityCleared(() => {
       setActivities([]);
     });
+
+    return () => {
+      // Clean up IPC listeners on unmount
+      if (typeof cleanupUpdated === "function") cleanupUpdated();
+      if (typeof cleanupCleared === "function") cleanupCleared();
+    };
   }, []);
 
   // GSAP entrance animation

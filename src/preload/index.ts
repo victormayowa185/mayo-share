@@ -139,4 +139,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
   getClipboardFiles: () => ipcRenderer.invoke("get-clipboard-files"),
   saveTempFile: (fileName: string, base64Data: string) =>
     ipcRenderer.invoke("save-temp-file", fileName, base64Data),
+
+  // ==================== ADDED FOR P2P ACTIVITY & FULL PASTE SUPPORT ====================
+  logP2pActivity: (type: "sent" | "received", fileName: string) =>
+    ipcRenderer.invoke("log-p2p-activity", type, fileName),
+  isDirectory: (filePath: string) => ipcRenderer.invoke("is-directory", filePath),
+  walkDirectory: (dirPath: string) => ipcRenderer.invoke("walk-directory", dirPath),
 });

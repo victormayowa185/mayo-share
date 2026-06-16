@@ -126,7 +126,7 @@ const HOTSPOT_SCRIPT = `
   Log "SUCCESS: Hotspot is ON"
   exit 0
   `;
-// ---------- Helper: get best available IP ----------
+
 async function getBestIP(): Promise<string> {
   const interfaces = os.networkInterfaces();
   for (const iface of Object.values(interfaces)) {
@@ -143,17 +143,14 @@ async function getBestIP(): Promise<string> {
       }
     }
   }
-  return currentHotspotIP; // fallback to loopback
+  return currentHotspotIP;
 }
 
-// ---------- Activity logging ----------
-// ---------- Settings: save path - MOVE THIS TO TOP after imports ----------
 const defaultSaveDir = process.platform === "win32"
   ? "C:\\mayo-received"
   : path.join(os.homedir(), "mayo-received");
 let currentSavePath = defaultSaveDir;
 
-// ---------- Activity logging ----------
 function getActivityLogPath() {
   return path.join(currentSavePath, "activity.json");
 }
@@ -176,7 +173,7 @@ function addActivity(entry: {
   timestamp: string;
 }) {
   let log: any[] = [];
-  const logPath = getActivityLogPath(); // ← dynamic now
+  const logPath = getActivityLogPath();
   try {
     const raw = fs.readFileSync(logPath, "utf-8");
     log = JSON.parse(raw);
@@ -184,8 +181,8 @@ function addActivity(entry: {
   log.unshift(entry);
   if (log.length > 200) log = log.slice(0, 200);
   try {
-    fs.mkdirSync(path.dirname(logPath), { recursive: true }); // ← dynamic
-    fs.writeFileSync(logPath, JSON.stringify(log, null, 2), "utf-8"); // ← dynamic
+    fs.mkdirSync(path.dirname(logPath), { recursive: true });
+    fs.writeFileSync(logPath, JSON.stringify(log, null, 2), "utf-8");
   } catch (err) {
     console.error("Failed to write activity log:", err);
   }
@@ -219,7 +216,6 @@ function stopWindowsHotspot() {
   );
 }
 
-// ---------- Window ----------
 function createWindow(): void {
   mainWindow = new BrowserWindow({
     width: 800,
@@ -240,11 +236,9 @@ function createWindow(): void {
   });
 }
 
-// ---------- i18n (multi‑language) ----------
 const LOCALES_DIR = path.join(__dirname, '../locales');
 let currentLanguage = "en";
 
-// Load all translation files once and cache them
 const translationsCache: Record<string, any> = {};
 function loadAllTranslations() {
   const files = fs.readdirSync(LOCALES_DIR).filter((f) => f.endsWith(".json"));
@@ -269,7 +263,6 @@ ipcMain.handle("get-language", async () => {
 ipcMain.handle("set-language", async (_event, lang: string) => {
   if (translationsCache[lang]) {
     currentLanguage = lang;
-    // Persist to a file or electron‑store – here we use a simple JSON file
     const settingsPath = path.join(currentSavePath, "mayo-settings.json");
     try {
       const settings = JSON.parse(
@@ -285,7 +278,6 @@ ipcMain.handle("set-language", async (_event, lang: string) => {
   }
 });
 
-// ---------- Hotspot ----------
 ipcMain.handle("start-hotspot", async (): Promise<string> => {
   if (process.platform === "win32") {
     return new Promise((resolve) => {
@@ -314,7 +306,6 @@ ipcMain.handle("start-hotspot", async (): Promise<string> => {
           if (stderr && !stdout) output += stderr;
           if (error) output += "\n[EXIT CODE]: " + error.message;
 
-          // Extract the hotspot IP from the script's output
           const ipMatch = output.match(
             /Hotspot IP \(for sharing\):\s*([\d.]+)/,
           );
@@ -327,16 +318,13 @@ ipcMain.handle("start-hotspot", async (): Promise<string> => {
       );
     });
   } else if (process.platform === "darwin") {
-    // macOS
     try {
-      // First, attempt to configure (safe to call multiple times)
       await configureHotspot();
     } catch (err) {
-      // If configuration fails (e.g. user rejected sudo), propagate
       throw new Error(`Hotspot setup failed: ${err}`);
     }
     const ip = await startHotspot();
-    currentHotspotIP = ip; // update the global IP for later use
+    currentHotspotIP = ip;
     return `Hotspot started at ${ip}`;
   } else {
     throw new Error("Unsupported platform");
@@ -352,7 +340,6 @@ ipcMain.handle("submit-rating", async (_event, ratingData) => {
   }
 });
 
-// ---------- File selection ----------
 ipcMain.handle("select-file", async (): Promise<string[] | null> => {
   if (!mainWindow) return null;
   const result = await dialog.showOpenDialog(mainWindow, {
@@ -363,8 +350,6 @@ ipcMain.handle("select-file", async (): Promise<string[] | null> => {
   return result.filePaths;
 });
 
-// ---------- File server ----------
-// Accepts either plain paths (from file picks) or objects with relativePath (from folder picks)
 ipcMain.handle(
   "start-file-server",
   async (
@@ -425,7 +410,10 @@ ipcMain.handle("decline-sender", async (_event, sessionId: string) => {
 ipcMain.handle(
   "get-file-size",
   async (_event, filePath: string): Promise<number> => {
-    const stats = statSync(filePath);
+    // lstatSync returns size of the file/shortcut itself,
+    // NOT the target it points to. Fixes .lnk (1.2MB shortcut)
+    // showing as 0B because statSync was following the link to the 200MB exe.
+    const stats = fs.lstatSync(filePath);
     return stats.size;
   },
 );
@@ -457,7 +445,6 @@ ipcMain.handle(
   "check-hotspot-status",
   async (): Promise<{ active: boolean; ip: string }> => {
     if (process.platform === "win32") {
-      // ─── Existing Windows logic (unchanged) ───
       return new Promise((resolve) => {
         const script = `
           try {
@@ -501,7 +488,6 @@ ipcMain.handle(
         );
       });
     } else if (process.platform === "darwin") {
-      // ─── macOS branch ───
       return new Promise((resolve) => {
         execFile(
           "launchctl",
@@ -525,7 +511,7 @@ ipcMain.handle(
     }
   },
 );
-// HOST NAME
+
 ipcMain.handle("get-hostname", async () => {
   try {
     const settingsPath = path.join(currentSavePath, "mayo-settings.json");
@@ -537,7 +523,7 @@ ipcMain.handle("get-hostname", async () => {
   } catch { }
   return os.hostname();
 });
-// ---------- Local IP detection (for existing Wi‑Fi) ----------
+
 ipcMain.handle("get-local-ip", async (): Promise<string | null> => {
   const interfaces = os.networkInterfaces();
   for (const iface of Object.values(interfaces)) {
@@ -579,7 +565,6 @@ ipcMain.handle("get-wifi-ssid", async (): Promise<string | null> => {
         { timeout: 5000 },
         (error, stdout) => {
           if (error) return resolve(null);
-          // Output: "Current Wi‑Fi Network: MySSID"
           const match = stdout.match(/Current Wi-Fi Network: (.+)/);
           resolve(match ? match[1].trim() : null);
         },
@@ -589,7 +574,6 @@ ipcMain.handle("get-wifi-ssid", async (): Promise<string | null> => {
   return null;
 });
 
-// ---------- Folder selection ----------
 interface FolderFile {
   absolute: string;
   relative: string;
@@ -619,13 +603,10 @@ ipcMain.handle("select-folder", async (): Promise<FolderFile[] | null> => {
     }
   };
 
-  // Get just the folder name, not the full path, to use as root for relative paths
   const folderName = path.basename(folderRoot);
   await walk(folderRoot, folderName);
   return allFiles.length > 0 ? allFiles : null;
 });
-
-// ---------- File chunking (for P2P) ----------
 
 ipcMain.handle(
   "read-file-chunk",
@@ -636,12 +617,6 @@ ipcMain.handle(
     size: number,
   ): Promise<string> => {
     return new Promise((resolve, reject) => {
-      // Helper to safely extract a single string from a formidable field
-      const getField = (val: string | string[] | undefined): string => {
-        if (Array.isArray(val)) return val[0] || "";
-        return val || "";
-      };
-      // Open file, read chunk, return as base64
       open(filePath, "r", (err, fd) => {
         if (err) return reject(err);
         const buf = Buffer.alloc(size);
@@ -654,8 +629,6 @@ ipcMain.handle(
     });
   },
 );
-
-// for file resume
 
 ipcMain.handle(
   "save-resume-state",
@@ -736,21 +709,29 @@ fileServer.on("download-completed", (_index: number, fileName: string, clientIp:
   });
 });
 
-// ---------- Clipboard file paths ----------
 ipcMain.handle(
   "get-clipboard-files",
   async (): Promise<{ paths: string[]; type: "files" | "none" }> => {
     const { clipboard } = await import("electron");
-    // On Windows, copied files are available via nativeImage or file list
-    // electron clipboard doesn't expose file paths directly, so we read from the raw formats
     try {
-      const rawFilenames = clipboard.read("FileNameW"); // Windows-specific
+      const rawFilenames = clipboard.read("FileNameW");
       if (rawFilenames && rawFilenames.length > 0) {
-        // Parse null-terminated wide string list
         const paths: string[] = rawFilenames
           .split("\0")
           .map((p) => p.trim())
-          .filter((p) => p.length > 0 && fs.existsSync(p));
+          .filter((p) => {
+            if (p.length === 0) return false;
+            // Use lstatSync so .lnk, .url, and other shortcut/special files
+            // are included as-is rather than being resolved to their target.
+            // fs.existsSync follows symlinks (and on Windows, shortcuts),
+            // which can return false for .lnk when the target doesn't exist.
+            try {
+              fs.lstatSync(p);
+              return true;
+            } catch {
+              return false;
+            }
+          });
         if (paths.length > 0) return { paths, type: "files" };
       }
     } catch {
@@ -844,7 +825,6 @@ ipcMain.handle("diagnose-network", async (): Promise<any> => {
       });
     });
   }
-  // fallback
   return {
     ssid: null,
     profileCategory: null,
@@ -873,7 +853,6 @@ ipcMain.handle(
   },
 );
 
-// Read a text file and return its content
 ipcMain.handle(
   "read-text-file",
   async (_event, filePath: string): Promise<string> => {
@@ -881,7 +860,6 @@ ipcMain.handle(
   },
 );
 
-// Overwrite a text file with new content
 ipcMain.handle(
   "write-text-file",
   async (_event, filePath: string, content: string): Promise<void> => {
@@ -889,7 +867,6 @@ ipcMain.handle(
   },
 );
 
-// Place near other ipcMain.handle calls
 ipcMain.handle("get-activity", async (): Promise<any[]> => {
   try {
     const raw = fs.readFileSync(getActivityLogPath(), "utf-8");
@@ -901,7 +878,7 @@ ipcMain.handle("get-activity", async (): Promise<any[]> => {
 
 ipcMain.handle("clear-activity", async (): Promise<void> => {
   try {
-    fs.writeFileSync(getActivityLogPath(), "[]", "utf-8"); // ← fixed
+    fs.writeFileSync(getActivityLogPath(), "[]", "utf-8");
     mainWindow?.webContents.send("activity-cleared");
   } catch (err) {
     console.error("Failed to clear activity log:", err);
@@ -919,174 +896,121 @@ ipcMain.handle(
   },
 );
 
+// ==================== NEW ADDITIONS FOR P2P ACTIVITY & FOLDER PASTE ====================
+ipcMain.handle("log-p2p-activity", async (_event, type: "sent" | "received", fileName: string) => {
+  addActivity({ type, fileName, timestamp: new Date().toISOString() });
+});
 
-// Load saved path when app starts
-async function loadSettings() {
+ipcMain.handle("is-directory", async (_event, filePath: string): Promise<boolean> => {
   try {
-    const settingsPath = path.join(currentSavePath, "mayo-settings.json");
-    const raw = await fs.promises.readFile(settingsPath, "utf-8");
-    const settings = JSON.parse(raw);
-    if (settings.savePath) {
-      currentLanguage = settings.language;
-      currentSavePath = settings.savePath;
-      setReceiveDir(currentSavePath);
-    }
-  } catch { }
-}
-
-ipcMain.handle("get-save-path", async (): Promise<string> => {
-  return currentSavePath;
+    const stat = await fs.promises.stat(filePath);
+    return stat.isDirectory();
+  } catch {
+    return false;
+  }
 });
 
-ipcMain.handle(
-  "set-save-path",
-  async (_event, newPath: string): Promise<void> => {
-    // Basic validation: ensure it's a non‑empty string
-    if (newPath && newPath.trim().length > 0) {
-      currentSavePath = newPath.trim();
-      setReceiveDir(currentSavePath);
-      // Optionally persist to a settings file
-      try {
-        await fs.promises.mkdir(path.dirname(currentSavePath), {
-          recursive: true,
-        });
-        await fs.promises.writeFile(
-          path.join(currentSavePath, "mayo-settings.json"),
-          JSON.stringify({ savePath: currentSavePath }),
-          "utf-8",
-        );
-      } catch { }
+ipcMain.handle("walk-directory", async (_event, dirPath: string): Promise<{ absolute: string; relative: string }[]> => {
+  const result: { absolute: string; relative: string }[] = [];
+  const folderName = path.basename(dirPath);
+  const walk = async (dir: string, rel: string) => {
+    const entries = await fs.promises.readdir(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      const full = path.join(dir, entry.name);
+      const relative = rel ? `${rel}/${entry.name}` : entry.name;
+      if (entry.isDirectory()) {
+        await walk(full, relative);
+      } else {
+        result.push({ absolute: full, relative });
+      }
     }
-  },
-);
-
-ipcMain.handle(
-  "set-device-name",
-  async (_event, name: string): Promise<void> => {
-    if (name && name.trim().length > 0) {
-      try {
-        const settingsPath = path.join(currentSavePath, "mayo-settings.json");
-        let settings: any = {};
-        if (fs.existsSync(settingsPath)) {
-          const raw = fs.readFileSync(settingsPath, "utf-8");
-          settings = JSON.parse(raw);
-        }
-        settings.deviceName = name.trim();
-        fs.writeFileSync(
-          settingsPath,
-          JSON.stringify(settings, null, 2),
-          "utf-8",
-        );
-        mainWindow?.webContents.send("device-name-changed", name.trim()); // ← add this line
-      } catch { }
-    }
-  },
-);
-
-ipcMain.handle("select-save-folder", async (): Promise<string | null> => {
-  if (!mainWindow) return null;
-  const result = await dialog.showOpenDialog(mainWindow, {
-    properties: ["openDirectory"],
-    title: "Select where to save received files",
-  });
-  if (result.canceled || result.filePaths.length === 0) return null;
-  return result.filePaths[0];
+  };
+  await walk(dirPath, folderName);
+  return result;
 });
+// ==================== END NEW ADDITIONS ====================
 
-ipcMain.handle("ping", async () => "pong");
-ipcMain.handle("get-platform", async (): Promise<string> => {
-  return process.platform;
-});
 // ---------- 4-Digit Code Signaling ----------
 let signalingServer: http.Server | null = null;
 let storedOfferSDP = "";
-let activeCode = "";   // the 4-digit code currently active
+let activeCode = "";
 
 function generateCode(): string {
-  // Cryptographically random 4-digit code (1000–9999)
   const arr = new Uint32Array(1);
   require("crypto").randomFillSync(arr);
   return String(1000 + (arr[0] % 9000));
 }
 
-// Sender calls this: stores their SDP offer, starts HTTP server, returns the 4-digit code
-ipcMain.handle(
-  "generate-code",
-  async (_event, sdpOffer: string): Promise<string> => {
-    storedOfferSDP = sdpOffer;
-    activeCode = generateCode();
+ipcMain.handle("generate-code", async (_event, sdpOffer: string): Promise<string> => {
+  storedOfferSDP = sdpOffer;
+  activeCode = generateCode();
 
-    const PORT = 3004;
-    if (signalingServer) {
-      signalingServer.close();
-      signalingServer = null;
-    }
+  const PORT = 3004;
+  if (signalingServer) {
+    signalingServer.close();
+    signalingServer = null;
+  }
 
-    signalingServer = http.createServer(
-      (req: http.IncomingMessage, res: http.ServerResponse) => {
-        res.setHeader("Access-Control-Allow-Origin", "*");
-        res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-        res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  signalingServer = http.createServer(
+    (req: http.IncomingMessage, res: http.ServerResponse) => {
+      res.setHeader("Access-Control-Allow-Origin", "*");
+      res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+      res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
-        if (req.method === "OPTIONS") {
-          res.writeHead(204);
-          res.end();
-          return;
-        }
-
-        // Joiner fetches SDP using the code: GET /sdp?code=1234
-        if (req.method === "GET" && req.url?.startsWith("/sdp")) {
-          const url = new URL(req.url, `http://localhost:${PORT}`);
-          const code = url.searchParams.get("code");
-          if (code !== activeCode) {
-            res.writeHead(403, { "Content-Type": "application/json" });
-            res.end(JSON.stringify({ error: "wrong_code" }));
-            return;
-          }
-          res.writeHead(200, { "Content-Type": "text/plain" });
-          res.end(storedOfferSDP);
-          return;
-        }
-
-        // Joiner posts their answer SDP: POST /answer?code=1234
-        if (req.method === "POST" && req.url?.startsWith("/answer")) {
-          const url = new URL(req.url, `http://localhost:${PORT}`);
-          const code = url.searchParams.get("code");
-          if (code !== activeCode) {
-            res.writeHead(403, { "Content-Type": "application/json" });
-            res.end(JSON.stringify({ error: "wrong_code" }));
-            return;
-          }
-          let body = "";
-          req.on("data", (chunk: string) => (body += chunk));
-          req.on("end", () => {
-            mainWindow?.webContents.send("answer-received", body);
-            res.writeHead(200);
-            res.end("OK");
-          });
-          return;
-        }
-
-        res.writeHead(404);
+      if (req.method === "OPTIONS") {
+        res.writeHead(204);
         res.end();
-      },
-    );
+        return;
+      }
 
-    await new Promise<void>((resolve, reject) => {
-      signalingServer!.on("error", reject);
-      signalingServer!.listen(PORT, "0.0.0.0", resolve);
-    });
+      if (req.method === "GET" && req.url?.startsWith("/sdp")) {
+        const url = new URL(req.url, `http://localhost:${PORT}`);
+        const code = url.searchParams.get("code");
+        if (code !== activeCode) {
+          res.writeHead(403, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "wrong_code" }));
+          return;
+        }
+        res.writeHead(200, { "Content-Type": "text/plain" });
+        res.end(storedOfferSDP);
+        return;
+      }
 
-    return activeCode;
-  },
-);
+      if (req.method === "POST" && req.url?.startsWith("/answer")) {
+        const url = new URL(req.url, `http://localhost:${PORT}`);
+        const code = url.searchParams.get("code");
+        if (code !== activeCode) {
+          res.writeHead(403, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "wrong_code" }));
+          return;
+        }
+        let body = "";
+        req.on("data", (chunk: string) => (body += chunk));
+        req.on("end", () => {
+          mainWindow?.webContents.send("answer-received", body);
+          res.writeHead(200);
+          res.end("OK");
+        });
+        return;
+      }
 
-// Joiner calls this: connect to sender's IP:3004 using the code
+      res.writeHead(404);
+      res.end();
+    },
+  );
+
+  await new Promise<void>((resolve, reject) => {
+    signalingServer!.on("error", reject);
+    signalingServer!.listen(PORT, "0.0.0.0", resolve);
+  });
+
+  return activeCode;
+});
+
 ipcMain.handle(
   "join-by-code",
   async (_event, senderIP: string, code: string): Promise<string> => {
     const PORT = 3004;
-    // Fetch the SDP from the sender's signaling server
     const sdp = await new Promise<string>((resolve, reject) => {
       const req = require("http").get(
         `http://${senderIP}:${PORT}/sdp?code=${code}`,
@@ -1114,7 +1038,6 @@ ipcMain.handle(
   },
 );
 
-// Joiner calls this to POST their answer SDP back to the sender
 ipcMain.handle(
   "submit-answer",
   async (_event, senderIP: string, code: string, answerSDP: string): Promise<void> => {
@@ -1163,7 +1086,81 @@ discoveryManager.on("answer-received", (answerSDP: string) => {
   mainWindow?.webContents.send("answer-received", answerSDP);
 });
 
-// ---------- App startup ----------
+async function loadSettings() {
+  try {
+    const settingsPath = path.join(currentSavePath, "mayo-settings.json");
+    const raw = await fs.promises.readFile(settingsPath, "utf-8");
+    const settings = JSON.parse(raw);
+    if (settings.savePath) {
+      currentLanguage = settings.language;
+      currentSavePath = settings.savePath;
+      setReceiveDir(currentSavePath);
+    }
+  } catch { }
+}
+
+ipcMain.handle("get-save-path", async (): Promise<string> => {
+  return currentSavePath;
+});
+
+ipcMain.handle(
+  "set-save-path",
+  async (_event, newPath: string): Promise<void> => {
+    if (newPath && newPath.trim().length > 0) {
+      currentSavePath = newPath.trim();
+      setReceiveDir(currentSavePath);
+      try {
+        await fs.promises.mkdir(path.dirname(currentSavePath), {
+          recursive: true,
+        });
+        await fs.promises.writeFile(
+          path.join(currentSavePath, "mayo-settings.json"),
+          JSON.stringify({ savePath: currentSavePath }),
+          "utf-8",
+        );
+      } catch { }
+    }
+  },
+);
+
+ipcMain.handle(
+  "set-device-name",
+  async (_event, name: string): Promise<void> => {
+    if (name && name.trim().length > 0) {
+      try {
+        const settingsPath = path.join(currentSavePath, "mayo-settings.json");
+        let settings: any = {};
+        if (fs.existsSync(settingsPath)) {
+          const raw = fs.readFileSync(settingsPath, "utf-8");
+          settings = JSON.parse(raw);
+        }
+        settings.deviceName = name.trim();
+        fs.writeFileSync(
+          settingsPath,
+          JSON.stringify(settings, null, 2),
+          "utf-8",
+        );
+        mainWindow?.webContents.send("device-name-changed", name.trim());
+      } catch { }
+    }
+  },
+);
+
+ipcMain.handle("select-save-folder", async (): Promise<string | null> => {
+  if (!mainWindow) return null;
+  const result = await dialog.showOpenDialog(mainWindow, {
+    properties: ["openDirectory"],
+    title: "Select where to save received files",
+  });
+  if (result.canceled || result.filePaths.length === 0) return null;
+  return result.filePaths[0];
+});
+
+ipcMain.handle("ping", async () => "pong");
+ipcMain.handle("get-platform", async (): Promise<string> => {
+  return process.platform;
+});
+
 app.whenReady().then(async () => {
   await loadSettings();
   powerSaveBlockerId = powerSaveBlocker.start("prevent-app-suspension");

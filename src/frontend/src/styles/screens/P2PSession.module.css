@@ -1,12 +1,11 @@
+/* ===== P2PSession.module.css - Full fixed file ===== */
 .container {
   display: flex;
   flex-direction: column;
   align-items: center;
   width: 100%;
   padding: 20px 24px 48px 24px;
-  /* consistent with other pages */
   min-height: calc(100vh - 60px);
-  /* fill full viewport minus top bar */
   background: var(--bg-primary);
   color: var(--text-primary);
 }
@@ -25,7 +24,6 @@
   font-size: 1.6rem;
   margin-bottom: 32px;
   color: var(--p2p-title-color);
-  /* uses new variable */
 }
 
 .modeRow {
@@ -34,7 +32,6 @@
   margin-bottom: 24px;
 }
 
-/* Two‑column layout (used by create session) */
 .shareLayout {
   display: flex;
   flex-wrap: wrap;
@@ -140,7 +137,6 @@
   margin-bottom: 8px;
 }
 
-/* Primary button */
 .btn {
   padding: 12px 28px;
   background: var(--accent);
@@ -178,7 +174,6 @@
   color: var(--p2p-ghost-hover-text);
 }
 
-/* Code panel used by join mode */
 .codePanel {
   display: flex;
   flex-direction: column;
@@ -228,7 +223,6 @@
   color: var(--error);
 }
 
-/* Connected file area */
 .fileArea {
   display: flex;
   flex-direction: column;
@@ -275,11 +269,19 @@
   cursor: not-allowed;
 }
 
+/* ========== QUEUE (scrollable file list) ========== */
+/* FIX #1: position:relative is CRITICAL — it makes .folderHeader's
+   position:sticky work relative to this scrolling container,
+   not relative to the whole page */
 .queue {
   width: 100%;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 0;
+  max-height: 60vh;
+  overflow-y: auto;
+  /* Required for sticky children to work correctly */
+  position: relative;
 }
 
 .queueItem {
@@ -291,6 +293,7 @@
   border-radius: 8px;
   padding: 10px 14px;
   font-size: 0.88rem;
+  margin-bottom: 4px;
 }
 
 .queueName {
@@ -343,7 +346,6 @@
   margin-top: 48px;
 }
 
-/* ── Create / Join session status ── */
 .waitingText {
   color: var(--text-secondary);
   font-size: 1rem;
@@ -362,29 +364,21 @@
 }
 
 @keyframes spin {
-  0% {
-    transform: rotate(0deg);
-  }
-
-  100% {
-    transform: rotate(360deg);
-  }
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
 }
 
-/* Responsive */
 @media (max-width: 700px) {
   .shareLayout {
     flex-direction: column;
     align-items: center;
   }
-
   .column {
     width: 100%;
     max-width: 400px;
   }
 }
 
-/* ── 4-digit code styles ── */
 .codeDisplay {
   display: flex;
   gap: 12px;
@@ -486,16 +480,20 @@
   text-align: center;
 }
 
-/* ── Item 1: Folder grouping + collapse-all bar ── */
-/* "Collapse All" no longer sticks on scroll — see .folderHeader below,
-   which sticks per-folder as the user scrolls through that folder. */
+/* ========== STICKY FOLDER HEADER inside .queue ========== */
+/* FIX #1: The bar that sticks at the top when scrolling inside .queue.
+   top: 0 because .queue is the scroll container (position:relative + overflow-y:auto).
+   When the user scrolls inside .queue, this header sticks to the top of .queue. */
 .stickyFolderBar {
   display: flex;
   justify-content: flex-end;
   padding: 8px 0;
-  margin-bottom: 8px;
+  margin-bottom: 4px;
   background: var(--bg-primary);
   border-bottom: 1px solid var(--border-light);
+  position: sticky;
+  top: 0;
+  z-index: 20;
 }
 
 .toggleAllBtn {
@@ -520,15 +518,15 @@
 .folderGroup {
   display: flex;
   flex-direction: column;
-  margin-bottom: 8px;
+  margin-bottom: 4px;
   border: 1px solid var(--border-light);
   border-radius: 10px;
-  overflow: hidden;
+  overflow: visible; /* allow sticky children to work */
 }
 
-/* Each folder's header sticks to the top while its files are scrolled
-   through, so the collapse control for the folder currently in view is
-   always reachable. */
+/* FIX #1: folderHeader sticks to top of .queue scroll container.
+   top: 0 because .queue is position:relative + overflow-y:auto.
+   Each folder's header sticks as you scroll past it inside the list. */
 .folderHeader {
   display: flex;
   align-items: center;
@@ -540,13 +538,14 @@
   position: sticky;
   top: 0;
   z-index: 15;
+  border-bottom: 1px solid var(--border-light);
+  border-radius: 10px 10px 0 0;
 }
 
 .folderHeader:hover {
   background: var(--bg-hover);
 }
 
-/* Remove an entire folder (and all its files) in one click */
 .removeFolderBtn {
   background: transparent;
   border: none;
@@ -585,7 +584,6 @@
   white-space: nowrap;
 }
 
-/* ── Sent / Received section dividers ── */
 .sectionDivider {
   display: flex;
   align-items: center;

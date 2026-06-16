@@ -34,14 +34,16 @@ interface ReceiveEntry {
   received: number;
 }
 
-// Item 4: a file that has finished downloading on the receiver side,
-// kept around so the "Received" section can still show it after the
-// progress bar disappears.
 interface ReceivedFile {
   id: string;
   name: string;
   size: number;
   path: string;
+}
+
+interface ReceivedGroup {
+  folderName: string;
+  files: ReceivedFile[];
 }
 
 const formatBytes = (b: number) => {
@@ -56,8 +58,6 @@ interface FileGroup {
   files: QueueFile[];
 }
 
-// ✅ Item 1: group queued files by their top-level folder (based on relative
-// path produced by addFolder, e.g. "MyFolder/sub/file.txt")
 const groupQueueFiles = (files: QueueFile[]): FileGroup[] => {
   const groupsMap = new Map<string, QueueFile[]>();
   for (const file of files) {
@@ -73,6 +73,35 @@ const groupQueueFiles = (files: QueueFile[]): FileGroup[] => {
   }
   if (rootFiles.length > 0) groups.push({ folderName: "", files: rootFiles });
   return groups;
+};
+
+const groupReceivedFiles = (files: ReceivedFile[]): ReceivedGroup[] => {
+  const groupsMap = new Map<string, ReceivedFile[]>();
+  for (const file of files) {
+    const parts = file.name.split("/");
+    const folder = parts.length > 1 ? parts[0] : "";
+    if (!groupsMap.has(folder)) groupsMap.set(folder, []);
+    groupsMap.get(folder)!.push(file);
+  }
+  const groups: ReceivedGroup[] = [];
+  const rootFiles = groupsMap.get("") || [];
+  for (const [folder, folderFiles] of groupsMap) {
+    if (folder) groups.push({ folderName: folder, files: folderFiles });
+  }
+  if (rootFiles.length > 0) groups.push({ folderName: "", files: rootFiles });
+  return groups;
+};
+
+// Helper to filter out temp/incomplete files
+const isInvalidFile = (name: string): boolean => {
+  const lower = name.toLowerCase();
+  return (
+    lower.endsWith(".crdownload") ||
+    lower.endsWith(".part") ||
+    lower.endsWith(".tmp") ||
+    lower.endsWith(".download") ||
+    lower.startsWith("~$")
+  );
 };
 
 const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
@@ -100,9 +129,8 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
   // Queue States
   const [fileQueue, setFileQueue] = useState<QueueFile[]>([]);
   const [receiveMap, setReceiveMap] = useState<Record<string, ReceiveEntry>>({});
-  // ✅ Item 4: completed downloads, kept visible in a "Received" section
   const [receivedFiles, setReceivedFiles] = useState<ReceivedFile[]>([]);
-  // ✅ Item 1: folder collapse state — set of folder names currently collapsed
+  const [receivedGroups, setReceivedGroups] = useState<ReceivedGroup[]>([]);
   const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(new Set());
   const [allCollapsed, setAllCollapsed] = useState(false);
   
@@ -110,10 +138,7 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
   const localDC = useRef<RTCDataChannel | null>(null);
   const digitRefs = useRef<(HTMLInputElement | null)[]>([]);
   const receivePathsRef = useRef<Record<string, string>>({});
-  // Mirrors receiveMap for synchronous access inside stable callbacks
   const receiveMapRef = useRef<Record<string, ReceiveEntry>>({});
-  // ✅ Item 4 fix: serialize incoming data-channel messages so chunks are
-  // written to disk strictly in order, preventing corrupted/incomplete files.
   const messageQueueRef = useRef<string[]>([]);
   const processingRef = useRef(false);
 
@@ -123,7 +148,10 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
     receiveMapRef.current = receiveMap;
   }, [receiveMap]);
 
-  // ── Connection Logic ──
+  useEffect(() => {
+    setReceivedGroups(groupReceivedFiles(receivedFiles));
+  }, [receivedFiles]);
+
   useEffect(() => {
     if (mode === "send" && !myCode) startSendMode();
     if (mode === "join") {
@@ -136,28 +164,56 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
     }
   }, [mode]);
 
-  // ── Clipboard Paste (Item 5: supports files, images, and text) ──
+  // ==================== ROBUST PASTE HANDLER ====================
   const handlePaste = useCallback(async (e: ClipboardEvent) => {
-    if (!connected || isSending) return;
+    // 1. Allow normal paste in input/textarea fields
+    const target = e.target as HTMLElement;
+    if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
+      return;
+    }
+
+    if (isSending) return;
+
+    // 2. IMMEDIATELY capture clipboard data and files before any 'await'
     const clipboard = e.clipboardData;
     if (!clipboard) return;
 
-    // Case 1: file paths copied from file explorer
-    if (clipboard.files && clipboard.files.length > 0) {
+    const browserFiles = Array.from(clipboard.files);
+    const items = Array.from(clipboard.items);
+    const plainText = clipboard.getData("text/plain");
+
+    e.preventDefault();
+
+    // 3. Try Electron clipboard (best for Windows .lnk, shortcuts, any copied file)
+    let clipboardPaths: { paths: string[]; type: string } = { paths: [], type: "none" };
+    try {
+      clipboardPaths = await window.electronAPI.getClipboardFiles();
+    } catch (err) {
+      console.warn("getClipboardFiles failed:", err);
+    }
+
+    // Branch A: Files from Electron clipboard (handles .lnk, shortcuts, any file type)
+    // IMPORTANT: We use lstat-style size (no symlink resolution) to get the actual file size
+    if (clipboardPaths.paths.length > 0) {
       const newFiles: QueueFile[] = [];
-      for (let i = 0; i < clipboard.files.length; i++) {
-        const f = clipboard.files[i];
-        const filePath = (f as any).path;
-        if (filePath) {
-          newFiles.push({
-            id: Math.random().toString(36),
-            name: f.name,
-            path: filePath,
-            size: f.size,
-            status: "queued",
-            progress: 0,
-            source: "file"
-          });
+      for (const rawPath of clipboardPaths.paths) {
+        try {
+          // getFileSize must return the size of the file itself (not resolved target)
+          const size = await window.electronAPI.getFileSize(rawPath);
+          const name = rawPath.split(/[\\\/]/).pop() || rawPath;
+          if (!isInvalidFile(name)) {
+            newFiles.push({
+              id: Math.random().toString(36).substring(2, 9),
+              name: name,
+              path: rawPath,
+              size: size,
+              status: "queued",
+              progress: 0,
+              source: "file",
+            });
+          }
+        } catch (err) {
+          console.error("Could not process path:", rawPath, err);
         }
       }
       if (newFiles.length > 0) {
@@ -166,18 +222,50 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
       }
     }
 
-    // Case 2: image data (e.g. screenshot copied to clipboard)
-    const imageItem = Array.from(clipboard.items).find(item => item.type.startsWith("image/"));
+    // Branch B: Browser files (drag from browser etc.)
+    // For these, we also try to get the actual file size via electronAPI to handle
+    // cases where f.size might be 0 (e.g. certain file types the browser can't measure)
+    if (browserFiles.length > 0) {
+      const newFiles: QueueFile[] = [];
+      for (const f of browserFiles) {
+        const filePath = (f as any).path || null;
+        const name = f.name;
+        if (isInvalidFile(name)) continue;
+        let size = f.size;
+        // If size is 0 and we have a path, try getting the real size from main process
+        if (size === 0 && filePath) {
+          try {
+            size = await window.electronAPI.getFileSize(filePath);
+          } catch { /* keep 0 */ }
+        }
+        newFiles.push({
+          id: Math.random().toString(36).substring(2, 9),
+          name,
+          path: filePath,
+          size,
+          status: "queued",
+          progress: 0,
+          source: "file",
+        });
+      }
+      if (newFiles.length > 0) {
+        setFileQueue(prev => [...prev, ...newFiles]);
+        return;
+      }
+    }
+
+    // Branch C: Images (Screenshots)
+    const imageItem = items.find(item => item.type.startsWith("image/"));
     if (imageItem) {
       const blob = imageItem.getAsFile();
       if (blob) {
         const reader = new FileReader();
         reader.onload = async () => {
           const base64 = (reader.result as string).split(",")[1];
-          const fileName = `screenshot-${new Date().toISOString().replace(/[:.]/g, "-")}.png`;
+          const fileName = `screenshot-${Date.now()}.png`;
           const savedPath = await window.electronAPI.saveTempFile(fileName, base64);
           setFileQueue(prev => [...prev, {
-            id: Math.random().toString(36),
+            id: Math.random().toString(36).substring(2, 9),
             name: fileName,
             path: savedPath,
             size: blob.size,
@@ -191,36 +279,34 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
       }
     }
 
-    // Case 3: plain text
-    const text = clipboard.getData("text/plain");
-    if (text && text.trim()) {
-      const fileName = `pasted-text-${new Date().toISOString().replace(/[:.]/g, "-")}.txt`;
-      const base64 = btoa(unescape(encodeURIComponent(text)));
+    // Branch D: Plain Text
+    if (plainText && plainText.trim()) {
+      const fileName = `note-${Date.now()}.txt`;
+      const base64 = btoa(unescape(encodeURIComponent(plainText)));
       const savedPath = await window.electronAPI.saveTempFile(fileName, base64);
       setFileQueue(prev => [...prev, {
-        id: Math.random().toString(36),
+        id: Math.random().toString(36).substring(2, 9),
         name: fileName,
         path: savedPath,
-        size: new Blob([text]).size,
+        size: new Blob([plainText]).size,
         status: "queued",
         progress: 0,
         source: "file",
       }]);
     }
-  }, [connected, isSending]);
+  }, [isSending]);
 
   useEffect(() => {
     document.addEventListener("paste", handlePaste as any);
     return () => document.removeEventListener("paste", handlePaste as any);
   }, [handlePaste]);
 
-  // ── File Management ──
   const addFiles = async () => {
     const paths = await window.electronAPI.selectFile();
     if (!paths) return;
     const newFiles: QueueFile[] = await Promise.all(
       paths.map(async p => ({
-        id: Math.random().toString(36),
+        id: Math.random().toString(36).substring(2, 9),
         name: p.split('\\').pop() || p,
         path: p,
         size: await window.electronAPI.getFileSize(p),
@@ -237,7 +323,7 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
     if (!folderFiles) return;
     const newFiles: QueueFile[] = await Promise.all(
       folderFiles.map(async f => ({
-        id: Math.random().toString(36),
+        id: Math.random().toString(36).substring(2, 9),
         name: f.relative,
         path: f.absolute,
         size: await window.electronAPI.getFileSize(f.absolute),
@@ -251,8 +337,6 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
 
   const removeFile = (id: string) => setFileQueue(prev => prev.filter(f => f.id !== id));
 
-  // ✅ New: remove every file belonging to a folder in one click, so the
-  // user doesn't have to open the folder and remove files one by one.
   const removeFolder = (folderName: string) => {
     setFileQueue(prev => prev.filter(f => {
       const parts = f.name.split("/");
@@ -267,7 +351,6 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
     });
   };
 
-  // ✅ Item 1: toggle a single folder's collapsed state
   const toggleFolder = (folderName: string) => {
     setCollapsedFolders(prev => {
       const next = new Set(prev);
@@ -276,7 +359,6 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
     });
   };
 
-  // ✅ Item 1: collapse/expand ALL folders at once (sticky button)
   const toggleAll = (groups: FileGroup[]) => {
     const folderNames = groups.filter(g => g.folderName).map(g => g.folderName);
     if (allCollapsed) {
@@ -288,7 +370,6 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
     }
   };
 
-  // ── CORE SENDING LOGIC (WITH BACKPRESSURE FIX) ──
   const sendAll = async () => {
     const dc = localDC.current;
     if (!dc || dc.readyState !== "open") return;
@@ -297,17 +378,15 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
     for (const file of fileQueue) {
       if (file.status === "done") continue;
       
-      // Tell receiver to prepare for file
       dc.send(JSON.stringify({ 
         type: "file-start", id: file.id, name: file.name, size: file.size, fromOffset: 0 
       }));
 
-      const CHUNK_SIZE = 16384; // Safe size for data channel
+      const CHUNK_SIZE = 16384;
       let offset = 0;
 
       while (offset < file.size) {
-        // 🛑 BACKPRESSURE FIX: If the internal buffer is too full, wait before sending more
-        if (dc.bufferedAmount > 1024 * 1024) { // Wait if buffer > 1MB
+        if (dc.bufferedAmount > 1024 * 1024) {
             await new Promise(resolve => {
                 const check = () => {
                     if (dc.bufferedAmount < 512 * 1024) resolve(null);
@@ -323,7 +402,6 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
         offset += CHUNK_SIZE;
         const progress = Math.min(100, Math.round((offset / file.size) * 100));
         
-        // Update UI every 5% to keep performance high
         if (progress % 5 === 0) {
             setFileQueue(prev => prev.map(f => f.id === file.id ? { ...f, status: "transferring", progress } : f));
         }
@@ -331,20 +409,17 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
 
       dc.send(JSON.stringify({ type: "file-end", id: file.id }));
       setFileQueue(prev => prev.map(f => f.id === file.id ? { ...f, status: "done", progress: 100 } : f));
+      window.electronAPI.logP2pActivity("sent", file.name);
     }
     setIsSending(false);
     setSessionStatus(t("allFilesSent"));
-    // ✅ Item 2: keep sent files visible in the list with "Sent" status —
-    // do NOT clear the queue. New files added later will appear alongside.
   };
 
-  // ── DATA CHANNEL RECEIVER SETUP ──
   const handleDCMessage = useCallback(async (raw: string) => {
     let msg: any; try { msg = JSON.parse(raw); } catch { return; }
     
     if (msg.type === "file-start") {
       const saveDir = await window.electronAPI.getSavePath();
-      // Normalize folder paths for Windows
       const safeName = msg.name.replace(/\//g, "\\"); 
       const savePath = saveDir + "\\" + safeName;
       
@@ -380,12 +455,10 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
         },
       ]);
       setSessionStatus(t("fileReceived", { name: msg.name || "" }));
+      window.electronAPI.logP2pActivity("received", msg.name || entry?.name || "");
     }
   }, []);
 
-  // ✅ Item 4 fix: process queued messages strictly one at a time, in order.
-  // Without this, fast-arriving file-chunk messages trigger overlapping
-  // async IPC writes that can land out of order and corrupt the file.
   const processMessageQueue = useCallback(async () => {
     if (processingRef.current) return;
     processingRef.current = true;
@@ -409,7 +482,7 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
       dc.onmessage = e => { messageQueueRef.current.push(e.data); processMessageQueue(); };
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
-      await new Promise(r => setTimeout(r, 1500)); // Wait for ICE gathering
+      await new Promise(r => setTimeout(r, 1500));
       const compact = await window.electronAPI.compressSDP(pc.localDescription!.sdp);
       const code = await window.electronAPI.generateCode(compact);
       setMyCode(code);
@@ -445,9 +518,6 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
       await pc.setRemoteDescription(new RTCSessionDescription({ type: "offer", sdp: offerSDP }));
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
-      // ✅ Item 4 fix: wait for ICE gathering to complete before sending answer,
-      // same as the sender does for its offer. Without this, the answer SDP
-      // may have no/incomplete ICE candidates, causing flaky connections.
       await waitForICE(pc);
       const compactAnswer = await window.electronAPI.compressSDP(pc.localDescription!.sdp);
       await window.electronAPI.submitAnswer(joinIP.trim(), code, compactAnswer);
@@ -460,16 +530,13 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
     if (digit && index < 3) digitRefs.current[index + 1]?.focus();
   };
 
-  // ✅ Item 3: Backspace deletes current digit and moves focus to previous box
   const handleDigitKeyDown = (index: number, e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Backspace") {
       if (joinCode[index]) {
-        // Clear current digit, stay on this box
         const newCode = [...joinCode];
         newCode[index] = "";
         setJoinCode(newCode);
       } else if (index > 0) {
-        // Already empty — move to previous box and clear it too
         const newCode = [...joinCode];
         newCode[index - 1] = "";
         setJoinCode(newCode);
@@ -485,7 +552,6 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
     }
   };
 
-  // ✅ Item 3: Support pasting a full 4-digit code
   const handleDigitPaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
     const pasted = e.clipboardData.getData("text").replace(/\D/g, "").slice(0, 4);
     if (pasted.length > 0) {
@@ -508,17 +574,20 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
     return () => { cleanup(); window.electronAPI.stopSignaling?.(); };
   }, []);
 
-  // ✅ Item 1: shared row renderer for both grouped and ungrouped files
   const renderQueueRow = (f: QueueFile) => (
     <div key={f.id} className={styles.queueItem}>
       <div className={styles.queueName}>{f.name}</div>
       <div className={styles.queueSize}>{formatBytes(f.size)}</div>
       {f.status === "transferring" && <progress value={f.progress} max="100" className={styles.progress} />}
-      <div className={styles.queueStatus}>
-        {f.status === "done"
-          ? <><FaCheck color="#4CAF50" /> {t("sent")}</>
-          : f.status}
-      </div>
+      {f.status !== "queued" && (
+        <div className={styles.queueStatus}>
+          {f.status === "done"
+            ? <><FaCheck color="#4CAF50" /> {t("sent")}</>
+            : f.status === "transferring"
+              ? `${f.progress}%`
+              : f.status}
+        </div>
+      )}
       {!isSending && f.status !== "done" && <button className={styles.removeBtn} onClick={() => removeFile(f.id)}><FaTimes /></button>}
     </div>
   );
@@ -574,13 +643,18 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
           <div className={styles.connectedBadge}><FaCircle size={10} color="#4CAF50" /> {t("connected")}</div>
           <p className={styles.subtitle}>Add files, then start sharing.</p>
 
+          {/* FIX #4: Send button at top, before file list */}
+          {fileQueue.some(f => f.status !== "done" && f.status !== "cancelled") && !isSending && (
+            <button className={styles.sendBtn} onClick={sendAll} style={{ width: '100%' }}>
+              <FaUpload /> {t("send")} ({formatBytes(fileQueue.filter(f => f.status !== "done" && f.status !== "cancelled").reduce((sum, f) => sum + f.size, 0))})
+            </button>
+          )}
+
           <div className={styles.actionRow}>
             <button className={styles.btn} onClick={addFiles} disabled={isSending}><FaPlus /> Add Files</button>
             <button className={styles.ghostBtn} onClick={addFolder} disabled={isSending}><FaFolderOpen /> Add Folder</button>
           </div>
 
-          {/* ✅ Item 3: empty state only shown when there's truly nothing —
-              no queued/sent files AND no incoming files */}
           {fileQueue.length === 0 && Object.keys(receiveMap).length === 0 && receivedFiles.length === 0 && (
             <div className={styles.emptyState}>
               <FaFolderOpen size={40} color="#333" />
@@ -589,6 +663,7 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
             </div>
           )}
 
+          {/* FIX #2: Removed "Queue" label — just render the file list directly */}
           {fileQueue.length > 0 && (() => {
             const activeFiles = fileQueue.filter(f => f.status !== "done");
             const sentFiles = fileQueue.filter(f => f.status === "done");
@@ -597,12 +672,14 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
             return (
               <>
                 {activeFiles.length > 0 && (
-                  <div className={styles.queue} style={{ marginTop: 20 }}>
-                    {/* "Collapse All" — no longer sticky, see item 3 */}
+                  // FIX #1: Sticky collapse — the scrollable container has position:relative,
+                  // and folderHeader uses position:sticky + top:0 inside this container.
+                  // The outer div is the scroll container (see CSS fix).
+                  <div className={styles.queue}>
                     {hasFolders && (
                       <div className={styles.stickyFolderBar}>
                         <button className={styles.toggleAllBtn} onClick={() => toggleAll(groups)}>
-                          {allCollapsed ? "Uncollapse All" : "Collapse All"}
+                          {allCollapsed ? "Expand All" : "Collapse All"}
                         </button>
                       </div>
                     )}
@@ -613,9 +690,9 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
                       const collapsed = collapsedFolders.has(group.folderName);
                       const totalSize = group.files.reduce((s, f) => s + f.size, 0);
                       return (
+                        // FIX #3: Keep folder hierarchy — show as collapsible folder, not flat list
                         <div key={group.folderName} className={styles.folderGroup}>
-                          {/* This header sticks to the top while scrolling
-                              through this folder's files (item 3) */}
+                          {/* FIX #1: folderHeader is sticky inside the .queue scroll container */}
                           <div className={styles.folderHeader} onClick={() => toggleFolder(group.folderName)}>
                             <span className={styles.folderArrow}>{collapsed ? <FaChevronRight /> : <FaChevronDown />}</span>
                             <span className={styles.folderName}>{group.folderName}</span>
@@ -624,7 +701,7 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
                               className={styles.toggleAllBtn}
                               onClick={(e) => { e.stopPropagation(); toggleFolder(group.folderName); }}
                             >
-                              {collapsed ? "Uncollapse" : "Collapse"}
+                              {collapsed ? "Expand" : "Collapse"}
                             </button>
                             {!isSending && (
                               <button
@@ -643,7 +720,6 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
                   </div>
                 )}
 
-                {/* ── Sent section (item 2) ── */}
                 {sentFiles.length > 0 && (
                   <>
                     <div className={styles.sectionDivider}>
@@ -661,9 +737,8 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
             );
           })()}
 
-          {/* ── Receiving in progress ── */}
           {Object.keys(receiveMap).length > 0 && (
-            <div className={styles.incomingSection} style={{ marginTop: 20 }}>
+            <div className={styles.incomingSection}>
               <p className={styles.label}>Incoming Files:</p>
               {Object.entries(receiveMap).map(([id, f]) => (
                 <div key={id} className={styles.queueItem}>
@@ -675,8 +750,7 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
             </div>
           )}
 
-          {/* ── Received section (item 4) — keeps completed downloads
-              visible so the user can see what arrived and still send more ── */}
+          {/* FIX #3: Received files — show as folder hierarchy, not flat list */}
           {receivedFiles.length > 0 && (
             <>
               <div className={styles.sectionDivider}>
@@ -686,23 +760,46 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
                 </span>
               </div>
               <div className={styles.queue}>
-                {receivedFiles.map(f => (
-                  <div key={f.id} className={styles.queueItem}>
-                    <div className={styles.queueName}>{f.name}</div>
-                    <div className={styles.queueSize}>{formatBytes(f.size)}</div>
-                    <div className={styles.queueStatus}>
-                      <FaCheck color="#4CAF50" /> {t("sent")}
+                {receivedGroups.map(group => {
+                  if (group.folderName === "") {
+                    return group.files.map(f => (
+                      <div key={f.id} className={styles.queueItem}>
+                        <div className={styles.queueName}>{f.name}</div>
+                        <div className={styles.queueSize}>{formatBytes(f.size)}</div>
+                        <div className={styles.queueStatus}><FaCheck color="#4CAF50" /> {t("received")}</div>
+                      </div>
+                    ));
+                  }
+                  // Show top-level folder name as collapsible, just like sent folders
+                  const collapsed = collapsedFolders.has(`received-${group.folderName}`);
+                  const totalSize = group.files.reduce((s, f) => s + f.size, 0);
+                  return (
+                    <div key={group.folderName} className={styles.folderGroup}>
+                      <div className={styles.folderHeader} onClick={() => toggleFolder(`received-${group.folderName}`)}>
+                        <span className={styles.folderArrow}>{collapsed ? <FaChevronRight /> : <FaChevronDown />}</span>
+                        {/* Show only top-level folder name (e.g. "git"), not full path */}
+                        <span className={styles.folderName}>{group.folderName}</span>
+                        <span className={styles.folderMeta}>{group.files.length} files · {formatBytes(totalSize)}</span>
+                        <button
+                          className={styles.toggleAllBtn}
+                          onClick={(e) => { e.stopPropagation(); toggleFolder(`received-${group.folderName}`); }}
+                        >
+                          {collapsed ? "Expand" : "Collapse"}
+                        </button>
+                      </div>
+                      {!collapsed && group.files.map(f => (
+                        <div key={f.id} className={styles.queueItem}>
+                          {/* Show relative path within the folder (without top folder prefix) */}
+                          <div className={styles.queueName}>{f.name.split("/").slice(1).join("/") || f.name}</div>
+                          <div className={styles.queueSize}>{formatBytes(f.size)}</div>
+                          <div className={styles.queueStatus}><FaCheck color="#4CAF50" /> {t("received")}</div>
+                        </div>
+                      ))}
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </>
-          )}
-
-          {fileQueue.some(f => f.status !== "done" && f.status !== "cancelled") && !isSending && (
-            <button className={styles.sendBtn} onClick={sendAll} style={{ marginTop: 20, width: '100%', background: '#4CAF50', color: 'white', padding: 15, borderRadius: 10, border: 'none', cursor: 'pointer' }}>
-              <FaUpload /> {t("send")} ({formatBytes(fileQueue.filter(f => f.status !== "done" && f.status !== "cancelled").reduce((sum, f) => sum + f.size, 0))})
-            </button>
           )}
         </div>
       )}
