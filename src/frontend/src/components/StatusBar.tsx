@@ -2,7 +2,7 @@ import React, { useRef } from "react";
 import { useTranslation } from "react-i18next";
 import gsap from "gsap";
 import { useGSAP } from "@gsap/react";
-import { FaCircle, FaUsers } from "react-icons/fa";
+import { FaCircle, FaUsers, FaHdd } from "react-icons/fa";
 import styles from "../styles/components/StatusBar.module.css";
 
 gsap.registerPlugin(useGSAP);
@@ -15,6 +15,7 @@ interface Props {
   appVersion: string;
   connectedDevices?: number;
   connectionLabel?: string | null;
+  storageLabel?: string | null;
 }
 
 const StatusBar: React.FC<Props> = ({
@@ -25,6 +26,7 @@ const StatusBar: React.FC<Props> = ({
   appVersion,
   connectedDevices,
   connectionLabel,
+  storageLabel,
 }) => {
   const { t } = useTranslation();
   const barRef = useRef<HTMLDivElement>(null);
@@ -67,12 +69,17 @@ const StatusBar: React.FC<Props> = ({
             {t("connectedDevices", { count: connectedDevices })}
           </span>
         )}
-        {transferLabel && (
+        {transferLabel ? (
           <span className={styles.transfer}>
             {transferLabel}
             {transferProgress !== null && ` — ${transferProgress}%`}
           </span>
-        )}
+        ) : storageLabel ? (
+          <span className={styles.storage} title={t("storageUsage")}>
+            <FaHdd size={12} style={{ marginRight: 5 }} aria-hidden="true" />
+            {storageLabel}
+          </span>
+        ) : null}
       </div>
 
       <div className={styles.right}>

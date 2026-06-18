@@ -1,7 +1,9 @@
 {
-    "rateXStars": "Kimanta taurari {{count}}",
-    "connectedTo": "An haɗa zuwa {{ssid}}",
-    "hotspotActive": "Wurin zafi yana aiki · {{ip}}",
-    "deviceNameRequired": "Sunan na'urar ba zai iya zama fanko ba",
-    "deviceNameUpdated": "An sabunta sunan na'urar"
+  "rateXStars": "Kimanta taurari {{count}}",
+  "connectedTo": "An haɗa zuwa {{ssid}}",
+  "hotspotActive": "Wurin zafi yana aiki · {{ip}}",
+  "deviceNameRequired": "Sunan na'urar ba zai iya zama fanko ba",
+  "deviceNameUpdated": "An sabunta sunan na'urar",
+  "notEnoughSpace": "Not enough space to receive {{name}} ({{size}}). Only {{free}} free.",
+  "storageUsage": "Device storage usage"
 }

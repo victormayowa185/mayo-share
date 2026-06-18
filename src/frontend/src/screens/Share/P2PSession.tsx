@@ -141,6 +141,9 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
   const receiveMapRef = useRef<Record<string, ReceiveEntry>>({});
   const messageQueueRef = useRef<string[]>([]);
   const processingRef = useRef(false);
+  // IDs of incoming files rejected because there isn't enough disk space —
+  // their chunks are ignored so we never write a half-finished, broken file.
+  const rejectedRef = useRef<Set<string>>(new Set());
 
   const showFileArea = useCallback(() => setConnected(true), []);
 
@@ -412,23 +415,40 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
       window.electronAPI.logP2pActivity("sent", file.name);
     }
     setIsSending(false);
-    setSessionStatus(t("allFilesSent"));
   };
 
   const handleDCMessage = useCallback(async (raw: string) => {
     let msg: any; try { msg = JSON.parse(raw); } catch { return; }
     
     if (msg.type === "file-start") {
+      // Smart space check: refuse the file up front if it won't fit, so we warn
+      // the user instead of starting a transfer that is doomed to fail.
+      try {
+        const { free } = await window.electronAPI.getDiskSpace();
+        if (free > 0 && msg.size > free) {
+          rejectedRef.current.add(msg.id);
+          setSessionStatus(
+            t("notEnoughSpace", {
+              name: msg.name,
+              size: formatBytes(msg.size),
+              free: formatBytes(free),
+            }),
+          );
+          return;
+        }
+      } catch { /* if the check fails, fall through and attempt the transfer */ }
+
       const saveDir = await window.electronAPI.getSavePath();
-      const safeName = msg.name.replace(/\//g, "\\"); 
+      const safeName = msg.name.replace(/\//g, "\\");
       const savePath = saveDir + "\\" + safeName;
-      
+
       receivePathsRef.current[msg.id] = savePath;
       await window.electronAPI.createReceiveFile(savePath);
       setReceiveMap(prev => ({ ...prev, [msg.id]: { name: msg.name, size: msg.size, path: savePath, received: 0 } }));
     }
 
     if (msg.type === "file-chunk") {
+      if (rejectedRef.current.has(msg.id)) return;
       const path = receivePathsRef.current[msg.id];
       if (!path) return;
       await window.electronAPI.appendReceiveChunk(path, msg.data);
@@ -441,6 +461,10 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
     }
 
     if (msg.type === "file-end") {
+      if (rejectedRef.current.has(msg.id)) {
+        rejectedRef.current.delete(msg.id);
+        return;
+      }
       const entry = receiveMapRef.current[msg.id];
       const savedPath = receivePathsRef.current[msg.id] || entry?.path || "";
       delete receivePathsRef.current[msg.id];
@@ -478,7 +502,7 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
       localPC.current = pc;
       const dc = pc.createDataChannel("mayo-share", { ordered: true });
       localDC.current = dc;
-      dc.onopen = () => { setSessionStatus(t("dataChannelOpen")); showFileArea(); };
+      dc.onopen = () => { showFileArea(); };
       dc.onmessage = e => { messageQueueRef.current.push(e.data); processMessageQueue(); };
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
@@ -512,7 +536,7 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
       localPC.current = pc;
       pc.ondatachannel = event => {
         localDC.current = event.channel;
-        localDC.current.onopen = () => { setSessionStatus(t("dataChannelOpen")); showFileArea(); };
+        localDC.current.onopen = () => { showFileArea(); };
         localDC.current.onmessage = e => { messageQueueRef.current.push(e.data); processMessageQueue(); };
       };
       await pc.setRemoteDescription(new RTCSessionDescription({ type: "offer", sdp: offerSDP }));
@@ -582,7 +606,7 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
       {f.status !== "queued" && (
         <div className={styles.queueStatus}>
           {f.status === "done"
-            ? <><FaCheck color="#4CAF50" /> {t("sent")}</>
+            ? <FaCheck color="#4CAF50" />
             : f.status === "transferring"
               ? `${f.progress}%`
               : f.status}
@@ -672,10 +696,11 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
             return (
               <>
                 {activeFiles.length > 0 && (
-                  // FIX #1: Sticky collapse — the scrollable container has position:relative,
-                  // and folderHeader uses position:sticky + top:0 inside this container.
-                  // The outer div is the scroll container (see CSS fix).
-                  <div className={styles.queue}>
+                  // The "Collapse All" bar lives ABOVE the scroll container so it never
+                  // overlaps the per-folder sticky headers. Inside .queue, each
+                  // folderHeader sticks at top:0 — identical to the receiver view, so a
+                  // folder's collapse button stays pinned until the next folder scrolls in.
+                  <>
                     {hasFolders && (
                       <div className={styles.stickyFolderBar}>
                         <button className={styles.toggleAllBtn} onClick={() => toggleAll(groups)}>
@@ -683,6 +708,7 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
                         </button>
                       </div>
                     )}
+                    <div className={styles.queue}>
                     {groups.map(group => {
                       if (group.folderName === "") {
                         return group.files.map(f => renderQueueRow(f));
@@ -717,7 +743,8 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
                         </div>
                       );
                     })}
-                  </div>
+                    </div>
+                  </>
                 )}
 
                 {sentFiles.length > 0 && (
@@ -766,7 +793,7 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
                       <div key={f.id} className={styles.queueItem}>
                         <div className={styles.queueName}>{f.name}</div>
                         <div className={styles.queueSize}>{formatBytes(f.size)}</div>
-                        <div className={styles.queueStatus}><FaCheck color="#4CAF50" /> {t("received")}</div>
+                        <div className={styles.queueStatus}><FaCheck color="#4CAF50" /></div>
                       </div>
                     ));
                   }
@@ -792,7 +819,7 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
                           {/* Show relative path within the folder (without top folder prefix) */}
                           <div className={styles.queueName}>{f.name.split("/").slice(1).join("/") || f.name}</div>
                           <div className={styles.queueSize}>{formatBytes(f.size)}</div>
-                          <div className={styles.queueStatus}><FaCheck color="#4CAF50" /> {t("received")}</div>
+                          <div className={styles.queueStatus}><FaCheck color="#4CAF50" /></div>
                         </div>
                       ))}
                     </div>

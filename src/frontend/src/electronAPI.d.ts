@@ -46,6 +46,7 @@ declare global {
       getLanguage: () => Promise<string>;
       setLanguage: (lang: string) => Promise<void>;
       getSavePath: () => Promise<string>;
+      getDiskSpace: () => Promise<{ free: number; total: number }>;
       setSavePath: (path: string) => Promise<void>;
       selectSaveFolder: () => Promise<string | null>;
       diagnoseNetwork: () => Promise<{

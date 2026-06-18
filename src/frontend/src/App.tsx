@@ -41,6 +41,7 @@ const App: React.FC = () => {
   const [hotspotIP, setHotspotIP] = useState("");
   const [connectedDevicesCount, setConnectedDevicesCount] = useState(0);
   const [connectionLabel, setConnectionLabel] = useState<string | null>(null);
+  const [storageLabel, setStorageLabel] = useState<string | null>(null);
   const [platform, setPlatform] = useState<string | null>(null);
 
   // Navigate to a new screen, pushing current to history
@@ -119,6 +120,39 @@ const App: React.FC = () => {
 
     updateStatus();
     const interval = setInterval(updateStatus, 5000);
+    return () => clearInterval(interval);
+  }, [setupComplete]);
+
+  // Poll device storage usage for the status-bar indicator
+  useEffect(() => {
+    if (setupComplete !== true) return;
+
+    const formatBytes = (b: number) => {
+      if (!b || b <= 0) return "0 B";
+      const k = 1024;
+      const units = ["B", "KB", "MB", "GB", "TB"];
+      const i = Math.min(
+        units.length - 1,
+        Math.floor(Math.log(b) / Math.log(k)),
+      );
+      return `${parseFloat((b / Math.pow(k, i)).toFixed(1))} ${units[i]}`;
+    };
+
+    const updateStorage = async () => {
+      try {
+        const { free, total } = await window.electronAPI.getDiskSpace();
+        if (total > 0) {
+          setStorageLabel(`${formatBytes(total - free)} used of ${formatBytes(total)}`);
+        } else {
+          setStorageLabel(null);
+        }
+      } catch {
+        setStorageLabel(null);
+      }
+    };
+
+    updateStorage();
+    const interval = setInterval(updateStorage, 10000);
     return () => clearInterval(interval);
   }, [setupComplete]);
 
@@ -272,6 +306,7 @@ const App: React.FC = () => {
         appVersion="1.0.0"
         connectedDevices={connectedDevicesCount}
         connectionLabel={connectionLabel}
+        storageLabel={storageLabel}
       />
     </div>
   );

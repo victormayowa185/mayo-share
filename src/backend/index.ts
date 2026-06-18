@@ -1103,6 +1103,31 @@ ipcMain.handle("get-save-path", async (): Promise<string> => {
   return currentSavePath;
 });
 
+// Disk space for the drive that holds the receive/save folder.
+// Used by the status-bar storage indicator and the receive-space pre-check.
+ipcMain.handle(
+  "get-disk-space",
+  async (): Promise<{ free: number; total: number }> => {
+    const probe = async (target: string) => {
+      const stats = await fs.promises.statfs(target);
+      const blockSize = stats.bsize;
+      return {
+        free: stats.bavail * blockSize,
+        total: stats.blocks * blockSize,
+      };
+    };
+    try {
+      return await probe(currentSavePath);
+    } catch {
+      try {
+        return await probe(os.homedir());
+      } catch {
+        return { free: 0, total: 0 };
+      }
+    }
+  },
+);
+
 ipcMain.handle(
   "set-save-path",
   async (_event, newPath: string): Promise<void> => {

@@ -1,7 +1,9 @@
 {
-    "rateXStars": "Nye {{count}} kpakpando",
-    "connectedTo": "Ejikọrọ na {{ssid}}",
-    "hotspotActive": "Ebe mgbanye ọkụ na-arụ ọrụ · {{ip}}",
-    "deviceNameRequired": "Aha ngwaọrụ enweghị ike ịbụ ihe efu",
-    "deviceNameUpdated": "Aha ngwaọrụ emelitere"
+  "rateXStars": "Nye {{count}} kpakpando",
+  "connectedTo": "Ejikọrọ na {{ssid}}",
+  "hotspotActive": "Ebe mgbanye ọkụ na-arụ ọrụ · {{ip}}",
+  "deviceNameRequired": "Aha ngwaọrụ enweghị ike ịbụ ihe efu",
+  "deviceNameUpdated": "Aha ngwaọrụ emelitere",
+  "notEnoughSpace": "Not enough space to receive {{name}} ({{size}}). Only {{free}} free.",
+  "storageUsage": "Device storage usage"
 }
