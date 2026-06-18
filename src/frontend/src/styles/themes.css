@@ -35,7 +35,7 @@
   --text-disabled: #777;
   --text-column-title: #aaa;
   --text-paragraph: #ccc;
-
+  /* #7C3EFF */
   --accent: #b169e0;
   --accent-hover: #9a4fd4;
   --success: #4caf50;
@@ -91,63 +91,114 @@
   --copy-btn-bg: var(--btn-copy-bg);
   --copy-btn-text: var(--text-secondary);
   --copy-btn-hover-bg: var(--btn-copy-hover-bg);
-  --p2p-title-color: var(--text-inverse); /* white in dark mode */
-  --p2p-ghost-border: var(--border-light); /* light gray border */
-  --p2p-ghost-text: var(--text-secondary); /* light gray text */
-  --p2p-ghost-hover-bg: var(--accent); /* purple on hover */
+  --p2p-title-color: var(--text-inverse);
+  /* white in dark mode */
+  --p2p-ghost-border: var(--border-light);
+  /* light gray border */
+  --p2p-ghost-text: var(--text-secondary);
+  /* light gray text */
+  --p2p-ghost-hover-bg: var(--accent);
+  /* purple on hover */
   --p2p-ghost-hover-text: var(--text-inverse);
-  --rfb-title-color: var(--text-inverse); /* white in dark mode */
-  --rfb-copy-btn-bg: var(--btn-copy-bg); /* gray in dark mode */
-  --rfb-copy-btn-text: var(--text-secondary); /* light gray */
+  --rfb-title-color: var(--text-inverse);
+  /* white in dark mode */
+  --rfb-copy-btn-bg: var(--btn-copy-bg);
+  /* gray in dark mode */
+  --rfb-copy-btn-text: var(--text-secondary);
+  /* light gray */
   --rfb-copy-btn-hover-bg: var(--btn-copy-hover-bg);
-  --receive-title-color: var(--text-inverse); /* white in dark mode */
-  --rfb-title-color: var(--text-inverse); /* white in dark mode */
-  --lang-share-color: var(--text-inverse); /* white in dark mode */
-  --lang-continue-text: var(--text-inverse); /* white in dark mode */
-  --setup-logo-color: var(--text-inverse); /* white in dark mode */
-  --setup-btn-text: var(--text-inverse); /* white in dark mode */
-  --setup-ghost-border: var(--border-light); /* light gray border */
-  --setup-ghost-text: var(--text-muted); /* muted gray text */
-  --setup-ghost-hover-bg: var(--accent); /* purple bg on hover */
-  --setup-ghost-hover-text: var(--text-inverse); /* white text on hover */
+  --receive-title-color: var(--text-inverse);
+  /* white in dark mode */
+  --rfb-title-color: var(--text-inverse);
+  /* white in dark mode */
+  --lang-share-color: var(--text-inverse);
+  /* white in dark mode */
+  --lang-continue-text: var(--text-inverse);
+  /* white in dark mode */
+  --setup-logo-color: var(--text-inverse);
+  /* white in dark mode */
+  --setup-btn-text: var(--text-inverse);
+  /* white in dark mode */
+  --setup-ghost-border: var(--border-light);
+  /* light gray border */
+  --setup-ghost-text: var(--text-muted);
+  /* muted gray text */
+  --setup-ghost-hover-bg: var(--accent);
+  /* purple bg on hover */
+  --setup-ghost-hover-text: var(--text-inverse);
+  /* white text on hover */
   --status-connected-text: var(--text-inverse);
-  --status-connected-dot: var(--text-inverse); /* white */
-  --status-off-text: var(--text-dim); /* dim gray */
-  --status-off-dot: #555; /* dark gray */
-  --topbar-icon-color: var(--text-inverse); /* white */
-  --topbar-icon-hover-color: var(--text-inverse); /* white */
-  --settings-title-color: var(--text-inverse); /* white */
-  --settings-header-color: var(--text-inverse); /* white */
+  --status-connected-dot: var(--text-inverse);
+  /* white */
+  --status-off-text: var(--text-dim);
+  /* dim gray */
+  --status-off-dot: #555;
+  /* dark gray */
+  --topbar-icon-color: var(--text-inverse);
+  /* white */
+  --topbar-icon-hover-color: var(--text-inverse);
+  /* white */
+  --settings-title-color: var(--text-inverse);
+  /* white */
+  --settings-header-color: var(--text-inverse);
+  /* white */
 }
 
 [data-theme="light"] {
-  --settings-title-color: #000000; /* black */
-  --settings-header-color: #000000; /* black */
-  --topbar-icon-color: #000000; /* black */
-  --topbar-icon-hover-color: #000000; /* black */
-  --status-connected-text: #000000; /* black */
-  --status-connected-dot: #000000; /* black */
-  --status-off-text: var(--text-muted); /* gray */
-  --status-off-dot: #666; /* medium gray */
-  --setup-logo-color: #000000; /* black logo */
-  --setup-btn-text: #000000; /* black button text */
-  --setup-ghost-border: #000000; /* black border */
-  --setup-ghost-text: #000000; /* black text */
-  --setup-ghost-hover-bg: var(--accent); /* purple bg on hover */
-  --setup-ghost-hover-text: #ffffff; /* white text on hover */
-  --lang-share-color: #181717; /* black in light mode */
-  --lang-continue-text: #000000; /* black in light mode */
-  --receive-title-color: #000000; /* black in light mode */
-  --rfb-title-color: #000000; /* black in light mode */
-  --rfb-title-color: #000000; /* black title */
-  --rfb-copy-btn-bg: #000000; /* black background */
-  --rfb-copy-btn-text: #ffffff; /* white text */
-  --rfb-copy-btn-hover-bg: #1a1a1a; /* shade of black on hover */
-  --p2p-title-color: #000000; /* black title */
-  --p2p-ghost-border: #000000; /* black border */
-  --p2p-ghost-text: #000000; /* black text */
-  --p2p-ghost-hover-bg: var(--accent); /* purple background on hover */
-  --p2p-ghost-hover-text: #ffffff; /* white text on hover */
+  --settings-title-color: #000000;
+  /* black */
+  --settings-header-color: #000000;
+  /* black */
+  --topbar-icon-color: #000000;
+  /* black */
+  --topbar-icon-hover-color: #000000;
+  /* black */
+  --status-connected-text: #000000;
+  /* black */
+  --status-connected-dot: #000000;
+  /* black */
+  --status-off-text: var(--text-muted);
+  /* gray */
+  --status-off-dot: #666;
+  /* medium gray */
+  --setup-logo-color: #000000;
+  /* black logo */
+  --setup-btn-text: #000000;
+  /* black button text */
+  --setup-ghost-border: #000000;
+  /* black border */
+  --setup-ghost-text: #000000;
+  /* black text */
+  --setup-ghost-hover-bg: var(--accent);
+  /* purple bg on hover */
+  --setup-ghost-hover-text: #ffffff;
+  /* white text on hover */
+  --lang-share-color: #181717;
+  /* black in light mode */
+  --lang-continue-text: #000000;
+  /* black in light mode */
+  --receive-title-color: #000000;
+  /* black in light mode */
+  --rfb-title-color: #000000;
+  /* black in light mode */
+  --rfb-title-color: #000000;
+  /* black title */
+  --rfb-copy-btn-bg: #000000;
+  /* black background */
+  --rfb-copy-btn-text: #ffffff;
+  /* white text */
+  --rfb-copy-btn-hover-bg: #1a1a1a;
+  /* shade of black on hover */
+  --p2p-title-color: #000000;
+  /* black title */
+  --p2p-ghost-border: #000000;
+  /* black border */
+  --p2p-ghost-text: #000000;
+  /* black text */
+  --p2p-ghost-hover-bg: var(--accent);
+  /* purple background on hover */
+  --p2p-ghost-hover-text: #ffffff;
+  /* white text on hover */
   --copy-btn-bg: #000000;
   --copy-btn-text: #ffffff;
   --copy-btn-hover-bg: #1a1a1a;
@@ -155,7 +206,8 @@
   --file-row-border-subtle: #333333;
   --toggle-all-hover-color: #000000;
   --remove-btn-color: #000000;
-  --qr-light-color: #ffffff; /* white background for QR in light mode */
+  --qr-light-color: #ffffff;
+  /* white background for QR in light mode */
   --bg-primary: #f5f5f5;
   --bg-card: #ffffff;
   --bg-hover: #e8e8e8;
@@ -199,8 +251,10 @@
   --error: #d32f2f;
   --error-hover: #b71c1c;
 
-  --scrollbar-thumb: #252424; /* black thumb */
-  --scrollbar-track: #f5f5f5; /* light gray track (optional) */
+  --scrollbar-thumb: #252424;
+  /* black thumb */
+  --scrollbar-track: #f5f5f5;
+  /* light gray track (optional) */
 
   --spinner-border: rgba(0, 0, 0, 0.2);
   --spinner-top: #333;
@@ -219,7 +273,8 @@
   --title-color: #000000;
   --ghost-text-color: #000000;
   --ghost-text: #000000;
-  --ghost-hover-text: #000000; /* same as dark but explicit */
+  --ghost-hover-text: #000000;
+  /* same as dark but explicit */
   --title-light: #000000;
   --btn-text: #000000;
 

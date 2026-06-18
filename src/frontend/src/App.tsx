@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import HomeScreen from "./screens/Home/HomeScreen";
 import SetupStepper from "./screens/Onboarding/SetupStepper";
 import LanguageSelectScreen from "./screens/LanguageSelect/LanguageSelectScreen";
@@ -32,6 +32,16 @@ export type Screen =
   | "troubleshoot"
   | "language-select";
 
+// Screens that represent an active transfer session — navigating away and back
+// should keep you on the transfer screen, not drop you to home.
+const TRANSFER_SCREENS: Screen[] = ["share-p2p", "receive-p2p", "share-quick", "receive-browser"];
+const PERSISTENT_SCREEN_KEY = "mayo-current-screen";
+const PERSISTENT_HISTORY_KEY = "mayo-screen-history";
+
+// Screens we should NOT restore on relaunch (connection/session screens that
+// would be stale after a restart).
+const NON_RESTORABLE: Screen[] = ["share-hotspot-check", "share-method-picker"];
+
 const App: React.FC = () => {
   const [screen, setScreen] = useState<Screen>("home");
   const [screenHistory, setScreenHistory] = useState<Screen[]>([]);
@@ -43,11 +53,34 @@ const App: React.FC = () => {
   const [connectionLabel, setConnectionLabel] = useState<string | null>(null);
   const [storageLabel, setStorageLabel] = useState<string | null>(null);
   const [platform, setPlatform] = useState<string | null>(null);
+  const screenRef = useRef<Screen>("home");
+
+  // Keep a ref in sync so event handlers always read the current value without
+  // needing screen in their dependency arrays.
+  useEffect(() => {
+    screenRef.current = screen;
+  }, [screen]);
+
+  // ─── Persist screen across tab/TopBar navigation ────────────────────────────
+  // We save the screen to sessionStorage (not localStorage) so it resets on
+  // a full app restart but survives TopBar navigations within one session.
+  const persistScreen = (s: Screen, history: Screen[]) => {
+    if (NON_RESTORABLE.includes(s)) return; // don't persist stale sessions
+    try {
+      sessionStorage.setItem(PERSISTENT_SCREEN_KEY, s);
+      sessionStorage.setItem(PERSISTENT_HISTORY_KEY, JSON.stringify(history));
+    } catch { }
+  };
 
   // Navigate to a new screen, pushing current to history
   const navigateTo = (next: Screen) => {
-    setScreenHistory((prev) => [...prev, screen]);
+    setScreenHistory((prev) => {
+      const newHistory = [...prev, screenRef.current];
+      persistScreen(next, newHistory);
+      return newHistory;
+    });
     setScreen(next);
+    screenRef.current = next;
   };
 
   // Go back to previous screen in history, or home if empty
@@ -55,16 +88,20 @@ const App: React.FC = () => {
     setScreenHistory((prev) => {
       if (prev.length === 0) {
         setScreen("home");
+        screenRef.current = "home";
+        persistScreen("home", []);
         return prev;
       }
       const history = [...prev];
       const last = history.pop()!;
       setScreen(last);
+      screenRef.current = last;
+      persistScreen(last, history);
       return history;
     });
   };
 
-  // Check setup flags and platform on mount
+  // Check setup flags and platform on mount — also restore last screen
   useEffect(() => {
     const init = async () => {
       const done = localStorage.getItem("mayo-setup-complete");
@@ -80,6 +117,19 @@ const App: React.FC = () => {
         setSetupComplete(done === "true");
       }
       setLanguageSet(langDone === "true");
+
+      // Restore last screen from sessionStorage (within a single app session)
+      try {
+        const savedScreen = sessionStorage.getItem(PERSISTENT_SCREEN_KEY) as Screen | null;
+        const savedHistory = sessionStorage.getItem(PERSISTENT_HISTORY_KEY);
+        if (savedScreen && !NON_RESTORABLE.includes(savedScreen)) {
+          setScreen(savedScreen);
+          screenRef.current = savedScreen;
+          if (savedHistory) {
+            setScreenHistory(JSON.parse(savedHistory));
+          }
+        }
+      } catch { }
     };
     init();
   }, []);
@@ -171,6 +221,11 @@ const App: React.FC = () => {
     }
     setScreenHistory([]);
     setScreen("home");
+    screenRef.current = "home";
+    try {
+      sessionStorage.removeItem(PERSISTENT_SCREEN_KEY);
+      sessionStorage.removeItem(PERSISTENT_HISTORY_KEY);
+    } catch { }
   };
 
   const onHotspotStarted = (ip: string) => {
@@ -221,7 +276,14 @@ const App: React.FC = () => {
       }}
     >
       <div style={{ flex: 1 }}>
-        <TopBar onNavigate={navigateTo} />
+        {/* TopBar navigations are captured here and also persisted */}
+        <TopBar
+          onNavigate={(s: Screen) => {
+            // If we're on a transfer screen and user clicks a tab,
+            // we still save the transfer screen so back-navigation returns to it.
+            navigateTo(s);
+          }}
+        />
         {screen === "home" && (
           <HomeScreen
             currentScreen={screen}
@@ -254,7 +316,7 @@ const App: React.FC = () => {
             shareIP={hotspotIP}
           />
         )}
-        {/* ✅ SEND P2P – skip chooser, go straight to send mode */}
+        {/* SEND P2P – skip chooser, go straight to send mode */}
         {screen === "share-p2p" && (
           <P2PSession onBack={navigateBack} initialMode="send" />
         )}
@@ -274,7 +336,7 @@ const App: React.FC = () => {
             onStopReceiving={() => setConnectedDevicesCount(0)}
           />
         )}
-        {/* ✅ RECEIVE P2P – skip chooser, go straight to join mode with auto‑IP */}
+        {/* RECEIVE P2P – skip chooser, go straight to join mode with auto‑IP */}
         {screen === "receive-p2p" && (
           <P2PSession onBack={navigateBack} initialMode="join" />
         )}
@@ -285,7 +347,7 @@ const App: React.FC = () => {
           <SupportScreen
             onBack={navigateBack}
             onReplayOnboarding={resetSetup}
-             // @ts-ignore
+            // @ts-ignore
             onNavigateTo={navigateTo}
           />
         )}

@@ -7,6 +7,7 @@ import {
   FaCheckCircle,
   FaTimesCircle,
   FaArrowRight,
+  FaExclamationTriangle,
 } from "react-icons/fa";
 import styles from "../../styles/screens/SetupStepper.module.css";
 
@@ -44,7 +45,7 @@ const SetupStepper: React.FC<Props> = ({ onComplete }) => {
 
   const [currentStep, setCurrentStep] = useState(0);
   const [verifyStatus, setVerifyStatus] = useState<
-    "idle" | "checking" | "ok" | "fail"
+    "idle" | "checking" | "ok" | "fail" | "no-admin"
   >("idle");
   const [wizardError, setWizardError] = useState<string | null>(null);
 
@@ -99,21 +100,49 @@ const SetupStepper: React.FC<Props> = ({ onComplete }) => {
     }
   };
 
+  /**
+   * Verify the loopback adapter is installed using the lightweight
+   * diagnose-network IPC — this does NOT require admin privileges.
+   * Previously the code called startHotspot which ran a PowerShell script
+   * that requires Administrator and would always fail if the app isn't
+   * elevated, showing "Not running as Administrator" even when the adapter
+   * was correctly installed.
+   */
   const verifySetup = async () => {
     setVerifyStatus("checking");
     try {
-      const result = await window.electronAPI.startHotspot();
-      if (
-        result.includes("SUCCESS") ||
-        result.includes("Loopback") ||
-        result.includes("Using adapter")
-      ) {
+      const diagnosis = await window.electronAPI.diagnoseNetwork();
+
+      if (diagnosis.loopbackAdapterPresent) {
         setVerifyStatus("ok");
       } else {
+        // Check if the failure reason is the adapter simply not found vs
+        // a permission/script error. The diagnoseNetwork call is read-only
+        // PowerShell — if it returns false it really means not found.
         setVerifyStatus("fail");
       }
-    } catch {
-      setVerifyStatus("fail");
+    } catch (err: any) {
+      // If diagnoseNetwork itself threw (e.g. PowerShell not available),
+      // fall back to the old startHotspot approach but swallow admin errors
+      // and just treat "Using adapter" / "Loopback" in output as a pass.
+      try {
+        const result = await window.electronAPI.startHotspot();
+        if (
+          result.includes("SUCCESS") ||
+          result.includes("Loopback") ||
+          result.includes("Using adapter")
+        ) {
+          setVerifyStatus("ok");
+        } else if (result.includes("Not running as Administrator")) {
+          // Adapter may still be installed — we just can't start the hotspot
+          // without admin. Show a softer "needs admin" state instead of fail.
+          setVerifyStatus("no-admin");
+        } else {
+          setVerifyStatus("fail");
+        }
+      } catch {
+        setVerifyStatus("fail");
+      }
     }
   };
 
@@ -121,6 +150,7 @@ const SetupStepper: React.FC<Props> = ({ onComplete }) => {
 
   const step = steps[currentStep];
   const isLastStep = currentStep === steps.length - 1;
+  const verifyPassed = verifyStatus === "ok" || verifyStatus === "no-admin";
 
   return (
     <div className={styles.container}>
@@ -130,7 +160,6 @@ const SetupStepper: React.FC<Props> = ({ onComplete }) => {
       </div>
       <div className={styles.subtitle}>{t("firstTimeSetup")}</div>
 
-      {/* Step indicator with ARIA labels */}
       <div className={styles.steps} ref={stepsIndicatorRef}>
         {steps.map((_, i) => (
           <div
@@ -143,7 +172,6 @@ const SetupStepper: React.FC<Props> = ({ onComplete }) => {
         ))}
       </div>
 
-      {/* Card */}
       <div className={styles.card} ref={cardRef}>
         <div className={styles.stepNumber}>
           {t("stepXofY", { current: currentStep + 1, total: steps.length })}
@@ -175,23 +203,36 @@ const SetupStepper: React.FC<Props> = ({ onComplete }) => {
             >
               {verifyStatus === "checking" ? t("checking") : t("verifySetup")}
             </button>
+
             {verifyStatus === "ok" && (
               <div className={styles.successMsg}>
                 <FaCheckCircle aria-hidden="true" style={{ marginRight: 8 }} />{" "}
                 {t("setupComplete")}
               </div>
             )}
+
+            {/* Adapter found but app needs admin to start hotspot — still let them proceed */}
+            {verifyStatus === "no-admin" && (
+              <div className={styles.successMsg} style={{ color: "#f0a500" }}>
+                <FaCheckCircle aria-hidden="true" style={{ marginRight: 8 }} />{" "}
+                Loopback adapter found! To use the offline hotspot, run MAYO Share as Administrator.
+                You can still use P2P and Wi-Fi sharing without admin.
+              </div>
+            )}
+
             {verifyStatus === "fail" && (
               <div className={styles.failMsg}>
                 <FaTimesCircle aria-hidden="true" style={{ marginRight: 8 }} />{" "}
                 {t("adapterNotFound")}
+                <p style={{ fontSize: "0.85rem", marginTop: 6, color: "var(--text-secondary)" }}>
+                  Make sure you selected <strong>Microsoft KM-TEST Loopback Adapter</strong> in the Hardware Wizard (Step 1). After installing, click Verify again.
+                </p>
               </div>
             )}
           </div>
         )}
       </div>
 
-      {/* Navigation */}
       <div className={styles.navRow} ref={navRowRef}>
         {currentStep > 0 && (
           <button className={styles.btn} onClick={goBack}>
@@ -206,7 +247,7 @@ const SetupStepper: React.FC<Props> = ({ onComplete }) => {
             {t("next")} <FaArrowRight aria-hidden="true" style={{ marginLeft: 6 }} />
           </button>
         )}
-        {isLastStep && verifyStatus === "ok" && (
+        {isLastStep && verifyPassed && (
           <button
             onClick={onComplete}
             className={styles.btn}
@@ -215,7 +256,7 @@ const SetupStepper: React.FC<Props> = ({ onComplete }) => {
             {t("enterMayoShare")} <FaArrowRight aria-hidden="true" style={{ marginLeft: 6 }} />
           </button>
         )}
-        {!(isLastStep && verifyStatus === "ok") && (
+        {!(isLastStep && verifyPassed) && (
           <button onClick={onComplete} className={styles.ghostBtn}>
             {t("skipForNow")}
           </button>

@@ -218,5 +218,7 @@
   "deviceNameRequired": "Device name cannot be empty",
   "deviceNameUpdated": "Device name updated",
   "notEnoughSpace": "Not enough space to receive {{name}} ({{size}}). Only {{free}} free.",
-  "storageUsage": "Device storage usage"
+  "storageUsage": "Device storage usage",
+  "receiverNoSpace": "Stopped: receiver does not have enough space for {{name}}.",
+  "receiverDeclined": "Receiver declined {{name}}."
 }

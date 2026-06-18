@@ -24,13 +24,40 @@ const LANGUAGES = [
   { code: "zh", name: "中文" },
 ];
 
+// Supported language codes (must match the list above)
+const SUPPORTED_CODES = new Set(LANGUAGES.map(l => l.code));
+
+/**
+ * Given a browser/OS locale string like "fr-FR", "zh-Hans-CN", "pt-BR",
+ * return the best matching code from SUPPORTED_CODES, or "en" as fallback.
+ */
+function detectSystemLanguage(): string {
+  // navigator.languages is ordered by preference; navigator.language is the top pick
+  const candidates: string[] = [
+    ...(navigator.languages || []),
+    navigator.language,
+  ].filter(Boolean);
+
+  for (const raw of candidates) {
+    // Try exact match first (e.g. "fr")
+    const lower = raw.toLowerCase().split(/[-_]/)[0];
+    if (SUPPORTED_CODES.has(lower)) return lower;
+  }
+
+  return "en"; // default fallback
+}
+
 interface Props {
   onComplete: () => void;
 }
 
 const LanguageSelectScreen: React.FC<Props> = ({ onComplete }) => {
   const { t } = useTranslation();
-  const [currentLang, setCurrentLang] = useState("en");
+
+  // Detect system language immediately — this is what shows in the picker
+  // before the user changes anything, and the welcome text will already be
+  // in that language because i18n was initialised with it.
+  const [currentLang, setCurrentLang] = useState<string>(() => detectSystemLanguage());
 
   // Refs for GSAP
   const mayoRef = useRef<HTMLSpanElement>(null);
@@ -39,24 +66,37 @@ const LanguageSelectScreen: React.FC<Props> = ({ onComplete }) => {
   const pickerRef = useRef<HTMLDivElement>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
 
+  // On mount: apply the detected language so the whole screen renders in it
   useEffect(() => {
     (async () => {
-      const lang = await window.electronAPI.getLanguage();
-      setCurrentLang(lang);
+      const detected = detectSystemLanguage();
+
+      // Only override if no language has been explicitly saved before
+      const saved = await window.electronAPI.getLanguage();
+      const langToUse = (saved && SUPPORTED_CODES.has(saved)) ? saved : detected;
+
+      setCurrentLang(langToUse);
+
+      // Switch i18n to detected/saved language so the UI text is in that lang
+      try {
+        const translations = await window.electronAPI.getTranslations(langToUse);
+        if (translations && Object.keys(translations).length > 0) {
+          i18next.addResourceBundle(langToUse, "translation", translations, true, true);
+          await i18next.changeLanguage(langToUse);
+        }
+      } catch { /* keep whatever language is already loaded */ }
     })();
   }, []);
 
   useGSAP(() => {
     const tl = gsap.timeline({ defaults: { ease: "power2.out" } });
 
-    // 1. "MAYO" fades in
     tl.fromTo(
       mayoRef.current,
       { opacity: 0, y: 12 },
       { opacity: 1, y: 0, duration: 0.4 }
     );
 
-    // 2. "Share" follows with a slight overlap
     tl.fromTo(
       shareRef.current,
       { opacity: 0, y: 12 },
@@ -64,7 +104,6 @@ const LanguageSelectScreen: React.FC<Props> = ({ onComplete }) => {
       "+=0.3"
     );
 
-    // 3. Subtitle, picker, and button stagger in
     tl.fromTo(
       [subtitleRef.current, pickerRef.current, btnRef.current],
       { opacity: 0, y: 8 },
@@ -76,7 +115,7 @@ const LanguageSelectScreen: React.FC<Props> = ({ onComplete }) => {
   const handleLanguageChange = async (lang: string) => {
     await window.electronAPI.setLanguage(lang);
     const newTranslations = await window.electronAPI.getTranslations(lang);
-    i18next.addResourceBundle(lang, "translation", newTranslations);
+    i18next.addResourceBundle(lang, "translation", newTranslations, true, true);
     await i18next.changeLanguage(lang);
     setCurrentLang(lang);
   };
@@ -89,7 +128,6 @@ const LanguageSelectScreen: React.FC<Props> = ({ onComplete }) => {
   return (
     <div className={styles.container}>
       <div className={styles.inner}>
-        {/* App name text – no logo image */}
         <h1 className={styles.logo}>
           <span ref={mayoRef} className={styles.mayo}>MAYO</span>{" "}
           <span ref={shareRef} className={styles.share}>Share</span>
