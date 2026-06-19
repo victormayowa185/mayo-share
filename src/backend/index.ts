@@ -780,39 +780,58 @@ ipcMain.handle(
 ipcMain.handle("diagnose-network", async (): Promise<any> => {
   if (process.platform === "win32") {
     return new Promise((resolve) => {
+      // Improved script: Searches for both KM-TEST and Loopback, and uses tags for reliable parsing
       const psScript = `
-        $ssid = (netsh wlan show interfaces | Select-String "SSID" | Select-String -NotMatch "BSSID" | Select-Object -First 1).ToString().Split(':')[1].Trim()
-        $profile = Get-NetConnectionProfile | Where-Object { $_.InterfaceAlias -like "*Wi-Fi*" } | Select-Object -ExpandProperty NetworkCategory
-        $loopback = Get-NetAdapter | Where-Object { $_.InterfaceDescription -like "*KM-TEST*" } | Select-Object -First 1
+        $ssid = ""
+        try {
+          $ssidRaw = (netsh wlan show interfaces | Select-String "SSID" | Select-String -NotMatch "BSSID" | Select-Object -First 1)
+          if ($ssidRaw) { $ssid = $ssidRaw.ToString().Split(':')[1].Trim() }
+        } catch {}
+
+        $profile = ""
+        try {
+          $profile = Get-NetConnectionProfile | Where-Object { $_.InterfaceAlias -like "*Wi-Fi*" -or $_.InterfaceDescription -like "*Wi-Fi*" } | Select-Object -ExpandProperty NetworkCategory -First 1
+        } catch {}
+
+        # Search thoroughly for the loopback adapter
+        $loopback = Get-NetAdapter | Where-Object { 
+          $_.InterfaceDescription -like "*KM-TEST*" -or 
+          $_.InterfaceDescription -like "*Loopback*" -or 
+          $_.Name -like "*Loopback*" 
+        } | Select-Object -First 1
+        
         $port3001 = netstat -ano | Select-String ":3001" | Select-String "LISTENING"
-        Write-Host $ssid
-        Write-Host $profile
-        Write-Host ($loopback -ne $null)
-        Write-Host ($port3001 -ne $null)
+        
+        # We use prefix tags so the JavaScript code can find the data regardless of line numbers
+        Write-Host "MAYO_SSID:$ssid"
+        Write-Host "MAYO_PROFILE:$profile"
+        Write-Host "MAYO_LOOPBACK:$($loopback -ne $null)"
+        Write-Host "MAYO_PORT:$($port3001 -ne $null)"
       `;
       execFile(
         "powershell.exe",
         ["-NoProfile", "-Command", psScript],
         { timeout: 10000 },
         (error, stdout, stderr) => {
-          if (error)
-            return resolve({
-              ssid: null,
-              profileCategory: null,
-              loopbackAdapterPresent: false,
-              port3001Listening: false,
-            });
-          const lines = (stdout || "").trim().split("\n");
+          const out = stdout || "";
+          
+          // Helper to extract values based on our MAYO_ tags
+          const getTag = (tag: string) => {
+            const match = out.match(new RegExp(`${tag}:(.*)`, 'i'));
+            return match ? match[1].trim() : null;
+          };
+
           resolve({
-            ssid: lines[0]?.trim() || null,
-            profileCategory: lines[1]?.trim() || null,
-            loopbackAdapterPresent: lines[2]?.trim() === "True",
-            port3001Listening: lines[3]?.trim() === "True",
+            ssid: getTag("MAYO_SSID"),
+            profileCategory: getTag("MAYO_PROFILE"),
+            loopbackAdapterPresent: getTag("MAYO_LOOPBACK") === "True",
+            port3001Listening: getTag("MAYO_PORT") === "True",
           });
         },
       );
     });
   } else if (process.platform === "darwin") {
+    // ... keep your existing Darwin logic ...
     return new Promise((resolve) => {
       execFile("lsof", ["-i", ":3001"], { timeout: 5000 }, (error, stdout) => {
         const portListening = stdout && stdout.includes("LISTEN");

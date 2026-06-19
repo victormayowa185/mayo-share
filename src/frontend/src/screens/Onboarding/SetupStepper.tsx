@@ -111,38 +111,36 @@ const SetupStepper: React.FC<Props> = ({ onComplete }) => {
   const verifySetup = async () => {
     setVerifyStatus("checking");
     try {
+      // 1. Try the lightweight diagnosis first
       const diagnosis = await window.electronAPI.diagnoseNetwork();
 
       if (diagnosis.loopbackAdapterPresent) {
         setVerifyStatus("ok");
-      } else {
-        // Check if the failure reason is the adapter simply not found vs
-        // a permission/script error. The diagnoseNetwork call is read-only
-        // PowerShell — if it returns false it really means not found.
-        setVerifyStatus("fail");
+        return;
       }
-    } catch (err: any) {
-      // If diagnoseNetwork itself threw (e.g. PowerShell not available),
-      // fall back to the old startHotspot approach but swallow admin errors
-      // and just treat "Using adapter" / "Loopback" in output as a pass.
-      try {
-        const result = await window.electronAPI.startHotspot();
-        if (
-          result.includes("SUCCESS") ||
-          result.includes("Loopback") ||
-          result.includes("Using adapter")
-        ) {
-          setVerifyStatus("ok");
-        } else if (result.includes("Not running as Administrator")) {
-          // Adapter may still be installed — we just can't start the hotspot
-          // without admin. Show a softer "needs admin" state instead of fail.
+
+      // 2. Fallback: If diagnosis says no, try to actually query the hotspot script 
+      // but parse the result manually for keywords
+      const result = await window.electronAPI.startHotspot();
+      if (
+        result.includes("SUCCESS") ||
+        result.includes("Loopback") ||
+        result.includes("Using adapter") ||
+        result.includes("KM-TEST")
+      ) {
+        setVerifyStatus("ok");
+      } else if (result.includes("Not running as Administrator")) {
+        // If the only error is Admin, but it found the adapter name earlier in the log, it's okay!
+        if (result.toLowerCase().includes("loopback") || result.toLowerCase().includes("km-test")) {
           setVerifyStatus("no-admin");
         } else {
           setVerifyStatus("fail");
         }
-      } catch {
+      } else {
         setVerifyStatus("fail");
       }
+    } catch (err: any) {
+      setVerifyStatus("fail");
     }
   };
 
