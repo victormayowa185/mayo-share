@@ -1098,15 +1098,19 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
       <div className={styles.queueName}>{f.name}</div>
       <div className={styles.queueSize}>{formatBytes(f.size)}</div>
       {f.status === "transferring" && <progress value={f.progress} max="100" className={styles.progress} />}
-      {f.status !== "queued" && (
+      {(f.status !== "queued" || isSending) && (
         <div className={styles.queueStatus}>
           {f.status === "done"
             ? <FaCheck color="#4CAF50" />
             : f.status === "transferring"
               ? `${f.progress}%`
-              : f.status}
+              : f.status === "queued"
+                ? "queued"
+                : f.status}
         </div>
       )}
+
+
       {(f.status === "queued" || f.status === "transferring") && (
         <button className={styles.removeBtn} onClick={() => cancelFile(f.id)} title="Cancel">
           <FaTimes />
@@ -1265,13 +1269,15 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
           <div className={styles.connectedBadge}><FaCircle size={10} color="#4CAF50" /> {t("connected")}</div>
           <p className={styles.subtitle}>Add files, then start sharing.</p>
 
-     
-          {/* Send button — visible whenever files are waiting, even during an active transfer */}
-          {fileQueue.some(f => f.status === "queued") && !resumeOffer && (
+
+          {/* Send button — only when nothing is transferring. During a transfer,
+              files added are queued and auto-sent, so the button isn't needed. */}
+          {fileQueue.some(f => f.status === "queued") && !isSending && !resumeOffer && (
             <button className={styles.sendBtn} onClick={() => sendAll({})} style={{ width: '100%' }}>
               <FaUpload /> {t("send")} ({formatBytes(fileQueue.filter(f => f.status === "queued").reduce((sum, f) => sum + f.size, 0))})
             </button>
           )}
+
 
 
           <div className={styles.actionRow}>
