@@ -116,7 +116,8 @@ const HotspotCheck: React.FC<Props> = ({
               setErrorMessage(t("hotspotFailed"));
             }
           } catch (err: any) {
-            setErrorMessage(t("errorOccurred") + ": " + (err.message || err));
+            setErrorMessage(t("errorOccurred", { message: err.message || err }));
+
           } finally {
             setRunning(false);
           }
@@ -142,7 +143,8 @@ const HotspotCheck: React.FC<Props> = ({
           setErrorMessage(t("hotspotFailed"));
         }
       } catch (err: any) {
-        setErrorMessage(t("errorOccurred") + ": " + (err.message || err));
+        setErrorMessage(t("errorOccurred", { message: err.message || err }));
+
       } finally {
         setRunning(false);
       }

@@ -15,7 +15,9 @@ import { UploadServer, setReceiveDir } from "./uploadServer";
 import { saveRating } from "./firebase";
 import { startHotspot, stopHotspot, configureHotspot } from "./hotspot-mac";
 import { HOTSPOT_IP } from "./hotspot-mac";
+import sudo from "sudo-prompt";
 import { statSync } from "fs";
+
 
 import fs from "fs";
 import os from "os";
@@ -293,18 +295,37 @@ ipcMain.handle("start-hotspot", async (): Promise<string> => {
         return;
       }
 
-      execFile(
-        "powershell.exe",
-        ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", tempScriptPath],
-        { timeout: 60000 },
-        (error, stdout, stderr) => {
+      // Starting the Windows mobile hotspot REQUIRES administrator rights
+      // (Enable-NetAdapter / New-NetIPAddress / tethering APIs). The app runs
+      // unelevated, so we run THIS one script elevated via a single UAC prompt
+      // instead of forcing the whole app to run as administrator.
+      const command =
+        `powershell.exe -NoProfile -ExecutionPolicy Bypass -File "${tempScriptPath}"`;
+
+      sudo.exec(
+        command,
+        { name: "MAYO Share" },
+        (error: any, stdout: any, stderr: any) => {
           try {
             fs.unlinkSync(tempScriptPath);
           } catch { }
 
-          let output = stdout || "";
-          if (stderr && !stdout) output += stderr;
-          if (error) output += "\n[EXIT CODE]: " + error.message;
+          let output = (stdout as string) || "";
+          if (stderr && !stdout) output += stderr as string;
+
+          // `error` is set when the user cancels/denies the UAC prompt.
+          if (error && !output.includes("SUCCESS")) {
+            const msg = (error.message || String(error)).toLowerCase();
+            if (
+              msg.includes("did not grant") ||
+              msg.includes("denied") ||
+              msg.includes("cancel")
+            ) {
+              output += "\n[EXIT CODE]: Administrator permission was denied. Please allow the prompt and try again.";
+            } else {
+              output += "\n[EXIT CODE]: " + (error.message || error);
+            }
+          }
 
           const ipMatch = output.match(
             /Hotspot IP \(for sharing\):\s*([\d.]+)/,
@@ -316,6 +337,9 @@ ipcMain.handle("start-hotspot", async (): Promise<string> => {
           resolve(output || "Script produced no output");
         },
       );
+
+
+
     });
   } else if (process.platform === "darwin") {
     try {
@@ -814,7 +838,7 @@ ipcMain.handle("diagnose-network", async (): Promise<any> => {
         { timeout: 10000 },
         (error, stdout, stderr) => {
           const out = stdout || "";
-          
+
           // Helper to extract values based on our MAYO_ tags
           const getTag = (tag: string) => {
             const match = out.match(new RegExp(`${tag}:(.*)`, 'i'));
