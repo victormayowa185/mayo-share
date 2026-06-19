@@ -32,7 +32,9 @@ interface ReceiveEntry {
   size: number;
   path: string;
   received: number;
+  cancelled?: boolean;
 }
+
 
 interface ReceivedFile {
   id: string;
@@ -176,6 +178,34 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
   // --- NEW REFS ---
   const resumeOfferRef = useRef<{ offsets: Record<string, number> } | null>(null);
   const intentionalCloseRef = useRef(false);
+
+  // Refs to the rendered rows / folder groups so we can animate them out
+  const rowRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const folderRefs = useRef<Record<string, HTMLDivElement | null>>({});
+
+  // Keep a cancelled row visible for 2s, then collapse + fade it out and remove it.
+  const fadeOutRow = (id: string, remove: () => void) => {
+    const el = rowRefs.current[id];
+    if (!el) { setTimeout(remove, 2400); return; }
+    gsap.to(el, {
+      opacity: 0, height: 0, marginTop: 0, marginBottom: 0,
+      paddingTop: 0, paddingBottom: 0, overflow: "hidden",
+      duration: 0.4, delay: 2, ease: "power2.in",
+      onComplete: () => { delete rowRefs.current[id]; remove(); },
+    });
+  };
+
+  // Same idea, but for a whole folder group on the sender's queue.
+  const fadeOutFolder = (folderName: string, remove: () => void) => {
+    const el = folderRefs.current[folderName];
+    if (!el) { setTimeout(remove, 2400); return; }
+    gsap.to(el, {
+      opacity: 0, height: 0, marginTop: 0, marginBottom: 0, overflow: "hidden",
+      duration: 0.4, delay: 2, ease: "power2.in",
+      onComplete: () => { delete folderRefs.current[folderName]; remove(); },
+    });
+  };
+
 
   const showFileArea = useCallback(() => {
     setConnected(true);
@@ -428,29 +458,97 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
         ? { ...f, status: "cancelled" }
         : f
     ));
+    // Tell the receiver so its stuck incoming row cancels too
+    if (localDC.current && localDC.current.readyState === "open") {
+      localDC.current.send(JSON.stringify({ type: "cancel-file", id }));
+    }
+    // Show "cancelled" for 2s, then remove the row from the queue
+    fadeOutRow(id, () =>
+      setFileQueue(prev => prev.filter(f => f.id !== id))
+    );
   };
 
+
   const cancelFolder = (folderName: string) => {
-    setFileQueue(prev => {
-      const ids: string[] = [];
-      const next = prev.map(f => {
-        const parts = f.name.split("/");
-        const folder = parts.length > 1 ? parts[0] : "";
-        if (folder === folderName && (f.status === "queued" || f.status === "transferring")) {
-          ids.push(f.id);
-          return { ...f, status: "cancelled" as const };
-        }
-        return f;
-      });
-      ids.forEach(id => stopSendRef.current.add(id));
-      return next;
-    });
+    const ids = fileQueueRef.current
+      .filter(f => {
+        const folder = f.name.includes("/") ? f.name.split("/")[0] : "";
+        return folder === folderName && (f.status === "queued" || f.status === "transferring");
+      })
+      .map(f => f.id);
+    ids.forEach(id => stopSendRef.current.add(id));
+    setFileQueue(prev => prev.map(f =>
+      ids.includes(f.id) ? { ...f, status: "cancelled" as const } : f
+    ));
+    // Tell the receiver so its stuck incoming row cancels too
+    if (localDC.current && localDC.current.readyState === "open") {
+      localDC.current.send(JSON.stringify({ type: "cancel-folder", folderName }));
+    }
+    // Show "cancelled" for 2s, then remove the whole folder from the queue
+    fadeOutFolder(folderName, () =>
+      setFileQueue(prev => prev.filter(f => !ids.includes(f.id)))
+    );
     setCollapsedFolders(prev => {
       const next = new Set(prev);
       next.delete(folderName);
       return next;
     });
   };
+
+
+  const cancelIncomingFile = (id: string) => {
+    const entry = receiveMapRef.current[id];
+    rejectedRef.current.add(id);
+    delete receivePathsRef.current[id];
+    // Show "cancelled" for 2s, then fade out and remove
+    setReceiveMap(prev =>
+      prev[id] ? { ...prev, [id]: { ...prev[id], cancelled: true } } : prev
+    );
+    fadeOutRow(id, () =>
+      setReceiveMap(prev => { const n = { ...prev }; delete n[id]; return n; })
+    );
+    // Tell the sender to stop sending this file
+    if (localDC.current && localDC.current.readyState === "open") {
+      localDC.current.send(JSON.stringify({
+        type: "receiver-cancel-file",
+        id,
+        name: entry?.name || "",
+      }));
+    }
+  };
+
+  // ─── Receiver side: cancel an entire incoming folder ──────────────────────
+  // The receiver only "sees" the file currently arriving, so we send the
+  // folder name and let the sender drop every remaining file in that folder.
+  const cancelIncomingFolder = (folderName: string) => {
+    const ids: string[] = [];
+    for (const [id, entry] of Object.entries(receiveMapRef.current)) {
+      const folder = entry.name.includes("/") ? entry.name.split("/")[0] : "";
+      if (folder === folderName) ids.push(id);
+    }
+    ids.forEach(id => {
+      rejectedRef.current.add(id);
+      delete receivePathsRef.current[id];
+    });
+    setReceiveMap(prev => {
+      const n = { ...prev };
+      ids.forEach(id => { if (n[id]) n[id] = { ...n[id], cancelled: true }; });
+      return n;
+    });
+    ids.forEach(id =>
+      fadeOutRow(id, () =>
+        setReceiveMap(prev => { const n = { ...prev }; delete n[id]; return n; })
+      )
+    );
+    if (localDC.current && localDC.current.readyState === "open") {
+      localDC.current.send(JSON.stringify({
+        type: "receiver-cancel-folder",
+        folderName,
+      }));
+    }
+  };
+
+
 
   const toggleFolder = (folderName: string) => {
     setCollapsedFolders(prev => {
@@ -615,6 +713,9 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
     }
 
     // ─── File reject (unchanged) ─────────────────────────────────────────────
+    // âââ File reject (unchanged) âââââââââââââââââââââââââââââââââââââââââââ
+    // âââ File reject (no-space is a real error, so keep that message; a plain
+    //     decline shows no text â the row just fades out) âââââââââââââââââââââ
     if (msg.type === "file-reject") {
       stopSendRef.current.add(msg.id);
       abortBatchRef.current = true;
@@ -622,10 +723,86 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
       if (msg.reason === "no-space") {
         setSessionStatus(t("receiverNoSpace", { name: shortName(msg.name || "") }));
       } else {
-        setSessionStatus(t("receiverDeclined", { name: shortName(msg.name || "") }));
+        fadeOutRow(msg.id, () => setFileQueue(prev => prev.filter(f => f.id !== msg.id)));
       }
       return;
     }
+
+    // âââ Sender cancelled a single file (handled on the receiver) ââââââââââââ
+    // Ignore any in-flight chunks, mark the incoming row cancelled, then fade.
+    if (msg.type === "cancel-file") {
+      rejectedRef.current.add(msg.id);
+      delete receivePathsRef.current[msg.id];
+      setReceiveMap(prev =>
+        prev[msg.id] ? { ...prev, [msg.id]: { ...prev[msg.id], cancelled: true } } : prev
+      );
+      fadeOutRow(msg.id, () =>
+        setReceiveMap(prev => { const n = { ...prev }; delete n[msg.id]; return n; })
+      );
+      return;
+    }
+
+    // âââ Sender cancelled a whole folder (handled on the receiver) âââââââââââ
+    if (msg.type === "cancel-folder") {
+      const ids = Object.keys(receiveMapRef.current).filter(id => {
+        const name = receiveMapRef.current[id].name;
+        const folder = name.includes("/") ? name.split("/")[0] : "";
+        return folder === msg.folderName;
+      });
+      ids.forEach(id => {
+        rejectedRef.current.add(id);
+        delete receivePathsRef.current[id];
+      });
+      setReceiveMap(prev => {
+        const n = { ...prev };
+        ids.forEach(id => { if (n[id]) n[id] = { ...n[id], cancelled: true }; });
+        return n;
+      });
+      ids.forEach(id =>
+        fadeOutRow(id, () =>
+          setReceiveMap(prev => { const n = { ...prev }; delete n[id]; return n; })
+        )
+      );
+      return;
+    }
+
+
+    // âââ Receiver cancelled a single incoming file (handled on sender) âââ
+    // ─── Receiver cancelled a single file (handled on sender) ─────────────
+    // Only stops THIS file — the rest of the batch keeps sending. No text;
+    // the row just shows "cancelled" for 2s then fades out.
+    if (msg.type === "receiver-cancel-file") {
+      stopSendRef.current.add(msg.id);
+      setFileQueue(prev => prev.map(f =>
+        f.id === msg.id && (f.status === "queued" || f.status === "transferring")
+          ? { ...f, status: "cancelled" }
+          : f
+      ));
+      fadeOutRow(msg.id, () =>
+        setFileQueue(prev => prev.filter(f => f.id !== msg.id))
+      );
+      return;
+    }
+
+    // ─── Receiver cancelled a whole folder (handled on sender) ───────────
+    if (msg.type === "receiver-cancel-folder") {
+      const ids = fileQueueRef.current
+        .filter(f => {
+          const folder = f.name.includes("/") ? f.name.split("/")[0] : "";
+          return folder === msg.folderName && (f.status === "queued" || f.status === "transferring");
+        })
+        .map(f => f.id);
+      ids.forEach(id => stopSendRef.current.add(id));
+      setFileQueue(prev => prev.map(f =>
+        ids.includes(f.id) ? { ...f, status: "cancelled" as const } : f
+      ));
+      fadeOutFolder(msg.folderName, () =>
+        setFileQueue(prev => prev.filter(f => !ids.includes(f.id)))
+      );
+      return;
+    }
+
+
 
     // ─── File start (with resume support AND clears stale entries) ──────────
     if (msg.type === "file-start") {
@@ -894,7 +1071,12 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
 
   // ─── Render helpers ─────────────────────────────────────────────────────────
   const renderQueueRow = (f: QueueFile) => (
-    <div key={f.id} className={styles.queueItem}>
+    <div
+      key={f.id}
+      ref={el => { rowRefs.current[f.id] = el; }}
+      className={styles.queueItem}
+    >
+
       <div className={styles.queueName}>{f.name}</div>
       <div className={styles.queueSize}>{formatBytes(f.size)}</div>
       {f.status === "transferring" && <progress value={f.progress} max="100" className={styles.progress} />}
@@ -1110,8 +1292,13 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
                         const totalSize = group.files.reduce((s, f) => s + f.size, 0);
                         const folderIsActive = group.files.some(f => f.status === "queued" || f.status === "transferring");
                         return (
-                          <div key={group.folderName} className={styles.folderGroup}>
+                          <div
+                            key={group.folderName}
+                            ref={el => { folderRefs.current[group.folderName] = el; }}
+                            className={styles.folderGroup}
+                          >
                             <div className={styles.folderHeader} onClick={() => toggleFolder(group.folderName)}>
+
                               <span className={styles.folderArrow}>{collapsed ? <FaChevronRight /> : <FaChevronDown />}</span>
                               <span className={styles.folderName}>{group.folderName}</span>
                               <span className={styles.folderMeta}>{group.files.length} files · {formatBytes(totalSize)}</span>
@@ -1159,15 +1346,47 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
           {Object.keys(receiveMap).length > 0 && (
             <div className={styles.incomingSection}>
               <p className={styles.label}>Incoming Files:</p>
-              {Object.entries(receiveMap).map(([id, f]) => (
-                <div key={id} className={styles.queueItem}>
-                  <span className={styles.queueName}>{f.name}</span>
-                  <progress value={f.received} max={f.size} className={styles.progress} />
-                  <span>{Math.round((f.received / f.size) * 100)}%</span>
-                </div>
-              ))}
+              {Object.entries(receiveMap).map(([id, f]) => {
+                const folderName = f.name.includes("/") ? f.name.split("/")[0] : "";
+                return (
+                  <div
+                    key={id}
+                    ref={el => { rowRefs.current[id] = el; }}
+                    className={styles.queueItem}
+                  >
+                    <span className={styles.queueName}>{f.name}</span>
+                    {f.cancelled ? (
+                      <span className={styles.queueStatus}>cancelled</span>
+                    ) : (
+                      <>
+                        <progress value={f.received} max={f.size} className={styles.progress} />
+                        <span>{Math.round((f.received / f.size) * 100)}%</span>
+                        {folderName && (
+                          <button
+                            className={styles.removeFolderBtn}
+                            onClick={() => cancelIncomingFolder(folderName)}
+                            title="Cancel folder"
+                          >
+                            <FaFolderOpen />
+                          </button>
+                        )}
+                        <button
+                          className={styles.removeBtn}
+                          onClick={() => cancelIncomingFile(id)}
+                          title="Cancel"
+                        >
+                          <FaTimes />
+                        </button>
+                      </>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
+
+
+
 
           {receivedFiles.length > 0 && (
             <>
