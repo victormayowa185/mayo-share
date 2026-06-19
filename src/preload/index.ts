@@ -127,8 +127,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
   ping: () => ipcRenderer.invoke("ping"),
   readFileChunk: (filePath: string, start: number, size: number) =>
     ipcRenderer.invoke("read-file-chunk", filePath, start, size),
-  createReceiveFile: (filePath: string) =>
-    ipcRenderer.invoke("create-receive-file", filePath),
+  createReceiveFile: (filePath: string, resume?: boolean) =>
+    ipcRenderer.invoke("create-receive-file", filePath, resume),
   appendReceiveChunk: (filePath: string, data: string) =>
     ipcRenderer.invoke("append-receive-chunk", filePath, data),
   saveResumeState: (transferId: string, offset: number, filePath: string) =>

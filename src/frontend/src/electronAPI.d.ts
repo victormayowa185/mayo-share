@@ -95,7 +95,7 @@ declare global {
         start: number,
         size: number,
       ) => Promise<string>;
-      createReceiveFile: (filePath: string) => Promise<void>;
+      createReceiveFile: (filePath: string, resume?: boolean) => Promise<void>;
       appendReceiveChunk: (filePath: string, data: string) => Promise<void>;
       saveResumeState: (
         transferId: string,

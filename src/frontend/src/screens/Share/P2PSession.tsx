@@ -1,9 +1,9 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { useTranslation } from "react-i18next";
-import { 
+import {
   FaCircle, FaTimes, FaCheck, FaCopy,
-  FaChevronDown, FaChevronUp, FaChevronRight, FaFolderOpen, 
-  FaPlus, FaUpload, FaWifi
+  FaChevronDown, FaChevronUp, FaChevronRight, FaFolderOpen,
+  FaPlus, FaUpload, FaWifi, FaPlay, FaTrash
 } from "react-icons/fa";
 import gsap from "gsap";
 import { useGSAP } from "@gsap/react";
@@ -107,6 +107,25 @@ const isInvalidFile = (name: string): boolean => {
 
 type ConnectionState = "idle" | "connected" | "disconnected" | "reconnecting";
 
+// ─── Persistence helpers ──────────────────────────────────────────────────────
+const SESSION_STORAGE_KEY = "mayo_p2p_session_cache";
+
+const saveSessionToDisk = (queue: QueueFile[]) => {
+  const data = { queue };
+  localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(data));
+};
+
+const loadSessionFromDisk = () => {
+  const raw = localStorage.getItem(SESSION_STORAGE_KEY);
+  if (!raw) return null;
+  try { return JSON.parse(raw); } catch { return null; }
+};
+
+const clearSessionFromDisk = () => {
+  localStorage.removeItem(SESSION_STORAGE_KEY);
+};
+
+// ─── Component ─────────────────────────────────────────────────────────────────
 const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
   const { t } = useTranslation();
 
@@ -137,7 +156,12 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
   const [receivedGroups, setReceivedGroups] = useState<ReceivedGroup[]>([]);
   const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(new Set());
   const [allCollapsed, setAllCollapsed] = useState(false);
-  
+
+  // ─── Resume state ────────────────────────────────────────────────────────────
+  const [resumeOffer, setResumeOffer] = useState<{
+    offsets: Record<string, number>;
+  } | null>(null);
+
   const localPC = useRef<RTCPeerConnection | null>(null);
   const localDC = useRef<RTCDataChannel | null>(null);
   const digitRefs = useRef<(HTMLInputElement | null)[]>([]);
@@ -148,6 +172,10 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
   const rejectedRef = useRef<Set<string>>(new Set());
   const stopSendRef = useRef<Set<string>>(new Set());
   const abortBatchRef = useRef(false);
+  const fileQueueRef = useRef<QueueFile[]>([]);   // for handshake
+  // --- NEW REFS ---
+  const resumeOfferRef = useRef<{ offsets: Record<string, number> } | null>(null);
+  const intentionalCloseRef = useRef(false);
 
   const showFileArea = useCallback(() => {
     setConnected(true);
@@ -157,6 +185,31 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
   useEffect(() => {
     receiveMapRef.current = receiveMap;
   }, [receiveMap]);
+
+  // Keep queue ref in sync for handshake
+  useEffect(() => {
+    fileQueueRef.current = fileQueue;
+  }, [fileQueue]);
+
+  // Keep resume offer in a ref so DC message handlers see the latest value
+  useEffect(() => {
+    resumeOfferRef.current = resumeOffer;
+  }, [resumeOffer]);
+
+  // Restore an interrupted SEND session so its files are ready to resume
+  // after the user goes back and reconnects the normal way.
+  useEffect(() => {
+    if (initialMode !== "send") return;
+    const saved = loadSessionFromDisk();
+    if (saved && saved.queue && saved.queue.length > 0) {
+      setFileQueue(
+        saved.queue.map((f: QueueFile) => ({
+          ...f,
+          status: f.status === "transferring" ? "queued" : f.status,
+        }))
+      );
+    }
+  }, []);
 
   useEffect(() => {
     setReceivedGroups(groupReceivedFiles(receivedFiles));
@@ -178,13 +231,16 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
   const setupConnectionMonitor = useCallback((pc: RTCPeerConnection) => {
     pc.onconnectionstatechange = () => {
       const state = pc.connectionState;
-      if (state === "disconnected" || state === "failed" || state === "closed") {
+      // "closed" only happens when WE close (back button / cleanup) – ignore it.
+      if (state === "failed" || state === "disconnected") {
+        if (intentionalCloseRef.current) return;
         setConnectionState("disconnected");
         setConnected(false);
-        setSessionStatus("Disconnected. Try checking your network...");
+        setSessionStatus("");
       } else if (state === "connecting") {
         setConnectionState("reconnecting");
       } else if (state === "connected") {
+        intentionalCloseRef.current = false;
         setConnectionState("connected");
         setConnected(true);
         setSessionStatus("");
@@ -192,22 +248,37 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
     };
   }, []);
 
-  // ─── Paste handler ───────────────────────────────────────────────────────────
+  // ─── Cleanup ──────────────────────────────────────────────────────────────────
+  const cleanupWebRTC = useCallback(() => {
+    intentionalCloseRef.current = true; // so the monitor doesn't flag a disconnect
+    if (localDC.current) {
+      localDC.current.close();
+      localDC.current = null;
+    }
+    if (localPC.current) {
+      localPC.current.close();
+      localPC.current = null;
+    }
+    setWaitingForJoiner(false);
+    setJoining(false);
+    setIsSending(false);
+    setResumeOffer(null);
+    // NOTE: we intentionally do NOT clear the saved session here, so the
+    // unfinished transfer can be detected and resumed after reconnect.
+  }, []);
+
+  // ─── Paste handler (unchanged) ──────────────────────────────────────────────
   const handlePaste = useCallback(async (e: ClipboardEvent) => {
     const target = e.target as HTMLElement;
     if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
       return;
     }
-
     if (isSending) return;
-
     const clipboard = e.clipboardData;
     if (!clipboard) return;
-
     const browserFiles = Array.from(clipboard.files);
     const items = Array.from(clipboard.items);
     const plainText = clipboard.getData("text/plain");
-
     e.preventDefault();
 
     let clipboardPaths: { paths: string[]; type: string } = { paths: [], type: "none" };
@@ -315,6 +386,7 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
     return () => document.removeEventListener("paste", handlePaste as any);
   }, [handlePaste]);
 
+  // ─── File & folder pickers (unchanged) ──────────────────────────────────────
   const addFiles = async () => {
     const paths = await window.electronAPI.selectFile();
     if (!paths) return;
@@ -349,7 +421,6 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
     setFileQueue(prev => [...prev, ...newFiles]);
   };
 
-  // Cancel a single file — works before AND during transfer
   const cancelFile = (id: string) => {
     stopSendRef.current.add(id);
     setFileQueue(prev => prev.map(f =>
@@ -359,7 +430,6 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
     ));
   };
 
-  // Cancel an entire folder — works before AND during transfer
   const cancelFolder = (folderName: string) => {
     setFileQueue(prev => {
       const ids: string[] = [];
@@ -401,7 +471,8 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
     }
   };
 
-  const sendAll = async () => {
+  // ─── UPDATED sendAll with offset support and persistence ────────────────────
+  const sendAll = async (startOffsets: Record<string, number> = {}) => {
     const dc = localDC.current;
     if (!dc || dc.readyState !== "open") return;
 
@@ -409,24 +480,30 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
     stopSendRef.current.clear();
 
     setIsSending(true);
-    // Snapshot the queue at send time
     let queue: QueueFile[] = [];
     setFileQueue(prev => { queue = prev; return prev; });
     await new Promise(r => setTimeout(r, 0));
+    // Save the session at the start so it survives disconnects
+    saveSessionToDisk(queue);
 
     for (const file of queue) {
       if (file.status === "done" || file.status === "cancelled") continue;
       if (abortBatchRef.current) break;
       if (stopSendRef.current.has(file.id)) continue;
 
+      const offset = startOffsets[file.id] || 0;
       dc.send(JSON.stringify({
-        type: "file-start", id: file.id, name: file.name, size: file.size, fromOffset: 0
+        type: "file-start",
+        id: file.id,
+        name: file.name,
+        size: file.size,
+        offset,
       }));
 
       const CHUNK_SIZE = 16384;
-      let offset = 0;
+      let currentOffset = offset;
 
-      while (offset < file.size) {
+      while (currentOffset < file.size) {
         if (abortBatchRef.current || stopSendRef.current.has(file.id)) break;
         if (dc.bufferedAmount > 1024 * 1024) {
           await new Promise(resolve => {
@@ -438,29 +515,106 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
           });
         }
 
-        const base64 = await window.electronAPI.readFileChunk(file.path!, offset, CHUNK_SIZE);
-        dc.send(JSON.stringify({ type: "file-chunk", id: file.id, data: base64, offset }));
-        
-        offset += CHUNK_SIZE;
-        const progress = Math.min(100, Math.round((offset / file.size) * 100));
-        
+        const base64 = await window.electronAPI.readFileChunk(file.path!, currentOffset, CHUNK_SIZE);
+        dc.send(JSON.stringify({ type: "file-chunk", id: file.id, data: base64, offset: currentOffset }));
+
+        currentOffset += CHUNK_SIZE;
+        const progress = Math.min(100, Math.round((currentOffset / file.size) * 100));
+
         if (progress % 5 === 0) {
-          setFileQueue(prev => prev.map(f => f.id === file.id ? { ...f, status: "transferring", progress } : f));
+          setFileQueue(prev => {
+            const next = prev.map(f =>
+              f.id === file.id ? { ...f, status: "transferring", progress } : f
+            );
+            saveSessionToDisk(next);
+            return next;
+          });
         }
       }
 
       if (abortBatchRef.current || stopSendRef.current.has(file.id)) continue;
 
       dc.send(JSON.stringify({ type: "file-end", id: file.id }));
-      setFileQueue(prev => prev.map(f => f.id === file.id ? { ...f, status: "done", progress: 100 } : f));
+      setFileQueue(prev => {
+        const next = prev.map(f =>
+          f.id === file.id ? { ...f, status: "done", progress: 100 } : f
+        );
+        saveSessionToDisk(next);
+        return next;
+      });
       window.electronAPI.logP2pActivity("sent", file.name);
     }
+
+    // Clear the saved session only if nothing is left to send and we weren't aborted
+    setFileQueue(prev => {
+      const pending = prev.some(f => f.status === "queued" || f.status === "transferring");
+      if (!pending && !abortBatchRef.current) clearSessionFromDisk();
+      return prev;
+    });
     setIsSending(false);
   };
 
+  // ─── UPDATED handleDCMessage with handshake and resume ─────────────────────
   const handleDCMessage = useCallback(async (raw: string) => {
     let msg: any; try { msg = JSON.parse(raw); } catch { return; }
 
+    // ─── Handshake: sender offers file list; receiver replies with byte offsets
+    // The RECEIVER is the source of truth: we check how many bytes are ACTUALLY
+    // on disk for each offered file and resume from exactly there.
+    if (msg.type === "handshake-offer") {
+      const saveDir = await window.electronAPI.getSavePath();
+      const offsets: Record<string, number> = {};
+      for (const f of msg.files) {
+        const safeName = f.name.replace(/\//g, "\\");
+        const savePath = saveDir + "\\" + safeName;
+        let onDisk = 0;
+        try {
+          onDisk = await window.electronAPI.getFileSize(savePath);
+        } catch {
+          onDisk = 0; // file not there yet
+        }
+        if (onDisk > 0 && onDisk < f.size) {
+          offsets[f.id] = onDisk;
+        }
+      }
+
+      if (localDC.current && localDC.current.readyState === "open") {
+        localDC.current.send(JSON.stringify({ type: "handshake-response", offsets }));
+      }
+
+      // Only prompt if there's actually an unfinished transfer to resume
+      if (Object.keys(offsets).length > 0) {
+        setResumeOffer({ offsets });
+      }
+      return;
+    }
+
+    // ─── Handshake response: receiver tells sender where to start ───────────
+    if (msg.type === "handshake-response") {
+      if (msg.offsets && Object.keys(msg.offsets).length > 0) {
+        setResumeOffer({ offsets: msg.offsets });
+      } else {
+        setResumeOffer(null);
+      }
+      return;
+    }
+
+    // ─── Receiver pressed a resume button – tell the sender to (re)start sending
+    if (msg.type === "request-send") {
+      setResumeOffer(null);
+      if (msg.fresh) clearSessionFromDisk();
+      const offsets = msg.fresh ? {} : (resumeOfferRef.current?.offsets || {});
+      sendAll(offsets);
+      return;
+    }
+
+    // ─── Sender pressed a resume button – dismiss our (receiver) prompt
+    if (msg.type === "resume-dismiss") {
+      setResumeOffer(null);
+      return;
+    }
+
+    // ─── File reject (unchanged) ─────────────────────────────────────────────
     if (msg.type === "file-reject") {
       stopSendRef.current.add(msg.id);
       abortBatchRef.current = true;
@@ -473,6 +627,7 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
       return;
     }
 
+    // ─── File start (with resume support AND clears stale entries) ──────────
     if (msg.type === "file-start") {
       try {
         const { free } = await window.electronAPI.getDiskSpace();
@@ -498,15 +653,34 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
         }
       } catch { }
 
+      // Clear any stale receiveMap entry for this file ID
+      setReceiveMap(prev => {
+        const n = { ...prev };
+        delete n[msg.id];
+        return n;
+      });
+
       const saveDir = await window.electronAPI.getSavePath();
       const safeName = msg.name.replace(/\//g, "\\");
       const savePath = saveDir + "\\" + safeName;
 
+      const isResuming = msg.offset && msg.offset > 0;
+      await window.electronAPI.createReceiveFile(savePath, isResuming);
+
       receivePathsRef.current[msg.id] = savePath;
-      await window.electronAPI.createReceiveFile(savePath);
-      setReceiveMap(prev => ({ ...prev, [msg.id]: { name: msg.name, size: msg.size, path: savePath, received: 0 } }));
+      setReceiveMap(prev => ({
+        ...prev,
+        [msg.id]: {
+          name: msg.name,
+          size: msg.size,
+          path: savePath,
+          received: msg.offset || 0
+        }
+      }));
+      return;
     }
 
+    // ─── File chunk (unchanged) ──────────────────────────────────────────────
     if (msg.type === "file-chunk") {
       if (rejectedRef.current.has(msg.id)) return;
       const path = receivePathsRef.current[msg.id];
@@ -518,8 +692,10 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
         if (!entry) return prev;
         return { ...prev, [msg.id]: { ...entry, received: entry.received + chunkLen } };
       });
+      return;
     }
 
+    // ─── File end (unchanged) ────────────────────────────────────────────────
     if (msg.type === "file-end") {
       if (rejectedRef.current.has(msg.id)) {
         rejectedRef.current.delete(msg.id);
@@ -541,7 +717,7 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
       setSessionStatus(t("fileReceived", { name: msg.name || "" }));
       window.electronAPI.logP2pActivity("received", msg.name || entry?.name || "");
     }
-  }, [t]);
+  }, [t, sendAll]);
 
   const processMessageQueue = useCallback(async () => {
     if (processingRef.current) return;
@@ -553,26 +729,53 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
     processingRef.current = false;
   }, [handleDCMessage]);
 
+  // ─── startSendMode (sender) with handshake on open ─────────────────────────
   const startSendMode = async () => {
+    cleanupWebRTC();
     try {
       const ip = await window.electronAPI.getLocalIP();
-      if (!ip) { setSessionStatus(t("noNetworkDetected")); return; }
+      if (!ip) {
+        setSessionStatus(t("noNetworkDetected"));
+        return;
+      }
       setMyIP(ip);
+
       const pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
       localPC.current = pc;
+      intentionalCloseRef.current = false;
       setupConnectionMonitor(pc);
+
       const dc = pc.createDataChannel("mayo-share", { ordered: true });
       localDC.current = dc;
-      dc.onopen = () => { showFileArea(); };
+      dc.onopen = () => {
+        showFileArea();
+        // Send handshake with current file list
+        const queue = fileQueueRef.current;
+        dc.send(JSON.stringify({ type: "handshake-offer", files: queue }));
+      };
       dc.onmessage = e => { messageQueueRef.current.push(e.data); processMessageQueue(); };
+
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
       await new Promise(r => setTimeout(r, 1500));
+
       const compact = await window.electronAPI.compressSDP(pc.localDescription!.sdp);
-      const code = await window.electronAPI.generateCode(compact);
-      setMyCode(code);
-      setWaitingForJoiner(true);
-    } catch (err: any) { setSessionStatus("Error: " + err.message); }
+      try {
+        const code = await window.electronAPI.generateCode(compact);
+        setMyCode(code);
+        setWaitingForJoiner(true);
+      } catch (err: any) {
+        console.error("generateCode error:", err);
+        setSessionStatus("Server busy. Re-trying in 2s...");
+        setTimeout(() => {
+          if (!myCode && !waitingForJoiner) {
+            startSendMode();
+          }
+        }, 2000);
+      }
+    } catch (err: any) {
+      setSessionStatus("Connection Error: " + err.message);
+    }
   };
 
   const waitForICE = (pc: RTCPeerConnection) =>
@@ -586,30 +789,59 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
       new Promise<void>(resolve => setTimeout(resolve, 1500)),
     ]);
 
+  // ─── connectWithCode (receiver) ─────────────────────────────────────────────
   const connectWithCode = async () => {
     const code = joinCode.join("");
     if (code.length !== 4) return;
+
+    cleanupWebRTC();
     setJoining(true);
+    setSessionStatus("");
+
     try {
       const compactOffer = await window.electronAPI.joinByCode(joinIP.trim(), code);
       const offerSDP = await window.electronAPI.decompressSDP(compactOffer);
+
       const pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
       localPC.current = pc;
+      intentionalCloseRef.current = false;
       setupConnectionMonitor(pc);
+
       pc.ondatachannel = event => {
         localDC.current = event.channel;
-        localDC.current.onopen = () => { showFileArea(); };
+        localDC.current.onopen = () => {
+          showFileArea();
+          // Receiver doesn't send handshake; sender will
+        };
         localDC.current.onmessage = e => { messageQueueRef.current.push(e.data); processMessageQueue(); };
       };
+
       await pc.setRemoteDescription(new RTCSessionDescription({ type: "offer", sdp: offerSDP }));
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
       await waitForICE(pc);
+
       const compactAnswer = await window.electronAPI.compressSDP(pc.localDescription!.sdp);
       await window.electronAPI.submitAnswer(joinIP.trim(), code, compactAnswer);
-    } catch (err: any) { setJoining(false); setSessionStatus("Connection Failed"); }
+
+      setJoining(false);
+    } catch (err: any) {
+      setJoining(false);
+      if (err.message && err.message.toLowerCase().includes("wrong_code")) {
+        setSessionStatus("❌ Invalid Code. Please check and try again.");
+      } else if (err.message && err.message.toLowerCase().includes("timeout")) {
+        setSessionStatus("❌ Connection timed out. Is the sender ready?");
+      } else {
+        setSessionStatus("❌ Failed to connect. Is the sender ready?");
+      }
+      if (localPC.current) {
+        localPC.current.close();
+        localPC.current = null;
+      }
+    }
   };
 
+  // ─── Digit input handlers (unchanged) ──────────────────────────────────────
   const handleDigitChange = (index: number, value: string) => {
     const digit = value.replace(/\D/g, "").slice(-1);
     const newCode = [...joinCode]; newCode[index] = digit; setJoinCode(newCode);
@@ -660,8 +892,7 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
     return () => { cleanup(); window.electronAPI.stopSignaling?.(); };
   }, []);
 
-  // ─── Per-file/per-folder cancel button in queue rows ────────────────────────
-  // Shows for both queued AND transferring files/folders
+  // ─── Render helpers ─────────────────────────────────────────────────────────
   const renderQueueRow = (f: QueueFile) => (
     <div key={f.id} className={styles.queueItem}>
       <div className={styles.queueName}>{f.name}</div>
@@ -676,7 +907,6 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
               : f.status}
         </div>
       )}
-      {/* Cancel button: visible for queued and transferring — not for done/cancelled */}
       {(f.status === "queued" || f.status === "transferring") && (
         <button className={styles.removeBtn} onClick={() => cancelFile(f.id)} title="Cancel">
           <FaTimes />
@@ -685,37 +915,82 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
     </div>
   );
 
-  // Disconnection banner (no resume UI, just the message)
-  const showDisconnectBanner = connectionState === "disconnected";
+  // ─── Resume / Start-Fresh controls (either side can trigger) ──────────────
+  const beginSend = (offsets: Record<string, number>) => {
+    setResumeOffer(null);
+    if (localDC.current && localDC.current.readyState === "open") {
+      localDC.current.send(JSON.stringify({ type: "resume-dismiss" }));
+    }
+    sendAll(offsets);
+  };
+
+  const handleResume = () => {
+    if (mode === "send") {
+      beginSend(resumeOffer?.offsets || {});
+    } else {
+      setResumeOffer(null);
+      localDC.current?.send(JSON.stringify({ type: "request-send", fresh: false }));
+    }
+  };
+
+  const handleStartFresh = () => {
+    clearSessionFromDisk();
+    if (mode === "send") {
+      beginSend({});
+    } else {
+      setResumeOffer(null);
+      localDC.current?.send(JSON.stringify({ type: "request-send", fresh: true }));
+    }
+  };
+
+  // ─── Connection-lost screen: the other device dropped off the network ─────
+  if (connectionState === "disconnected") {
+    return (
+      <div className={styles.container}>
+        <BackButton onClick={() => { cleanupWebRTC(); onBack(); }} />
+        <h2 className={styles.title}>{t("deviceConnect")}</h2>
+        <div
+          style={{
+            border: "2px solid #c62828",
+            background: "var(--bg-card)",
+            borderRadius: 14,
+            padding: 24,
+            maxWidth: 460,
+            width: "100%",
+            margin: "20px auto",
+            textAlign: "center",
+          }}
+        >
+          <FaWifi size={34} color="#c62828" style={{ marginBottom: 12 }} />
+          <h3 style={{ color: "#ef5350", marginBottom: 10 }}>Connection lost</h3>
+          <p
+            style={{
+              color: "var(--text-secondary)",
+              fontSize: "0.95rem",
+              lineHeight: 1.6,
+              marginBottom: 20,
+            }}
+          >
+            The other device went offline and the transfer was paused. Go back
+            and reconnect the normal way – once you're connected again we'll
+            detect the unfinished transfer and offer to resume it from where it
+            stopped.
+          </p>
+          <button
+            className={styles.btn}
+            onClick={() => { cleanupWebRTC(); onBack(); }}
+          >
+            Go Back &amp; Reconnect
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={styles.container}>
-      <BackButton onClick={onBack} />
+      <BackButton onClick={() => { cleanupWebRTC(); onBack(); }} />
       <h2 className={styles.title}>{t("deviceConnect")}</h2>
-
-      {/* Disconnection smart banner */}
-      {showDisconnectBanner && (
-        <div style={{
-          background: "#3a1a1a",
-          border: "1px solid #c62828",
-          borderRadius: 10,
-          padding: "14px 16px",
-          marginBottom: 16,
-          display: "flex",
-          alignItems: "flex-start",
-          gap: 12,
-        }}>
-          <FaWifi color="#c62828" size={18} style={{ marginTop: 2 }} />
-          <div>
-            <div style={{ color: "#ef5350", fontWeight: 600, marginBottom: 4 }}>
-              Disconnected. Try checking your network...
-            </div>
-            <div style={{ color: "var(--text-secondary)", fontSize: "0.85rem" }}>
-              Re-enter the code from your sender to reconnect.
-            </div>
-          </div>
-        </div>
-      )}
 
       {!connected && mode === "send" && (
         <div className={styles.createPanel}>
@@ -724,7 +999,7 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
             {myCode ? myCode.split("").map((d, i) => <span key={i} className={styles.codeDigit}>{d}</span>) : <div className={styles.spinner} />}
           </div>
           <button onClick={() => setShowIPDetails(!showIPDetails)} className={styles.ghostBtn} style={{ marginTop: 20, border: 'none' }}>
-             Advanced Info {showIPDetails ? <FaChevronUp /> : <FaChevronDown />}
+            Advanced Info {showIPDetails ? <FaChevronUp /> : <FaChevronDown />}
           </button>
           {showIPDetails && (
             <div className={styles.ipDisplay}>
@@ -760,12 +1035,39 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
 
       {connected && (
         <div className={styles.fileArea}>
+          {/* ─── Resume prompt ────────────────────────────────────────── */}
+          {resumeOffer && (
+            <div style={{
+              border: '2px solid var(--accent)',
+              borderRadius: 12,
+              padding: 16,
+              marginBottom: 20,
+              background: 'var(--bg-card)',
+              width: '100%'
+            }}>
+              <h3 style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--accent)' }}>
+                <FaWifi /> Interrupted Transfer
+              </h3>
+              <p style={{ fontSize: '0.9rem', margin: '10px 0' }}>
+                We found a partially received file. Do you want to resume from where you left off?
+              </p>
+              <div className={styles.actionRow}>
+                <button className={styles.btn} onClick={handleResume}>
+                  <FaPlay style={{ marginRight: 6 }} /> Resume
+                </button>
+                <button className={styles.ghostBtn} onClick={handleStartFresh}>
+                  <FaTrash style={{ marginRight: 6 }} /> Start Fresh
+                </button>
+              </div>
+            </div>
+          )}
+
           <div className={styles.connectedBadge}><FaCircle size={10} color="#4CAF50" /> {t("connected")}</div>
           <p className={styles.subtitle}>Add files, then start sharing.</p>
 
-          {/* Send button at top, before file list */}
-          {fileQueue.some(f => f.status !== "done" && f.status !== "cancelled") && !isSending && (
-            <button className={styles.sendBtn} onClick={sendAll} style={{ width: '100%' }}>
+          {/* Send button at top */}
+          {fileQueue.some(f => f.status !== "done" && f.status !== "cancelled") && !isSending && !resumeOffer && (
+            <button className={styles.sendBtn} onClick={() => sendAll({})} style={{ width: '100%' }}>
               <FaUpload /> {t("send")} ({formatBytes(fileQueue.filter(f => f.status !== "done" && f.status !== "cancelled").reduce((sum, f) => sum + f.size, 0))})
             </button>
           )}
@@ -779,7 +1081,7 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
             <div className={styles.emptyState}>
               <FaFolderOpen size={40} color="#333" />
               <p>No files added yet.</p>
-              <p style={{fontSize: '0.8rem'}}>Click buttons above or press Ctrl+V to paste.</p>
+              <p style={{ fontSize: '0.8rem' }}>Click buttons above or press Ctrl+V to paste.</p>
             </div>
           )}
 
@@ -800,40 +1102,39 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
                       </div>
                     )}
                     <div className={styles.queue}>
-                    {groups.map(group => {
-                      if (group.folderName === "") {
-                        return group.files.map(f => renderQueueRow(f));
-                      }
-                      const collapsed = collapsedFolders.has(group.folderName);
-                      const totalSize = group.files.reduce((s, f) => s + f.size, 0);
-                      const folderIsActive = group.files.some(f => f.status === "queued" || f.status === "transferring");
-                      return (
-                        <div key={group.folderName} className={styles.folderGroup}>
-                          <div className={styles.folderHeader} onClick={() => toggleFolder(group.folderName)}>
-                            <span className={styles.folderArrow}>{collapsed ? <FaChevronRight /> : <FaChevronDown />}</span>
-                            <span className={styles.folderName}>{group.folderName}</span>
-                            <span className={styles.folderMeta}>{group.files.length} files · {formatBytes(totalSize)}</span>
-                            <button
-                              className={styles.toggleAllBtn}
-                              onClick={(e) => { e.stopPropagation(); toggleFolder(group.folderName); }}
-                            >
-                              {collapsed ? "Expand" : "Collapse"}
-                            </button>
-                            {/* Cancel folder button: visible when folder has queued or transferring files */}
-                            {folderIsActive && (
+                      {groups.map(group => {
+                        if (group.folderName === "") {
+                          return group.files.map(f => renderQueueRow(f));
+                        }
+                        const collapsed = collapsedFolders.has(group.folderName);
+                        const totalSize = group.files.reduce((s, f) => s + f.size, 0);
+                        const folderIsActive = group.files.some(f => f.status === "queued" || f.status === "transferring");
+                        return (
+                          <div key={group.folderName} className={styles.folderGroup}>
+                            <div className={styles.folderHeader} onClick={() => toggleFolder(group.folderName)}>
+                              <span className={styles.folderArrow}>{collapsed ? <FaChevronRight /> : <FaChevronDown />}</span>
+                              <span className={styles.folderName}>{group.folderName}</span>
+                              <span className={styles.folderMeta}>{group.files.length} files · {formatBytes(totalSize)}</span>
                               <button
-                                className={styles.removeFolderBtn}
-                                onClick={(e) => { e.stopPropagation(); cancelFolder(group.folderName); }}
-                                title="Cancel folder"
+                                className={styles.toggleAllBtn}
+                                onClick={(e) => { e.stopPropagation(); toggleFolder(group.folderName); }}
                               >
-                                <FaTimes />
+                                {collapsed ? "Expand" : "Collapse"}
                               </button>
-                            )}
+                              {folderIsActive && (
+                                <button
+                                  className={styles.removeFolderBtn}
+                                  onClick={(e) => { e.stopPropagation(); cancelFolder(group.folderName); }}
+                                  title="Cancel folder"
+                                >
+                                  <FaTimes />
+                                </button>
+                              )}
+                            </div>
+                            {!collapsed && group.files.map(f => renderQueueRow(f))}
                           </div>
-                          {!collapsed && group.files.map(f => renderQueueRow(f))}
-                        </div>
-                      );
-                    })}
+                        );
+                      })}
                     </div>
                   </>
                 )}
@@ -918,7 +1219,7 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
         </div>
       )}
 
-      {sessionStatus && <div className={styles.status} style={{marginTop: 20, color: 'var(--accent)'}}>{sessionStatus}</div>}
+      {sessionStatus && <div className={styles.status} style={{ marginTop: 20, color: 'var(--accent)' }}>{sessionStatus}</div>}
     </div>
   );
 };
