@@ -178,6 +178,10 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
   // --- NEW REFS ---
   const resumeOfferRef = useRef<{ offsets: Record<string, number> } | null>(null);
   const intentionalCloseRef = useRef(false);
+  // Guard so only ONE send loop runs at a time — it drains the live queue,
+  // so files you add mid-transfer get picked up automatically.
+  const sendingRef = useRef(false);
+
 
   // Refs to the rendered rows / folder groups so we can animate them out
   const rowRefs = useRef<Record<string, HTMLDivElement | null>>({});
@@ -303,8 +307,8 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
     if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
       return;
     }
-    if (isSending) return;
     const clipboard = e.clipboardData;
+
     if (!clipboard) return;
     const browserFiles = Array.from(clipboard.files);
     const items = Array.from(clipboard.items);
@@ -570,87 +574,101 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
   };
 
   // ─── UPDATED sendAll with offset support and persistence ────────────────────
+  // ─── sendAll: drains the LIVE queue, so files added mid-transfer are sent too ─
   const sendAll = async (startOffsets: Record<string, number> = {}) => {
     const dc = localDC.current;
     if (!dc || dc.readyState !== "open") return;
+    // A loop is already running — it will pick up any newly-queued files itself
+    if (sendingRef.current) return;
 
+    sendingRef.current = true;
     abortBatchRef.current = false;
-    stopSendRef.current.clear();
-
     setIsSending(true);
-    let queue: QueueFile[] = [];
-    setFileQueue(prev => { queue = prev; return prev; });
-    await new Promise(r => setTimeout(r, 0));
-    // Save the session at the start so it survives disconnects
-    saveSessionToDisk(queue);
+    saveSessionToDisk(fileQueueRef.current);
 
-    for (const file of queue) {
-      if (file.status === "done" || file.status === "cancelled") continue;
-      if (abortBatchRef.current) break;
-      if (stopSendRef.current.has(file.id)) continue;
+    // Tracks files we've already started this run (synchronous, so the live
+    // `find` below never re-picks the same file while state catches up).
+    const processed = new Set<string>();
 
-      const offset = startOffsets[file.id] || 0;
-      dc.send(JSON.stringify({
-        type: "file-start",
-        id: file.id,
-        name: file.name,
-        size: file.size,
-        offset,
-      }));
-
-      const CHUNK_SIZE = 16384;
-      let currentOffset = offset;
-
-      while (currentOffset < file.size) {
-        if (abortBatchRef.current || stopSendRef.current.has(file.id)) break;
-        if (dc.bufferedAmount > 1024 * 1024) {
-          await new Promise(resolve => {
-            const check = () => {
-              if (dc.bufferedAmount < 512 * 1024) resolve(null);
-              else setTimeout(check, 50);
-            };
-            check();
-          });
-        }
-
-        const base64 = await window.electronAPI.readFileChunk(file.path!, currentOffset, CHUNK_SIZE);
-        dc.send(JSON.stringify({ type: "file-chunk", id: file.id, data: base64, offset: currentOffset }));
-
-        currentOffset += CHUNK_SIZE;
-        const progress = Math.min(100, Math.round((currentOffset / file.size) * 100));
-
-        if (progress % 5 === 0) {
-          setFileQueue(prev => {
-            const next = prev.map(f =>
-              f.id === file.id ? { ...f, status: "transferring", progress } : f
-            );
-            saveSessionToDisk(next);
-            return next;
-          });
-        }
-      }
-
-      if (abortBatchRef.current || stopSendRef.current.has(file.id)) continue;
-
-      dc.send(JSON.stringify({ type: "file-end", id: file.id }));
-      setFileQueue(prev => {
-        const next = prev.map(f =>
-          f.id === file.id ? { ...f, status: "done", progress: 100 } : f
+    try {
+      while (!abortBatchRef.current) {
+        const file = fileQueueRef.current.find(
+          f => f.status === "queued" && !processed.has(f.id) && !stopSendRef.current.has(f.id)
         );
-        saveSessionToDisk(next);
-        return next;
-      });
-      window.electronAPI.logP2pActivity("sent", file.name);
-    }
+        if (!file) break;
+        processed.add(file.id);
 
-    // Clear the saved session only if nothing is left to send and we weren't aborted
-    setFileQueue(prev => {
-      const pending = prev.some(f => f.status === "queued" || f.status === "transferring");
-      if (!pending && !abortBatchRef.current) clearSessionFromDisk();
-      return prev;
-    });
-    setIsSending(false);
+        const offset = startOffsets[file.id] || 0;
+        setFileQueue(prev => prev.map(f =>
+          f.id === file.id
+            ? { ...f, status: "transferring", progress: Math.min(100, Math.round((offset / Math.max(file.size, 1)) * 100)) }
+            : f
+        ));
+
+        dc.send(JSON.stringify({
+          type: "file-start",
+          id: file.id,
+          name: file.name,
+          size: file.size,
+          offset,
+        }));
+
+        const CHUNK_SIZE = 16384;
+        let currentOffset = offset;
+
+        while (currentOffset < file.size) {
+          if (abortBatchRef.current || stopSendRef.current.has(file.id)) break;
+          if (dc.bufferedAmount > 1024 * 1024) {
+            await new Promise(resolve => {
+              const check = () => {
+                if (dc.bufferedAmount < 512 * 1024) resolve(null);
+                else setTimeout(check, 50);
+              };
+              check();
+            });
+          }
+
+          const base64 = await window.electronAPI.readFileChunk(file.path!, currentOffset, CHUNK_SIZE);
+          dc.send(JSON.stringify({ type: "file-chunk", id: file.id, data: base64, offset: currentOffset }));
+
+          currentOffset += CHUNK_SIZE;
+          const progress = Math.min(100, Math.round((currentOffset / file.size) * 100));
+          if (progress % 5 === 0) {
+            setFileQueue(prev => {
+              const next = prev.map(f =>
+                f.id === file.id ? { ...f, status: "transferring", progress } : f
+              );
+              saveSessionToDisk(next);
+              return next;
+            });
+          }
+        }
+
+        // Cancelled / aborted mid-file — don't mark done, just move on
+        if (stopSendRef.current.has(file.id) || abortBatchRef.current) continue;
+
+        // NOTE: name + size are now included so the receiver always shows a
+        // correct "Received Files" row (fixes blank/invisible received rows).
+        dc.send(JSON.stringify({ type: "file-end", id: file.id, name: file.name, size: file.size }));
+        setFileQueue(prev => {
+          const next = prev.map(f =>
+            f.id === file.id ? { ...f, status: "done", progress: 100 } : f
+          );
+          saveSessionToDisk(next);
+          return next;
+        });
+        window.electronAPI.logP2pActivity("sent", file.name);
+      }
+    } finally {
+      sendingRef.current = false;
+      setIsSending(false);
+      const stillPending = fileQueueRef.current.some(
+        f => f.status === "queued" || f.status === "transferring"
+      );
+      if (!stillPending && !abortBatchRef.current) clearSessionFromDisk();
+    }
   };
+
 
   // ─── UPDATED handleDCMessage with handshake and resume ─────────────────────
   const handleDCMessage = useCallback(async (raw: string) => {
@@ -1247,17 +1265,20 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
           <div className={styles.connectedBadge}><FaCircle size={10} color="#4CAF50" /> {t("connected")}</div>
           <p className={styles.subtitle}>Add files, then start sharing.</p>
 
-          {/* Send button at top */}
-          {fileQueue.some(f => f.status !== "done" && f.status !== "cancelled") && !isSending && !resumeOffer && (
+     
+          {/* Send button — visible whenever files are waiting, even during an active transfer */}
+          {fileQueue.some(f => f.status === "queued") && !resumeOffer && (
             <button className={styles.sendBtn} onClick={() => sendAll({})} style={{ width: '100%' }}>
-              <FaUpload /> {t("send")} ({formatBytes(fileQueue.filter(f => f.status !== "done" && f.status !== "cancelled").reduce((sum, f) => sum + f.size, 0))})
+              <FaUpload /> {t("send")} ({formatBytes(fileQueue.filter(f => f.status === "queued").reduce((sum, f) => sum + f.size, 0))})
             </button>
           )}
 
+
           <div className={styles.actionRow}>
-            <button className={styles.btn} onClick={addFiles} disabled={isSending}><FaPlus /> Add Files</button>
-            <button className={styles.ghostBtn} onClick={addFolder} disabled={isSending}><FaFolderOpen /> Add Folder</button>
+            <button className={styles.btn} onClick={addFiles}><FaPlus /> Add Files</button>
+            <button className={styles.ghostBtn} onClick={addFolder}><FaFolderOpen /> Add Folder</button>
           </div>
+
 
           {fileQueue.length === 0 && Object.keys(receiveMap).length === 0 && receivedFiles.length === 0 && (
             <div className={styles.emptyState}>
