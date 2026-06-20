@@ -1137,15 +1137,17 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
     }
   };
 
-  const handleStartFresh = () => {
+  // Cancel just dismisses the resume prompt (on BOTH sides) without sending
+  // anything. The partial file is left as-is — the user simply doesn't want
+  // to continue with it.
+  const handleCancelResume = () => {
     clearSessionFromDisk();
-    if (mode === "send") {
-      beginSend({});
-    } else {
-      setResumeOffer(null);
-      localDC.current?.send(JSON.stringify({ type: "request-send", fresh: true }));
+    setResumeOffer(null);
+    if (localDC.current && localDC.current.readyState === "open") {
+      localDC.current.send(JSON.stringify({ type: "resume-dismiss" }));
     }
   };
+
 
   // ─── Connection-lost screen: the other device dropped off the network ─────
   if (connectionState === "disconnected") {
@@ -1259,9 +1261,10 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
                 <button className={styles.btn} onClick={handleResume}>
                   <FaPlay style={{ marginRight: 6 }} /> Resume
                 </button>
-                <button className={styles.ghostBtn} onClick={handleStartFresh}>
-                  <FaTrash style={{ marginRight: 6 }} /> Start Fresh
+                <button className={styles.ghostBtn} onClick={handleCancelResume}>
+                  <FaTimes style={{ marginRight: 6 }} /> Cancel
                 </button>
+
               </div>
             </div>
           )}
