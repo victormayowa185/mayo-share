@@ -233,6 +233,13 @@ const App: React.FC = () => {
     setHotspotIP(ip);
   };
 
+  // A transfer screen stays mounted (so its WebRTC connection, generated code,
+  // and selected files survive) while it's the current screen OR still in the
+  // back-history — e.g. when you pop over to Settings/Activity via the TopBar.
+  // It only fully unmounts when you leave it with its own Back button.
+  const isAlive = (s: Screen) => screen === s || screenHistory.includes(s);
+
+
   // ----- EARLY RETURNS (loading, language, setup) -----
   if (setupComplete === null || languageSet === null) {
     return (
@@ -310,16 +317,27 @@ const App: React.FC = () => {
             onBack={navigateBack}
           />
         )}
-        {screen === "share-quick" && (
-          <QuickShare
-            onBack={navigateBack}
-            shareIP={hotspotIP}
-          />
+
+        {isAlive("share-quick") && (
+          <div style={{ display: screen === "share-quick" ? "block" : "none" }}>
+            <QuickShare
+              onBack={navigateBack}
+              shareIP={hotspotIP}
+            />
+          </div>
         )}
+
+
         {/* SEND P2P – skip chooser, go straight to send mode */}
-        {screen === "share-p2p" && (
-          <P2PSession onBack={navigateBack} initialMode="send" />
+
+        {isAlive("share-p2p") && (
+          <div style={{ display: screen === "share-p2p" ? "block" : "none" }}>
+            <P2PSession onBack={navigateBack} initialMode="send" />
+          </div>
         )}
+
+
+
         {screen === "receive" && (
           <ReceiveMethodPicker
             onSelectBrowser={() => navigateTo("receive-browser")}
@@ -327,19 +345,33 @@ const App: React.FC = () => {
             onBack={navigateBack}
           />
         )}
-        {screen === "receive-browser" && (
-          <ReceiveFromBrowser
-            onBack={navigateBack}
-            onSenderApproved={() =>
-              setConnectedDevicesCount((prev) => prev + 1)
-            }
-            onStopReceiving={() => setConnectedDevicesCount(0)}
-          />
+
+
+        {isAlive("receive-browser") && (
+          <div style={{ display: screen === "receive-browser" ? "block" : "none" }}>
+            <ReceiveFromBrowser
+              onBack={navigateBack}
+              onSenderApproved={() =>
+                setConnectedDevicesCount((prev) => prev + 1)
+              }
+              onStopReceiving={() => setConnectedDevicesCount(0)}
+            />
+          </div>
         )}
+
+
+
         {/* RECEIVE P2P – skip chooser, go straight to join mode with auto‑IP */}
-        {screen === "receive-p2p" && (
-          <P2PSession onBack={navigateBack} initialMode="join" />
+
+
+        {isAlive("receive-p2p") && (
+          <div style={{ display: screen === "receive-p2p" ? "block" : "none" }}>
+            <P2PSession onBack={navigateBack} initialMode="join" />
+          </div>
         )}
+
+
+
         {screen === "activity" && (
           <ActivityScreen onBack={navigateBack} />
         )}
