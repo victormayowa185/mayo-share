@@ -146,4 +146,19 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.invoke("log-p2p-activity", type, fileName),
   isDirectory: (filePath: string) => ipcRenderer.invoke("is-directory", filePath),
   walkDirectory: (dirPath: string) => ipcRenderer.invoke("walk-directory", dirPath),
+
+  // ---------- Solana offline integrity ----------
+  getPublicKey: (): Promise<string> => ipcRenderer.invoke("get-public-key"),
+  signFile: (
+    filePath: string,
+  ): Promise<{ hash: string; signature: string; publicKey: string }> =>
+    ipcRenderer.invoke("sign-file", filePath),
+  verifyFile: (
+    filePath: string,
+    signature: string,
+    senderPublicKey: string,
+  ): Promise<{ valid: boolean; hash: string; reason?: string }> =>
+    ipcRenderer.invoke("verify-file", filePath, signature, senderPublicKey),
+  safetyNumber: (pubA: string, pubB: string): Promise<string> =>
+    ipcRenderer.invoke("safety-number", pubA, pubB),
 });

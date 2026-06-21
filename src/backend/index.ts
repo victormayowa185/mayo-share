@@ -13,6 +13,14 @@ import { open, close, read, appendFileSync } from "fs";
 import { DiscoveryManager } from "./discovery";
 import { UploadServer, setReceiveDir } from "./uploadServer";
 import { saveRating } from "./firebase";
+import {
+  initSolana,
+  getPublicKey,
+  signFile,
+  verifyFile,
+  safetyNumber,
+} from "./solanaManager";
+
 import { startHotspot, stopHotspot, configureHotspot } from "./hotspot-mac";
 import { HOTSPOT_IP } from "./hotspot-mac";
 import sudo from "sudo-prompt";
@@ -1229,11 +1237,41 @@ ipcMain.handle("get-platform", async (): Promise<string> => {
   return process.platform;
 });
 
+// ==================== SOLANA OFFLINE INTEGRITY ====================
+// All signing/verifying happens here in the main process so the private key
+// is never exposed to the renderer.
+ipcMain.handle("get-public-key", async (): Promise<string> => getPublicKey());
+
+ipcMain.handle("sign-file", async (_event, filePath: string) => {
+  return signFile(filePath);
+});
+
+ipcMain.handle(
+  "verify-file",
+  async (_event, filePath: string, signature: string, senderPublicKey: string) => {
+    return verifyFile(filePath, signature, senderPublicKey);
+  },
+);
+
+ipcMain.handle(
+  "safety-number",
+  async (_event, pubA: string, pubB: string): Promise<string> => {
+    return safetyNumber(pubA, pubB);
+  },
+);
+// ==================== END SOLANA ====================
+
+
 app.whenReady().then(async () => {
   await loadSettings();
+  // Load (or create on first run) this device's Solana identity keypair.
+  // Stored in the app's userData dir so it survives even if the save folder
+  // changes. The private key never leaves the main process.
+  initSolana(app.getPath("userData"));
   powerSaveBlockerId = powerSaveBlocker.start("prevent-app-suspension");
   createWindow();
 });
+
 
 app.on("before-quit", () => {
   if (signalingServer) {

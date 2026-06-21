@@ -1,10 +1,14 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { useTranslation } from "react-i18next";
+
 import {
   FaCircle, FaTimes, FaCheck, FaCopy,
   FaChevronDown, FaChevronUp, FaChevronRight, FaFolderOpen,
-  FaPlus, FaUpload, FaWifi, FaPlay, FaTrash
+  FaPlus, FaUpload, FaWifi, FaPlay, FaTrash,
+  FaLock, FaShieldAlt, FaExclamationTriangle
 } from "react-icons/fa";
+
+
 import gsap from "gsap";
 import { useGSAP } from "@gsap/react";
 import BackButton from "../../components/BackButton";
@@ -156,8 +160,15 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
   const [receiveMap, setReceiveMap] = useState<Record<string, ReceiveEntry>>({});
   const [receivedFiles, setReceivedFiles] = useState<ReceivedFile[]>([]);
   const [receivedGroups, setReceivedGroups] = useState<ReceivedGroup[]>([]);
+
   const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(new Set());
   const [allCollapsed, setAllCollapsed] = useState(false);
+
+  // ─── Solana integrity state ───────────────────────────────────────────────
+  const [safetyCode, setSafetyCode] = useState("");                       // shown on both screens to compare
+  const [verifyMap, setVerifyMap] =
+    useState<Record<string, "pending" | "verified" | "tampered">>({});    // per received-file result
+
 
   // ─── Resume state ────────────────────────────────────────────────────────────
   const [resumeOffer, setResumeOffer] = useState<{
@@ -181,6 +192,14 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
   // Guard so only ONE send loop runs at a time — it drains the live queue,
   // so files you add mid-transfer get picked up automatically.
   const sendingRef = useRef(false);
+
+  // ─── Solana integrity refs ────────────────────────────────────────────────
+  const myPubKeyRef = useRef<string>("");    // our own Solana public key
+  const peerPubKeyRef = useRef<string>("");  // the OTHER device's key, PINNED at handshake
+  const incomingProofRef = useRef<
+    Record<string, { hash: string; signature: string; publicKey: string }>
+  >({}); // signature/hash that arrived with each incoming file, checked on file-end
+
 
 
   // Refs to the rendered rows / folder groups so we can animate them out
@@ -215,6 +234,24 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
     setConnected(true);
     setConnectionState("connected");
   }, []);
+
+  // Load our Solana identity (public key) once when the screen mounts.
+  useEffect(() => {
+    window.electronAPI.getPublicKey().then((pk) => { myPubKeyRef.current = pk; });
+  }, []);
+
+  // Once we know BOTH keys, compute the shared safety code so the two users
+  // can confirm nobody swapped a key (anti man-in-the-middle).
+  const updateSafetyCode = async () => {
+    const mine = myPubKeyRef.current;
+    const peer = peerPubKeyRef.current;
+    if (!mine || !peer) return;
+    try {
+      const code = await window.electronAPI.safetyNumber(mine, peer);
+      setSafetyCode(code);
+    } catch { /* ignore */ }
+  };
+
 
   useEffect(() => {
     receiveMapRef.current = receiveMap;
@@ -605,13 +642,27 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
             : f
         ));
 
+        // Sign the file OFFLINE: hash it (SHA-256) + sign the hash with our
+        // Ed25519/Solana key. Sent alongside file-start; verified on file-end.
+        let proof: { hash: string; signature: string; publicKey: string } | null = null;
+        try {
+          proof = await window.electronAPI.signFile(file.path!);
+        } catch (err) {
+          console.error("signFile failed:", err);
+        }
+
         dc.send(JSON.stringify({
           type: "file-start",
           id: file.id,
           name: file.name,
           size: file.size,
           offset,
+          hash: proof?.hash,
+          signature: proof?.signature,
+          publicKey: proof?.publicKey,
         }));
+
+
 
         const CHUNK_SIZE = 16384;
         let currentOffset = offset;
@@ -694,8 +745,20 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
         }
       }
 
+
+      // Pin the sender's Solana key for this session, then surface the shared
+      // safety code so both users can confirm no key was swapped (anti-MITM).
+      if (msg.senderPublicKey) {
+        peerPubKeyRef.current = msg.senderPublicKey;
+        updateSafetyCode();
+      }
+
       if (localDC.current && localDC.current.readyState === "open") {
-        localDC.current.send(JSON.stringify({ type: "handshake-response", offsets }));
+        localDC.current.send(JSON.stringify({
+          type: "handshake-response",
+          offsets,
+          receiverPublicKey: myPubKeyRef.current,
+        }));
       }
 
       // Only prompt if there's actually an unfinished transfer to resume
@@ -703,10 +766,15 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
         setResumeOffer({ offsets });
       }
       return;
+
     }
 
     // ─── Handshake response: receiver tells sender where to start ───────────
     if (msg.type === "handshake-response") {
+      if (msg.receiverPublicKey) {
+        peerPubKeyRef.current = msg.receiverPublicKey;
+        updateSafetyCode();
+      }
       if (msg.offsets && Object.keys(msg.offsets).length > 0) {
         setResumeOffer({ offsets: msg.offsets });
       } else {
@@ -714,6 +782,7 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
       }
       return;
     }
+
 
     // ─── Receiver pressed a resume button – tell the sender to (re)start sending
     if (msg.type === "request-send") {
@@ -862,7 +931,19 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
       const isResuming = msg.offset && msg.offset > 0;
       await window.electronAPI.createReceiveFile(savePath, isResuming);
 
+
+
       receivePathsRef.current[msg.id] = savePath;
+      // Remember the signature/hash that came with this file so we can verify
+      // it against the sender's PINNED key once the last byte lands.
+      if (msg.signature && msg.hash) {
+        incomingProofRef.current[msg.id] = {
+          hash: msg.hash,
+          signature: msg.signature,
+          publicKey: msg.publicKey || "",
+        };
+        setVerifyMap(prev => ({ ...prev, [msg.id]: "pending" }));
+      }
       setReceiveMap(prev => ({
         ...prev,
         [msg.id]: {
@@ -873,6 +954,9 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
         }
       }));
       return;
+
+
+
     }
 
     // ─── File chunk (unchanged) ──────────────────────────────────────────────
@@ -909,10 +993,37 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
           path: savedPath,
         },
       ]);
+
+
       setSessionStatus(t("fileReceived", { name: msg.name || "" }));
       window.electronAPI.logP2pActivity("received", msg.name || entry?.name || "");
+
+      // ─── Offline integrity check (Solana / Ed25519) ──────────────────────
+      // Re-hash the file we ACTUALLY received and verify the sender's signature
+      // against the key we PINNED at handshake. One changed byte (or a swapped
+      // key) makes this fail.
+      const proof = incomingProofRef.current[msg.id];
+      delete incomingProofRef.current[msg.id];
+      if (proof && savedPath) {
+        const pinnedKey = peerPubKeyRef.current || proof.publicKey;
+        // Anti-MITM: the per-file key MUST match the key pinned at handshake.
+        if (peerPubKeyRef.current && proof.publicKey && proof.publicKey !== peerPubKeyRef.current) {
+          setVerifyMap(prev => ({ ...prev, [msg.id]: "tampered" }));
+        } else {
+          try {
+            const res = await window.electronAPI.verifyFile(savedPath, proof.signature, pinnedKey);
+            setVerifyMap(prev => ({ ...prev, [msg.id]: res.valid ? "verified" : "tampered" }));
+          } catch {
+            setVerifyMap(prev => ({ ...prev, [msg.id]: "tampered" }));
+          }
+        }
+      }
     }
   }, [t, sendAll]);
+
+
+
+
 
   const processMessageQueue = useCallback(async () => {
     if (processingRef.current) return;
@@ -942,13 +1053,24 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
 
       const dc = pc.createDataChannel("mayo-share", { ordered: true });
       localDC.current = dc;
+
+
       dc.onopen = () => {
         showFileArea();
-        // Send handshake with current file list
+        // Send handshake: file list + our Solana public key (so the receiver
+        // can pin it and build the shared safety code).
         const queue = fileQueueRef.current;
-        dc.send(JSON.stringify({ type: "handshake-offer", files: queue }));
+        dc.send(JSON.stringify({
+          type: "handshake-offer",
+          files: queue,
+          senderPublicKey: myPubKeyRef.current,
+        }));
       };
-      dc.onmessage = e => { messageQueueRef.current.push(e.data); processMessageQueue(); };
+
+
+
+
+
 
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
@@ -1088,7 +1210,31 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
   }, []);
 
   // ─── Render helpers ─────────────────────────────────────────────────────────
+  const renderVerifyBadge = (id: string) => {
+    const v = verifyMap[id];
+    if (!v) return null;
+    if (v === "verified") {
+      return (
+        <span title="Integrity verified by Solana"
+          style={{ display: "inline-flex", alignItems: "center", gap: 4, color: "#4CAF50", fontSize: "0.72rem" }}>
+          <FaShieldAlt /> Verified
+        </span>
+      );
+    }
+    if (v === "tampered") {
+      return (
+        <span title="Signature did not match — file may be altered"
+          style={{ display: "inline-flex", alignItems: "center", gap: 4, color: "#ef5350", fontSize: "0.72rem" }}>
+          <FaExclamationTriangle /> Unverified
+        </span>
+      );
+    }
+    return <span style={{ color: "var(--text-secondary)", fontSize: "0.72rem" }}>checking…</span>;
+  };
+
   const renderQueueRow = (f: QueueFile) => (
+
+
     <div
       key={f.id}
       ref={el => { rowRefs.current[f.id] = el; }}
@@ -1269,8 +1415,32 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
             </div>
           )}
 
+
           <div className={styles.connectedBadge}><FaCircle size={10} color="#4CAF50" /> {t("connected")}</div>
+
+          {safetyCode && (
+            <div
+              style={{
+                display: "flex", alignItems: "center", gap: 10,
+                border: "1px solid var(--accent)", borderRadius: 10,
+                padding: "10px 14px", margin: "10px 0", width: "100%",
+                background: "var(--bg-card)",
+              }}
+            >
+              <FaLock color="var(--accent)" />
+              <div>
+                <strong style={{ letterSpacing: 1 }}>
+                  Security code: {safetyCode.slice(0, 4)} {safetyCode.slice(4)}
+                </strong>
+                <div style={{ color: "var(--text-secondary)", fontSize: "0.78rem" }}>
+                  Make sure this matches on both devices — it proves your Solana keys weren't swapped.
+                </div>
+              </div>
+            </div>
+          )}
+
           <p className={styles.subtitle}>Add files, then start sharing.</p>
+
 
 
           {/* Send button — only when nothing is transferring. During a transfer,
@@ -1429,13 +1599,20 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
               <div className={styles.queue}>
                 {receivedGroups.map(group => {
                   if (group.folderName === "") {
+
                     return group.files.map(f => (
                       <div key={f.id} className={styles.queueItem}>
                         <div className={styles.queueName}>{f.name}</div>
                         <div className={styles.queueSize}>{formatBytes(f.size)}</div>
-                        <div className={styles.queueStatus}><FaCheck color="#4CAF50" /></div>
+                        <div className={styles.queueStatus} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <FaCheck color="#4CAF50" /> {renderVerifyBadge(f.id)}
+                        </div>
                       </div>
                     ));
+
+
+
+
                   }
                   const collapsed = collapsedFolders.has(`received-${group.folderName}`);
                   const totalSize = group.files.reduce((s, f) => s + f.size, 0);
@@ -1452,13 +1629,23 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
                           {collapsed ? "Expand" : "Collapse"}
                         </button>
                       </div>
+
+
                       {!collapsed && group.files.map(f => (
                         <div key={f.id} className={styles.queueItem}>
                           <div className={styles.queueName}>{f.name.split("/").slice(1).join("/") || f.name}</div>
                           <div className={styles.queueSize}>{formatBytes(f.size)}</div>
-                          <div className={styles.queueStatus}><FaCheck color="#4CAF50" /></div>
+                          <div className={styles.queueStatus} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                            <FaCheck color="#4CAF50" /> {renderVerifyBadge(f.id)}
+                          </div>
                         </div>
                       ))}
+
+
+
+
+
+
                     </div>
                   );
                 })}

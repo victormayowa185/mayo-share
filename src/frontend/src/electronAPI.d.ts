@@ -110,8 +110,22 @@ declare global {
         paths: string[];
         type: "files" | "none";
       }>;
+
+
       saveTempFile: (fileName: string, base64Data: string) => Promise<string>;
       getHostname: () => Promise<string>;
+
+      // ---------- Solana offline integrity ----------
+      getPublicKey: () => Promise<string>;
+      signFile: (
+        filePath: string,
+      ) => Promise<{ hash: string; signature: string; publicKey: string }>;
+      verifyFile: (
+        filePath: string,
+        signature: string,
+        senderPublicKey: string,
+      ) => Promise<{ valid: boolean; hash: string; reason?: string }>;
+      safetyNumber: (pubA: string, pubB: string) => Promise<string>;
     };
   }
 }
