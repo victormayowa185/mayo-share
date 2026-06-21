@@ -16,7 +16,7 @@
   --btn-copy-hover-bg: #444;
   --connected-badge-bg: #0a1a0a;
   --progress-bar-bg: #333;
-  --drag-over-bg: rgba(177, 105, 224, 0.05);
+  --drag-over-bg: rgba(124, 62, 255, 0.05);
   --sponsor-bg: #c96198;
   --sponsor-hover-bg: #a84d7e;
 
@@ -35,21 +35,21 @@
   --text-disabled: #777;
   --text-column-title: #aaa;
   --text-paragraph: #ccc;
-  /* #7C3EFF */
-  --accent: #b169e0;
-  --accent-hover: #9a4fd4;
+
+  --accent: #7C3EFF;
+  --accent-hover: #6A28E6;
   --success: #4caf50;
   --success-hover: #43a047;
   --error: #f44336;
   --error-hover: #d32f2f;
 
-  --scrollbar-thumb: #382249;
+  --scrollbar-thumb: #3A2470;
   --scrollbar-track: #0a0a0a;
 
   --spinner-border: rgba(255, 255, 255, 0.3);
   --spinner-top: #fff;
   --mini-spinner-border: rgba(255, 255, 255, 0.3);
-  --mini-spinner-top: #b169e0;
+  --mini-spinner-top: #7C3EFF;
 
   /* Component‑specific variables – dark mode */
   --home-card-bg: var(--bg-card);
@@ -224,7 +224,7 @@
   --btn-copy-hover-bg: #d0d0d0;
   --connected-badge-bg: #e8f5e9;
   --progress-bar-bg: #ddd;
-  --drag-over-bg: rgba(177, 105, 224, 0.1);
+  --drag-over-bg: rgba(124, 62, 255, 0.1);
   --sponsor-bg: #c96198;
   --sponsor-hover-bg: #a84d7e;
 
@@ -244,22 +244,22 @@
   --text-column-title: #777;
   --text-paragraph: #555;
 
-  --accent: #b169e0;
-  --accent-hover: #9a4fd4;
+  --accent: #7C3EFF;
+  --accent-hover: #6A28E6;
   --success: #2e7d32;
   --success-hover: #2e7d32;
   --error: #d32f2f;
   --error-hover: #b71c1c;
 
-  --scrollbar-thumb: #252424;
-  /* black thumb */
+  --scrollbar-thumb: #9F7AEA;
+  /* on-brand violet thumb */
   --scrollbar-track: #f5f5f5;
   /* light gray track (optional) */
 
   --spinner-border: rgba(0, 0, 0, 0.2);
   --spinner-top: #333;
   --mini-spinner-border: rgba(0, 0, 0, 0.15);
-  --mini-spinner-top: #b169e0;
+  --mini-spinner-top: #7C3EFF;
 
   /* Component‑specific variables – light mode */
   --home-card-bg: var(--accent);
