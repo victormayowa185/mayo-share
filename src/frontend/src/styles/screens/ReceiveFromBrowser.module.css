@@ -27,7 +27,7 @@
   background: var(--accent);
   color: var(--text-inverse);
   border: none;
-  border-radius: 8px;
+  border-radius: 40px;
   font-size: 1rem;
   cursor: pointer;
 }
@@ -68,13 +68,49 @@
   letter-spacing: 0.5px;
 }
 
-.qr {
-  width: 220px;
-  height: 220px;
-  border-radius: 12px;
-  border: 2px solid var(--accent);
-  background: transparent;
+.qrWrapper {
+  position: relative;
+  width: 208px;
+  height: 208px;
+  padding: 4px;
+  border-radius: 16px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   margin-bottom: 16px;
+  background: var(--bg-card);
+}
+
+.qrWrapper::before {
+  content: '';
+  position: absolute;
+  width: 150%;
+  height: 150%;
+  background: conic-gradient(
+    from 0deg,
+    transparent 0%,
+    var(--accent) 25%,
+    #b169e0 50%,
+    #7C3EFF 75%,
+    transparent 100%
+  );
+  animation: rotateGlow 4s linear infinite;
+}
+
+.qr {
+  position: relative;
+  z-index: 1;
+  width: 200px; /* Slightly smaller for this screen to match your layout */
+  height: 200px;
+  border-radius: 12px;
+  background: none;
+  display: block;
+}
+
+@keyframes rotateGlow {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
 .qrPlaceholder {

@@ -334,7 +334,7 @@ const QuickShare: React.FC<Props> = ({ onBack, shareIP }) => {
       const qrData = await QRCode.toDataURL(url, {
         width: 220,
         margin: 2,
-        color: { dark: "#b169e0", light: qrLightColor },
+        color: { dark: "#7C3EFF", light: qrLightColor },
       });
       setQrDataUrl(qrData);
     } catch (err: any) {
@@ -478,7 +478,7 @@ const QuickShare: React.FC<Props> = ({ onBack, shareIP }) => {
         let size = f.size;
         try {
           size = await window.electronAPI.getFileSize(filePath);
-        } catch {}
+        } catch { }
         if (!isInvalidFile(name)) {
           newFiles.push({
             id: crypto.randomUUID(),
@@ -705,10 +705,17 @@ const QuickShare: React.FC<Props> = ({ onBack, shareIP }) => {
           </div>
 
           <div className={styles.qrColumn} ref={qrPanelRef}>
+
+
             {qrDataUrl ? (
-              <img src={qrDataUrl} alt="QR Code" className={styles.qr} />
+              <div className={styles.qrWrapper}>
+                <img src={qrDataUrl} alt="QR Code" className={styles.qr} />
+              </div>
             ) : (
               <div className={styles.qrPlaceholder}>
+
+
+
                 <FaQrcode size={48} color="#555" />
                 <span>{t("generatingQR")}</span>
               </div>

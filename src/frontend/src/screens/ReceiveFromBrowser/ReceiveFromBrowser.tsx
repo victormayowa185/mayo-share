@@ -21,12 +21,12 @@ interface Props {
 const getDeviceIcon = (deviceType: string) => {
   switch (deviceType) {
     case "phone":
-      return <FaMobileAlt size={16} color="#b169e0" />;
+      return <FaMobileAlt size={16} color="#7C3EFF" />;
     case "tablet":
-      return <FaTabletAlt size={16} color="#b169e0" />;
+      return <FaTabletAlt size={16} color="#7C3EFF" />;
     case "desktop":
     default:
-      return <FaDesktop size={16} color="#b169e0" />;
+      return <FaDesktop size={16} color="#7C3EFF" />;
   }
 };
 
@@ -101,7 +101,7 @@ const ReceiveFromBrowser: React.FC<Props> = ({
         const qrData = await QRCode.toDataURL(shareUrl, {
           width: 200,
           margin: 2,
-          color: { dark: "#b169e0", light: getQrLightColor() },
+          color: { dark: "#7C3EFF", light: getQrLightColor() },
         });
         setQrDataUrl(qrData);
       } catch (err) {
@@ -127,7 +127,7 @@ const ReceiveFromBrowser: React.FC<Props> = ({
       const localIP = await window.electronAPI.getLocalIP();
       if (localIP) {
         setHotspotStatus(t("usingExistingNetwork"));
-         // @ts-ignore
+        // @ts-ignore
         const url = await window.electronAPI.startUploadServer(localIP);
         setShareUrl(url);
         setIsReceiving(true);
@@ -136,7 +136,7 @@ const ReceiveFromBrowser: React.FC<Props> = ({
         const qrData = await QRCode.toDataURL(url, {
           width: 200,
           margin: 2,
-          color: { dark: "#b169e0", light: getQrLightColor() },
+          color: { dark: "#7C3EFF", light: getQrLightColor() },
         });
         setQrDataUrl(qrData);
         return;
@@ -168,7 +168,7 @@ const ReceiveFromBrowser: React.FC<Props> = ({
       const qrData = await QRCode.toDataURL(url, {
         width: 200,
         margin: 2,
-        color: { dark: "#b169e0", light: getQrLightColor() },
+        color: { dark: "#7C3EFF", light: getQrLightColor() },
       });
       setQrDataUrl(qrData);
     } catch (err: any) {
@@ -230,14 +230,21 @@ const ReceiveFromBrowser: React.FC<Props> = ({
 
       {isReceiving && (
         <div className={styles.receivePanel}>
+
+
           {qrDataUrl ? (
-            <img
-              key={qrDataUrl}
-              src={qrDataUrl}
-              alt="QR Code"
-              className={styles.qr}
-            />
+            <div className={styles.qrWrapper}>
+              <img
+                key={qrDataUrl}
+                src={qrDataUrl}
+                alt="QR Code"
+                className={styles.qr}
+              />
+            </div>
           ) : (
+
+
+
             <div className={styles.qrPlaceholder}>
               <span>{t("generatingQR")}</span>
             </div>
