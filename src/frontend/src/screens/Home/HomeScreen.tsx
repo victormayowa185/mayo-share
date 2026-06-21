@@ -64,14 +64,14 @@ const HomeScreen: React.FC<Props> = ({ setScreen }) => {
             title={t('shareFiles')}
             description={t('shareFilesDesc')}
             onClick={() => setScreen('share-hotspot-check')}
-            color="#b169e0"
+            color="#7C3EFF"
           />
           <ActionCard
             icon={<MdGetApp size={48} />}
             title={t('receiveFiles')}
             description={t('receiveFilesDesc')}
             onClick={() => setScreen('receive')}
-            color="#b169e0"
+            color="#7C3EFF"
           />
         </div>
       </div>
@@ -97,9 +97,10 @@ const ActionCard: React.FC<CardProps> = ({ icon, title, description, onClick, co
       e.currentTarget.style.transform = 'translateY(-2px)';
     }}
     onMouseLeave={(e) => {
-      e.currentTarget.style.borderColor = '#222';
+      e.currentTarget.style.borderColor = '';
       e.currentTarget.style.transform = 'translateY(0)';
     }}
+
   >
     <div className={styles.cardEmoji} aria-hidden="true">{icon}</div>
     <div className={styles.cardTitle}>{title}</div>

@@ -144,6 +144,13 @@
   /* white */
 }
 
+
+
+
+
+
+
+
 [data-theme="light"] {
   --settings-title-color: #000000;
   /* black */
@@ -263,11 +270,12 @@
 
   /* Component‑specific variables – light mode */
   --home-card-bg: var(--accent);
-  --home-card-text: #000;
-  --home-card-text-desc: rgba(0, 0, 0, 0.75);
-  --home-card-icon: #000;
+  --home-card-text: #fff;
+  --home-card-text-desc: rgba(255, 255, 255, 0.8);
+  --home-card-icon: #fff;
   --home-card-hover-border: var(--accent);
   --home-card-border: none;
+
   --topbar-share-color: #242222;
 
   --title-color: #000000;
