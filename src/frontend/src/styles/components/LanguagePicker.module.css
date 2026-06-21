@@ -29,10 +29,19 @@
 }
 
 .arrow {
-  font-size: 0.7rem;
+  font-size: 0.8rem;
   color: var(--text-muted);
-  transition: transform 0.2s;
+  transition: transform 0.2s ease;
+  position: absolute;
+  right: 16px;
+  display: flex;
+  align-items: center;
 }
+
+.arrowOpen {
+  transform: rotate(180deg);
+}
+
 
 .dropdown {
   position: absolute;
@@ -41,7 +50,7 @@
   right: 0;
   background: var(--bg-dropdown);
   border: 1px solid var(--border-light);
-  border-radius: 10px;
+  border-radius: 30px;
   z-index: 100;
   overflow: hidden;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
@@ -56,10 +65,12 @@
   color: var(--text-primary);
   font-size: 0.95rem;
   outline: none;
+  text-align: center;
 }
 
 .searchInput::placeholder {
   color: var(--text-placeholder);
+  text-align: center;
 }
 
 .list {
@@ -74,6 +85,7 @@
   color: var(--text-secondary);
   cursor: pointer;
   transition: background 0.15s;
+  text-align: center;
 }
 
 .option:hover {
@@ -86,6 +98,13 @@
   font-weight: 600;
   background: var(--bg-input);
 }
+
+
+.focused {
+  background: var(--accent);
+  color: var(--text-inverse);
+}
+
 
 .noResult {
   padding: 12px 18px;

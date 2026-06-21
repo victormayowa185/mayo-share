@@ -1,5 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
+import { FaChevronDown } from "react-icons/fa";
 import styles from "../styles/components/LanguagePicker.module.css";
+
 
 interface LanguageOption {
   code: string;
@@ -26,10 +28,13 @@ const LanguagePicker: React.FC<Props> = ({ options, value, onChange }) => {
     o.name.toLowerCase().includes(search.toLowerCase())
   );
 
-  // Reset focused index when filtered list changes
+  // Reset the highlight to the top only when the SEARCH text changes.
+  // (Depending on `filtered` reset it on every render and broke the arrow keys,
+  // because `filtered` is a new array reference each render.)
   useEffect(() => {
     setFocusedIndex(0);
-  }, [filtered]);
+  }, [search]);
+
 
   // Scroll focused option into view
   useEffect(() => {
@@ -115,7 +120,15 @@ const LanguagePicker: React.FC<Props> = ({ options, value, onChange }) => {
         onKeyDown={handleSelectorKeyDown}
       >
         <span className={styles.selectedLabel}>{selectedOption.name}</span>
-        <span className={styles.arrow} aria-hidden="true">▼</span>
+
+           <span
+          className={`${styles.arrow} ${open ? styles.arrowOpen : ""}`}
+          aria-hidden="true"
+        >
+          <FaChevronDown />
+        </span>
+
+
       </div>
 
       {open && (
