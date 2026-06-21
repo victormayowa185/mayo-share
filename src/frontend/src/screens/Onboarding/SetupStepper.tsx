@@ -152,10 +152,17 @@ const SetupStepper: React.FC<Props> = ({ onComplete }) => {
 
   return (
     <div className={styles.container}>
+
+
       <div className={styles.logo}>
         <span className={styles.logoIcon}></span>
-        <span className={styles.logoText}>MAYO Share</span>
+        <span className={styles.logoText}>
+          <span className={styles.logoMayo}>MAYO</span> Share
+        </span>
       </div>
+
+
+
       <div className={styles.subtitle}>{t("firstTimeSetup")}</div>
 
       <div className={styles.steps} ref={stepsIndicatorRef}>
@@ -165,7 +172,8 @@ const SetupStepper: React.FC<Props> = ({ onComplete }) => {
             className={styles.stepDot}
             role="status"
             aria-label={t("stepXofY", { current: i + 1, total: steps.length })}
-            style={{ background: i <= currentStep ? "#b169e0" : "#333" }}
+            style={{ background: i <= currentStep ? "var(--accent)" : "#333" }}
+
           />
         ))}
       </div>
