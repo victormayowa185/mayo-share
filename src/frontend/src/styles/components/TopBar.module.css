@@ -4,8 +4,8 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background: var(--bg-topbar);
-  border-bottom: 1px solid var(--border);
+  background: var(--bg-primary);
+  border-bottom: 2px solid var(--border);
   padding: 0 24px;
   height: 60px;
   position: sticky;
@@ -18,6 +18,14 @@
   align-items: center;
   gap: 10px;
 }
+
+.logoImg {
+  height: 38px;     /* topbar is 60px tall — tweak this if it looks big/small */
+  width: auto;
+  display: block;
+  object-fit: contain;
+}
+
 
 .logoIcon {
   color: var(--text-inverse);

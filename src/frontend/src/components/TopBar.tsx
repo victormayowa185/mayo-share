@@ -5,6 +5,8 @@ import { CgProfile } from "react-icons/cg";
 import gsap from "gsap";
 import { useGSAP } from "@gsap/react";
 import styles from "../styles/components/TopBar.module.css";
+import logo from "../assets/mayo.png";
+
 
 gsap.registerPlugin(useGSAP);
 
@@ -97,9 +99,9 @@ const TopBar: React.FC<Props> = ({ onNavigate }) => {
   return (
     <header className={styles.topbar} ref={headerRef}>
       <div className={styles.logo}>
-        <span className={styles.logoText}>MAYO</span>
-        <span className={styles.logoShare}>Share</span>
+        <img src={logo} alt="MAYO Share" className={styles.logoImg} />
       </div>
+
 
       <div className={styles.actions}>
         <div className={styles.dropdownWrapper}>
