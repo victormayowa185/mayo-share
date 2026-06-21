@@ -6,10 +6,14 @@
   "main": "dist/backend/index.js",
   "scripts": {
     "copy:locales": "xcopy /E /I /Y src\\locales dist\\locales",
+    "copy:icon": "copy /Y src\\frontend\\src\\assets\\mayo.ico dist\\backend\\mayo.ico",
     "build:preload": "tsc -p tsconfig.preload.json",
     "build:backend": "tsc -p tsconfig.backend.json",
     "build:frontend": "vite build",
-    "build": "npm run build:backend && npm run copy:locales && npm run build:preload && npm run build:frontend",
+    "build": "npm run build:backend && npm run copy:locales && npm run copy:icon && npm run build:preload && npm run build:frontend",
+
+
+
     "start": "npm run build && electron .",
     "dist": "npm run build && electron-builder"
   },

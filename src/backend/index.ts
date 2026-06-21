@@ -230,12 +230,17 @@ function createWindow(): void {
   mainWindow = new BrowserWindow({
     width: 800,
     height: 600,
+    icon: path.join(__dirname, "mayo.ico"),
     webPreferences: {
       preload: path.join(__dirname, "..", "preload", "index.js"),
       contextIsolation: true,
       nodeIntegration: false,
     },
   });
+
+
+
+
   mainWindow.loadFile(
     path.join(__dirname, "..", "..", "dist", "renderer", "index.html"),
   );
@@ -1268,8 +1273,14 @@ app.whenReady().then(async () => {
   // Stored in the app's userData dir so it survives even if the save folder
   // changes. The private key never leaves the main process.
   initSolana(app.getPath("userData"));
+
+  // Make Windows show OUR icon (and group correctly) in the taskbar.
+  if (process.platform === "win32") app.setAppUserModelId("com.mayo.share");
   powerSaveBlockerId = powerSaveBlocker.start("prevent-app-suspension");
   createWindow();
+
+
+
 });
 
 
