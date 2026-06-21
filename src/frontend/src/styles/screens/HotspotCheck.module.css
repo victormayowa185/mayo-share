@@ -21,15 +21,22 @@
   text-align: center;
 }
 
+
+
+
 .btn {
   padding: 12px 32px;
   background: var(--accent);
-  color: var(--btn-text);
-  border: none;
-  border-radius: 8px;
+  /* Force white text so it's readable on the purple background in Light Mode */
+  color: #ffffff; 
+  /* Added a transparent border so it can "glow" on hover in Dark Mode */
+  border: 1px solid transparent;
+  border-radius: 40px;
   font-size: 1rem;
   cursor: pointer;
   margin-bottom: 24px;
+  transition: all 0.2s ease;
+  font-family: inherit;
 }
 
 .btn:disabled {
@@ -40,7 +47,13 @@
 
 .btn:hover:not(:disabled) {
   background: var(--accent-hover);
+  /* Matches the Home Screen card behavior: adds the primary color border and lifts up */
+  border-color: var(--accent);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
+
+
 
 .log {
   background: var(--bg-card);
@@ -93,17 +106,23 @@
   border: 1px solid var(--border-light);
   color: var(--ghost-text);
   padding: 10px 24px;
-  border-radius: 8px;
+  border-radius: 40px;
   cursor: pointer;
   font-size: 0.9rem;
   margin-top: 12px;
   transition: all 0.2s ease;
+  font-family: inherit;
 }
 
 .ghostBtn:hover {
+  /* Fills the button with purple on hover */
   background-color: var(--accent);
   border-color: var(--accent);
-  color: var(--ghost-hover-text);
+  /* Force text to white on hover regardless of light/dark mode */
+  color: #ffffff; 
+  /* Adds the "lift" behavior from the Home Screen cards */
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
 .spinnerContainer {

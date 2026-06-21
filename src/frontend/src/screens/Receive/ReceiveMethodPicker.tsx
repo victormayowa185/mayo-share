@@ -51,13 +51,13 @@ const ReceiveMethodPicker: React.FC<Props> = ({
 
       <div className={styles.cards} ref={cardsRef}>
         <MethodCard
-          icon={<VscGlobe size={40} />}
+          icon={<VscGlobe size={48} />}
           title={t("receiveFromBrowser")}
           description={t("receiveFromBrowserDesc")}
           onClick={onSelectBrowser}
         />
         <MethodCard
-          icon={<FaLink size={36} />}
+          icon={<FaLink size={44} />}
           title={t("deviceConnect")}
           description={t("deviceConnectDesc")}
           onClick={onSelectP2P}
@@ -75,11 +75,11 @@ interface CardProps {
 }
 
 const MethodCard: React.FC<CardProps> = ({ icon, title, description, onClick }) => (
-  <div className={styles.card} onClick={onClick}>
-    <div className={styles.cardEmoji}>{icon}</div>
+  <button type="button" className={styles.card} onClick={onClick}>
+    <div className={styles.cardEmoji} aria-hidden="true">{icon}</div>
     <div className={styles.cardTitle}>{title}</div>
     <div className={styles.cardDesc}>{description}</div>
-  </div>
+  </button>
 );
 
 export default ReceiveMethodPicker;

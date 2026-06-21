@@ -23,7 +23,6 @@ const TransferMethodPicker: React.FC<Props> = ({
   const { t } = useTranslation();
   const cardsRef = useRef<HTMLDivElement>(null);
 
-  // Entrance animation – cards stagger in from below
   useGSAP(() => {
     if (cardsRef.current) {
       const cards = cardsRef.current.querySelectorAll(`.${styles.card}`);
@@ -37,7 +36,6 @@ const TransferMethodPicker: React.FC<Props> = ({
           stagger: 0.1,
           ease: "power2.out",
           onComplete: () => {
-            // Remove the inline transform so CSS hover can take over
             gsap.set(cards, { clearProps: "transform" });
           },
         },
@@ -53,13 +51,13 @@ const TransferMethodPicker: React.FC<Props> = ({
 
       <div className={styles.cards} ref={cardsRef}>
         <MethodCard
-          icon={<VscGlobe size={40} />}
+          icon={<VscGlobe size={48} />}
           title={t("quickShare")}
           description={t("quickShareDesc")}
           onClick={onSelectQuick}
         />
         <MethodCard
-          icon={<FaLink size={36} />}
+          icon={<FaLink size={44} />}
           title={t("deviceConnect")}
           description={t("deviceConnectDesc")}
           onClick={onSelectP2P}
@@ -76,17 +74,12 @@ interface CardProps {
   onClick: () => void;
 }
 
-const MethodCard: React.FC<CardProps> = ({
-  icon,
-  title,
-  description,
-  onClick,
-}) => (
-  <div className={styles.card} onClick={onClick}>
-    <div className={styles.cardEmoji}>{icon}</div>
+const MethodCard: React.FC<CardProps> = ({ icon, title, description, onClick }) => (
+  <button type="button" className={styles.card} onClick={onClick}>
+    <div className={styles.cardEmoji} aria-hidden="true">{icon}</div>
     <div className={styles.cardTitle}>{title}</div>
     <div className={styles.cardDesc}>{description}</div>
-  </div>
+  </button>
 );
 
 export default TransferMethodPicker;
