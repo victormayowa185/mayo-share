@@ -17,12 +17,10 @@ interface Props {
 const HomeScreen: React.FC<Props> = ({ setScreen }) => {
   const { t } = useTranslation();
 
-  // Refs for GSAP
   const headingRef = useRef<HTMLHeadingElement>(null);
   const subtitleRef = useRef<HTMLParagraphElement>(null);
   const cardsRef = useRef<HTMLDivElement>(null);
 
-  // Entrance animation
   useGSAP(() => {
     const tl = gsap.timeline({ defaults: { ease: 'power2.out' } });
 
@@ -64,14 +62,12 @@ const HomeScreen: React.FC<Props> = ({ setScreen }) => {
             title={t('shareFiles')}
             description={t('shareFilesDesc')}
             onClick={() => setScreen('share-hotspot-check')}
-            color="#7C3EFF"
           />
           <ActionCard
             icon={<MdGetApp size={48} />}
             title={t('receiveFiles')}
             description={t('receiveFilesDesc')}
             onClick={() => setScreen('receive')}
-            color="#7C3EFF"
           />
         </div>
       </div>
@@ -84,27 +80,19 @@ interface CardProps {
   title: string;
   description: string;
   onClick: () => void;
-  color: string;
 }
 
-const ActionCard: React.FC<CardProps> = ({ icon, title, description, onClick, color }) => (
+const ActionCard: React.FC<CardProps> = ({ icon, title, description, onClick }) => (
   <button
     type="button"
     className={styles.card}
     onClick={onClick}
-    onMouseEnter={(e) => {
-      e.currentTarget.style.borderColor = color;
-      e.currentTarget.style.transform = 'translateY(-2px)';
-    }}
-    onMouseLeave={(e) => {
-      e.currentTarget.style.borderColor = '';
-      e.currentTarget.style.transform = 'translateY(0)';
-    }}
-
   >
-    <div className={styles.cardEmoji} aria-hidden="true">{icon}</div>
-    <div className={styles.cardTitle}>{title}</div>
-    <div className={styles.cardDescription}>{description}</div>
+    <div className={styles.cardInner}>
+      <div className={styles.cardEmoji} aria-hidden="true">{icon}</div>
+      <div className={styles.cardTitle}>{title}</div>
+      <div className={styles.cardDescription}>{description}</div>
+    </div>
   </button>
 );
 

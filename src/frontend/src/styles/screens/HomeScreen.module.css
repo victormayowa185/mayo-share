@@ -37,33 +37,105 @@
   justify-content: center;
 }
 
-/* Unified card styles (button + layout) */
+/* Outer wrapper (The "Border Track") */
 .card {
-  /* Reset default button styles */
-  border: 1px solid var(--card-border);
-  background: var(--card-bg);
+  position: relative;
+  border: none;
+  background: var(--card-border); /* Fallback border color */
   font-family: inherit;
   cursor: pointer;
-  text-align: center;
+  padding: 2px; /* This creates the thickness of the glowing border */
+  border-radius: 20px;
+  width: 100%;
+  max-width: 250px;
+  overflow: hidden;
+  transition: transform 0.2s ease;
+  display: flex;
+}
 
-  /* Layout & appearance */
+/* Inner content (The solid part of the card) */
+.cardInner {
+  position: relative;
+  z-index: 2;
+  background: var(--home-card-bg);
+  color: var(--home-card-text);
+  width: 100%;
+  height: 100%;
+  padding: 32px 24px;
+  border-radius: 16px;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 12px;
-  border-radius: 16px;
-  padding: 32px 28px;
-  width: 100%;
-  max-width: 240px;
-  transition: border-color 0.2s, transform 0.1s;
+  text-align: center;
+}
 
-  /* Use your existing variables */
-  color: var(--home-card-text);
+/* The Glowing Gradient Layer */
+.card::before {
+  content: '';
+  position: absolute;
+  z-index: 1;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: conic-gradient(
+    from 0deg,
+    transparent 0%,
+    var(--accent) 25%,
+    #ffffff 50%, 
+    var(--accent) 75%,
+    transparent 100%
+  );
+  opacity: 0;
+  transition: opacity 0.3s ease;
 }
 
 .card:hover {
-  transform: translateY(-4px);
+  transform: translateY(-5px);
 }
+
+.card:hover::before {
+  opacity: 1;
+  animation: rotateGlow 3s linear infinite;
+}
+
+@keyframes rotateGlow {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.cardEmoji {
+  font-size: 3rem;
+  margin-bottom: 8px;
+  color: var(--home-card-icon);
+}
+
+.cardTitle {
+  font-size: 1.2rem;
+  font-weight: bold;
+  margin-bottom: 4px;
+  color: var(--home-card-text);
+}
+
+.cardDescription {
+  color: var(--home-card-text-desc);
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+.card:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+}
+
+
+
+
+
+
+
+
 
 .card:focus-visible {
   outline: 2px solid var(--accent);
