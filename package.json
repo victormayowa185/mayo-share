@@ -11,11 +11,13 @@
     "build:backend": "tsc -p tsconfig.backend.json",
     "build:frontend": "vite build",
     "build": "npm run build:backend && npm run copy:locales && npm run copy:icon && npm run build:preload && npm run build:frontend",
-
-
-
     "start": "npm run build && electron .",
-    "dist": "npm run build && electron-builder"
+    "dist": "npm run build && electron-builder",
+    "dev": "concurrently -k -n VITE,BACKEND,PRELOAD,ELECTRON -c cyan,yellow,magenta,green \"npm:dev:vite\" \"npm:dev:backend\" \"npm:dev:preload\" \"npm:dev:electron\"",
+    "dev:vite": "vite",
+    "dev:backend": "tsc -p tsconfig.backend.json -w --preserveWatchOutput",
+    "dev:preload": "tsc -p tsconfig.preload.json -w --preserveWatchOutput",
+    "dev:electron": "wait-on http://localhost:5173 dist/backend/index.js dist/preload/index.js && npm run copy:locales && cross-env VITE_DEV_SERVER_URL=http://localhost:5173 electronmon ."
   },
   "build": {
     "appId": "com.mayo.share",
@@ -49,10 +51,14 @@
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.1",
+    "concurrently": "^10.0.3",
+    "cross-env": "^10.1.0",
     "electron": "^39.8.10",
     "electron-builder": "^26.8.1",
+    "electronmon": "^2.0.4",
     "typescript": "^5.4.0",
-    "vite": "^8.0.11"
+    "vite": "^8.0.11",
+    "wait-on": "^9.0.10"
   },
   "dependencies": {
     "@gsap/react": "^2.1.2",

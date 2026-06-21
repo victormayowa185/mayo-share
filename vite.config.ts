@@ -9,7 +9,12 @@ export default defineConfig({
     outDir: '../../dist/renderer',
     emptyOutDir: true,
   },
+  server: {
+    port: 5173,
+    strictPort: true,
+  },
   plugins: [react()],
+
   resolve: {
     alias: {
       '@': path.resolve(__dirname, 'src/frontend/src'),

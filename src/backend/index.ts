@@ -241,9 +241,18 @@ function createWindow(): void {
 
 
 
-  mainWindow.loadFile(
-    path.join(__dirname, "..", "..", "dist", "renderer", "index.html"),
-  );
+  // In dev we point at the Vite server (instant hot-reload). In production we
+  // load the built file. VITE_DEV_SERVER_URL is only set by the `npm run dev` script.
+  const devUrl = process.env.VITE_DEV_SERVER_URL;
+  if (devUrl) {
+    mainWindow.loadURL(devUrl);
+    mainWindow.webContents.openDevTools();
+  } else {
+    mainWindow.loadFile(
+      path.join(__dirname, "..", "..", "dist", "renderer", "index.html"),
+    );
+  }
+
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     require("electron").shell.openExternal(url);
