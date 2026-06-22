@@ -15,7 +15,7 @@
 }
 
 .card {
-  /* Essential: allows the card to use z-index */
+  /* 1. Add relative positioning so z-index actually works */
   position: relative; 
   background: var(--bg-card);
   border: 1px solid var(--border);
@@ -24,13 +24,19 @@
   width: 100%;
   max-width: 520px;
   margin-bottom: 20px;
-  /* Natural z-index */
+  /* 2. Set a base z-index */
   z-index: 1; 
 }
 
-/* NEW: When you click the dropdown, this card jumps to the front layer */
+/* 3. NEW: This brings the card to the front layer when you 
+      click or interact with the dropdown inside it */
 .card:focus-within {
-  z-index: 10;
+  z-index: 100;
+}
+
+/* Also bring to front on hover so the transition is smooth */
+.card:hover {
+  z-index: 100;
 }
 
 .cardHeader {
