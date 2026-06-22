@@ -189,9 +189,10 @@
 }
 
 .menuItem:hover {
-  background: var(--bg-hover-strong);
-  color: var(--text-inverse);
+  background: var(--menu-hover-bg);
+  color: var(--text-primary);
 }
+
 
 .menuItemMuted {
   display: flex;
@@ -220,6 +221,6 @@
 
 .menuItem:focus-visible {
   outline: none;
-  background: var(--bg-hover-strong);
-  color: var(--text-inverse);
+  background: var(--menu-hover-bg);
+  color: var(--text-primary);
 }

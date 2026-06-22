@@ -17,7 +17,9 @@ interface Props {
 const TopBar: React.FC<Props> = ({ onNavigate }) => {
   const { t } = useTranslation();
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [isRendered, setIsRendered] = useState(false);
   const [hostname, setHostname] = useState("My Device");
+
   const [focusedIndex, setFocusedIndex] = useState(0);
   const headerRef = useRef<HTMLElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -61,15 +63,57 @@ const TopBar: React.FC<Props> = ({ onNavigate }) => {
     }
   }, []);
 
-  // Reset focused index when menu opens/closes
+  // ─── Apple-style enter / exit ───────────────────────────────────────────────
+  // dropdownOpen = user intent; isRendered = actually in the DOM, so we can play
+  // an exit animation BEFORE the menu unmounts.
   useEffect(() => {
     if (dropdownOpen) {
-      setFocusedIndex(0);
-      itemRefs.current[0]?.focus();
-    } else {
+      setIsRendered(true);
+    } else if (menuRef.current) {
+      gsap.killTweensOf(menuRef.current);
+      gsap.to(menuRef.current, {
+        opacity: 0,
+        y: -8,
+        scale: 0.96,
+        duration: 0.16,
+        ease: "power2.in",
+        transformOrigin: "top right",
+        onComplete: () => setIsRendered(false),
+      });
       buttonRef.current?.focus();
+    } else {
+      setIsRendered(false);
     }
   }, [dropdownOpen]);
+
+  // Entrance animation + focus the first item once the menu is mounted
+  useEffect(() => {
+    if (isRendered && dropdownOpen && menuRef.current) {
+      gsap.killTweensOf(menuRef.current);
+      gsap.fromTo(
+        menuRef.current,
+        { opacity: 0, y: -8, scale: 0.96, transformOrigin: "top right" },
+        { opacity: 1, y: 0, scale: 1, duration: 0.24, ease: "power3.out" }
+      );
+      setFocusedIndex(0);
+      itemRefs.current[0]?.focus();
+    }
+  }, [isRendered]);
+
+  // Auto-close as soon as the user scrolls / continues on the page
+  useEffect(() => {
+    if (!dropdownOpen) return;
+    const close = () => setDropdownOpen(false);
+    window.addEventListener("scroll", close, true);
+    window.addEventListener("wheel", close, { passive: true });
+    window.addEventListener("touchmove", close, { passive: true });
+    return () => {
+      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("wheel", close);
+      window.removeEventListener("touchmove", close);
+    };
+  }, [dropdownOpen]);
+
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (!dropdownOpen) return;
@@ -116,7 +160,7 @@ const TopBar: React.FC<Props> = ({ onNavigate }) => {
             <CgProfile size={20} aria-hidden="true" />
           </button>
 
-          {dropdownOpen && (
+             {isRendered && (
             <>
               <div
                 className={styles.backdrop}
@@ -128,7 +172,9 @@ const TopBar: React.FC<Props> = ({ onNavigate }) => {
                 role="menu"
                 id="profile-menu"
                 onKeyDown={handleKeyDown}
+                style={{ opacity: 0 }}
               >
+
                 <div className={styles.menuItemMuted} role="presentation">
                   <CgProfile size={18} aria-hidden="true" />
                   <span>{hostname}</span>

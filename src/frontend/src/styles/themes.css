@@ -9,6 +9,8 @@
   --bg-topbar: rgba(17, 17, 17, 0.7);
   --bg-tooltip: #2a2a2a;
   --bg-hover-strong: #252525;
+  --menu-hover-bg: #2a2a2a;
+
   --bg-folder-header: #1a1a1a;
   --bg-copy-btn: #222;
   --bg-copy-btn-hover: #2a2a2a;
@@ -224,6 +226,8 @@
   --bg-topbar: rgba(255, 255, 255, 0.85);
   --bg-tooltip: #2a2a2a;
   --bg-hover-strong: #e8e8e8;
+  --menu-hover-bg: #d8d8d8;
+
   --bg-folder-header: #f0f0f0;
   --bg-copy-btn: #e0e0e0;
   --bg-copy-btn-hover: #d0d0d0;
