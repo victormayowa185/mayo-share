@@ -260,8 +260,14 @@ function createWindow(): void {
   });
 }
 
-const LOCALES_DIR = path.join(__dirname, '../locales');
+// In dev, read locales straight from src so edits show without a rebuild/restart.
+// (VITE_DEV_SERVER_URL is only set by the `npm run dev` script.)
+const isDev = !!process.env.VITE_DEV_SERVER_URL;
+const LOCALES_DIR = isDev
+  ? path.join(__dirname, "../../src/locales")
+  : path.join(__dirname, "../locales");
 let currentLanguage = "en";
+
 
 const translationsCache: Record<string, any> = {};
 function loadAllTranslations() {
@@ -278,9 +284,22 @@ loadAllTranslations();
 
 // Build the string table handed to the browser-facing pages (download / upload).
 // Current language overlaid on English so any missing key falls back to English.
-function getBrowserStrings(): Record<string, string> {
-  return { ...(translationsCache["en"] || {}), ...(translationsCache[currentLanguage] || {}) };
+// Read the locale files fresh from disk each time a browser page is served, so
+// translation edits appear without restarting the app (translationsCache is only
+// built once at startup). Current language overlays English for fallback.
+function readLocaleFresh(lang: string): Record<string, string> {
+  try {
+    const raw = fs.readFileSync(path.join(LOCALES_DIR, `${lang}.json`), "utf-8");
+    return JSON.parse(raw);
+  } catch {
+    return {};
+  }
 }
+
+function getBrowserStrings(): Record<string, string> {
+  return { ...readLocaleFresh("en"), ...readLocaleFresh(currentLanguage) };
+}
+
 
 
 ipcMain.handle("get-translations", async (_event, lang: string) => {

@@ -15,13 +15,22 @@
 }
 
 .card {
+  /* Essential: allows the card to use z-index */
+  position: relative; 
   background: var(--bg-card);
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 20px;
   padding: 20px 24px;
   width: 100%;
   max-width: 520px;
   margin-bottom: 20px;
+  /* Natural z-index */
+  z-index: 1; 
+}
+
+/* NEW: When you click the dropdown, this card jumps to the front layer */
+.card:focus-within {
+  z-index: 10;
 }
 
 .cardHeader {
@@ -47,7 +56,7 @@
 .pathDisplay {
   background: var(--bg-input);
   border: 1px solid var(--border-light);
-  border-radius: 6px;
+  border-radius: 40px;
   padding: 10px 14px;
   color: var(--text-secondary);
   font-size: 0.9rem;
@@ -82,7 +91,7 @@
   background: var(--accent);
   color: var(--text-inverse);
   border: none;
-  border-radius: 8px;
+  border-radius: 40px;
   font-size: 0.9rem;
   cursor: pointer;
 }
@@ -96,7 +105,7 @@
   background: transparent;
   border: 1px solid var(--border-light);
   color: var(--text-secondary);
-  border-radius: 8px;
+  border-radius: 40px;
   font-size: 0.9rem;
   cursor: pointer;
 }
@@ -112,11 +121,12 @@
   font-size: 0.9rem;
 }
 
+
 /* Language dropdown */
 .langSelect {
   width: 100%;
   padding: 10px 14px;
-  border-radius: 8px;
+  border-radius: 40px;
   border: 1px solid var(--border-light);
   background: var(--bg-input);
   color: var(--text-secondary);
@@ -124,7 +134,7 @@
   margin-top: 12px;
   cursor: pointer;
   appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23ccc' d='M6 8.825a.5.5 0 0 1-.354-.146l-4-4a.5.5 0 0 1 .708-.708L6 7.617l3.646-3.646a.5.5 0 0 1 .708.708l-4 4A.5.5 0 0 1 6 8.825z'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,...");
   background-repeat: no-repeat;
   background-position: right 14px center;
 }
@@ -170,7 +180,7 @@
   padding: 8px 12px;
   background: var(--bg-input);
   border: 1px solid var(--border-light);
-  border-radius: 8px;
+  border-radius: 40px;
   color: var(--text-secondary);
   cursor: pointer;
   transition: all 0.2s;

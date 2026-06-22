@@ -7,8 +7,26 @@ import gsap from "gsap";
 import { useGSAP } from "@gsap/react";
 import { getTheme, applyTheme } from "../../themeInit";
 import styles from "../../styles/screens/SettingsScreen.module.css";
+import LanguagePicker from "../../components/LanguagePicker"; // ✅ IMPORT
 
 gsap.registerPlugin(useGSAP);
+
+// Language list (same as in LanguageSelectScreen)
+const LANGUAGES = [
+  { code: "en", name: "English" },
+  { code: "yo", name: "Yorùbá" },
+  { code: "ha", name: "Hausa" },
+  { code: "ig", name: "Igbo" },
+  { code: "ar", name: "العربية" },
+  { code: "bn", name: "বাংলা" },
+  { code: "es", name: "Español" },
+  { code: "fr", name: "Français" },
+  { code: "hi", name: "हिन्दी" },
+  { code: "pt", name: "Português" },
+  { code: "ru", name: "Русский" },
+  { code: "ur", name: "اردو" },
+  { code: "zh", name: "中文" },
+];
 
 interface Props {
   onBack: () => void;
@@ -28,7 +46,6 @@ const SettingsScreen: React.FC<Props> = ({ onBack }) => {
 
   const cardsRef = useRef<HTMLDivElement>(null);
 
-  // GSAP animation with cleanup
   useGSAP(() => {
     if (cardsRef.current) {
       const ctx = gsap.context(() => {
@@ -123,6 +140,15 @@ const SettingsScreen: React.FC<Props> = ({ onBack }) => {
     }
   };
 
+  // Handle language change with the custom picker
+  const handleLanguageChange = async (lang: string) => {
+    await window.electronAPI.setLanguage(lang);
+    const newTranslations = await window.electronAPI.getTranslations(lang);
+    i18next.addResourceBundle(lang, "translation", newTranslations);
+    await i18next.changeLanguage(lang);
+    setCurrentLang(lang);
+  };
+
   return (
     <div className={styles.container}>
       <BackButton onClick={onBack} />
@@ -169,36 +195,21 @@ const SettingsScreen: React.FC<Props> = ({ onBack }) => {
           )}
         </div>
 
-        {/* Language Card */}
+        {/* Language Card – NOW USING CUSTOM PICKER */}
+
         <div className={styles.card}>
           <h3>{t("language")}</h3>
-          <select
-            className={styles.langSelect}
-            value={currentLang}
-            onChange={async (e) => {
-              const lang = e.target.value;
-              await window.electronAPI.setLanguage(lang);
-              const newTranslations = await window.electronAPI.getTranslations(lang);
-              i18next.addResourceBundle(lang, "translation", newTranslations);
-              await i18next.changeLanguage(lang);
-              setCurrentLang(lang);
-            }}
-          >
-            <option value="en">English</option>
-            <option value="yo">Yoruba</option>
-            <option value="ha">Hausa</option>
-            <option value="ig">Igbo</option>
-            <option value="ar">Arabic</option>
-            <option value="bn">Bengali</option>
-            <option value="es">Spanish</option>
-            <option value="fr">French</option>
-            <option value="hi">Hindi</option>
-            <option value="pt">Portuguese</option>
-            <option value="ru">Russian</option>
-            <option value="ur">Urdu</option>
-            <option value="zh">Chinese</option>
-          </select>
+          <p className={styles.cardDesc}>Select your preferred interface language.</p>
+          <div style={{ width: '100%', marginTop: 12 }}>
+            <LanguagePicker
+              options={LANGUAGES}
+              value={currentLang}
+              onChange={handleLanguageChange}
+            />
+          </div>
         </div>
+
+
 
         {/* Theme Card */}
         <div className={styles.card}>

@@ -1,7 +1,6 @@
 .container {
   position: relative;
   width: 100%;
-  max-width: 300px;
   margin: 0 auto;
 }
 
@@ -50,10 +49,12 @@
   right: 0;
   background: var(--bg-dropdown);
   border: 1px solid var(--border-light);
-  border-radius: 30px;
-  z-index: 100;
+  border-radius: 40px;
+  /* Matched to card style */
+  /* Increased to ensure it wins over other elements */
+  z-index: 999;
   overflow: hidden;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
 }
 
 .searchInput {
