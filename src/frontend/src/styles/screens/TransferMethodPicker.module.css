@@ -27,33 +27,78 @@
   justify-content: center;
 }
 
-/* Unified with Home Screen Card behavior */
+/* Outer wrapper (The "Border Track") */
 .card {
-  background: var(--home-card-bg);
-  border: 1px solid var(--card-border);
-  border-radius: 16px;
-  padding: 32px 28px;
-  width: 260px;
+  position: relative;
+  border: none;
+  background: var(--card-border); /* Fallback border color */
+  font-family: inherit;
   cursor: pointer;
-  text-align: center;
+  padding: 1px; /* This controls the thickness of the glow */
+  border-radius: 18px; /* Slightly more rounded than inner */
+  width: 100%;
+  max-width: 260px;
+  overflow: hidden;
+  transition: transform 0.2s ease;
+  display: flex;
+}
+
+/* Inner content (The solid part of the card) */
+.cardInner {
+  position: relative;
+  z-index: 2; /* Ensures it sits above the ::before glow */
+  background: var(--home-card-bg); /* The solid card background */
+  color: var(--home-card-text);
+  width: 100%;
+  height: 100%;
+  padding: 32px 28px;
+  border-radius: 17px; /* (outer_radius - padding) for a perfect fit */
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 12px;
-  transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
-  color: var(--home-card-text);
-  /* Reset button styles if used as button */
-  font-family: inherit;
+  text-align: center;
 }
 
-.card:hover {
-  transform: translateY(-4px);
-  border-color: var(--accent); /* This gives the primary color border in dark mode */
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+/* The Glowing Gradient Layer */
+.card::before {
+  content: '';
+  position: absolute;
+  z-index: 1; /* Below cardInner, above card background */
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: conic-gradient(
+    from 0deg,
+    transparent 0%,
+    var(--accent) 25%,
+    #081884 50%, /* Bright white highlight */
+    var(--accent) 75%,
+    transparent 100%
+  );
+  opacity: 0; /* Hidden by default */
+  transition: opacity 0.3s ease;
 }
+
+/* Hover effects */
+.card:hover {
+  transform: translateY(-4px); /* Slight lift */
+}
+
+.card:hover::before {
+  opacity: 1; /* Show the glow */
+  animation: rotateGlow 3s linear infinite; /* Start animation */
+}
+
+@keyframes rotateGlow {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
 
 .cardEmoji {
-  font-size: 3rem;
+  font-size: 3rem; /* Adjusted to match home screen */
   margin-bottom: 8px;
   color: var(--home-card-icon); /* This makes icons white in light mode */
   display: flex;

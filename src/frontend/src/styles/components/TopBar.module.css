@@ -4,14 +4,62 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background: var(--bg-primary);
-  border-bottom: 2px solid var(--border);
+  background: var(--bg-topbar);
+  backdrop-filter: blur(10px);
   padding: 0 24px;
   height: 60px;
   position: sticky;
   top: 0;
-  z-index: 100;
+  /* Increased z-index to ensure it stays above page content */
+  z-index: 1000; 
+  /* REMOVED overflow: hidden; to allow dropdowns to show */
 }
+
+/* The Subtle Glowing Line */
+.topbar::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  /* width: 100% is fine here without overflow:hidden 
+     as long as we don't scale the line */
+  width: 100%;
+  height: 1px; 
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--accent),
+    #ffffff,
+    var(--accent),
+    transparent
+  );
+  background-size: 200% 100%;
+  animation: barGlow 6s linear infinite;
+  opacity: 0.4;
+  /* Ensures the line stays behind the dropdown menu */
+  z-index: -1; 
+}
+
+@keyframes barGlow {
+  0% { background-position: 100% 0; }
+  100% { background-position: -100% 0; }
+}
+
+/* Ensure the dropdown menu has a higher z-index than the bar's pseudo-element */
+.menu {
+  position: absolute;
+  right: 0;
+  top: 50px; /* Adjusted slightly for the 60px height */
+  background: var(--bg-dropdown);
+  border: 1px solid var(--border-light);
+  border-radius: 12px;
+  min-width: 200px;
+  z-index: 1001; /* Higher than the topbar line */
+  overflow: hidden;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+}
+
+/* ... keep the rest of your TopBar.module.css ... */
 
 .logo {
   display: flex;

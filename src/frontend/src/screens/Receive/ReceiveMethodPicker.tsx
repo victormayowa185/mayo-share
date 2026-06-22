@@ -57,7 +57,7 @@ const ReceiveMethodPicker: React.FC<Props> = ({
           onClick={onSelectBrowser}
         />
         <MethodCard
-          icon={<FaLink size={44} />}
+          icon={<FaLink size={48} />}
           title={t("deviceConnect")}
           description={t("deviceConnectDesc")}
           onClick={onSelectP2P}
@@ -76,9 +76,11 @@ interface CardProps {
 
 const MethodCard: React.FC<CardProps> = ({ icon, title, description, onClick }) => (
   <button type="button" className={styles.card} onClick={onClick}>
-    <div className={styles.cardEmoji} aria-hidden="true">{icon}</div>
-    <div className={styles.cardTitle}>{title}</div>
-    <div className={styles.cardDesc}>{description}</div>
+    <div className={styles.cardInner}>
+      <div className={styles.cardEmoji} aria-hidden="true">{icon}</div>
+      <div className={styles.cardTitle}>{title}</div>
+      <div className={styles.cardDesc}>{description}</div>
+    </div>
   </button>
 );
 
