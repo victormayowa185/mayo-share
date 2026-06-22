@@ -276,6 +276,13 @@ function loadAllTranslations() {
 }
 loadAllTranslations();
 
+// Build the string table handed to the browser-facing pages (download / upload).
+// Current language overlaid on English so any missing key falls back to English.
+function getBrowserStrings(): Record<string, string> {
+  return { ...(translationsCache["en"] || {}), ...(translationsCache[currentLanguage] || {}) };
+}
+
+
 ipcMain.handle("get-translations", async (_event, lang: string) => {
   return translationsCache[lang] || translationsCache["en"] || {};
 });
@@ -410,14 +417,22 @@ ipcMain.handle(
       const relativePaths = files.map((f) =>
         typeof f === "string" ? undefined : f.relative,
       );
-      const serverIP = ip || (await getBestIP());
+
+
+        const serverIP = ip || (await getBestIP());
       const url = await fileServer.start(
         filePaths,
         relativePaths,
         undefined,
         serverIP,
+        undefined,
+        getBrowserStrings(),
+        currentLanguage,
       );
       return url;
+
+
+
     } catch (err) {
       throw new Error(`Could not start server: ${err}`);
     }
@@ -432,9 +447,14 @@ ipcMain.handle(
   "start-upload-server",
   async (_event, ip?: string): Promise<string> => {
     try {
+
+
       const serverIP = ip || (await getBestIP());
-      const url = await uploadServer.start(serverIP);
+      const url = await uploadServer.start(serverIP, getBrowserStrings(), currentLanguage);
       return url;
+
+
+
     } catch (err) {
       throw new Error(`Could not start upload server: ${err}`);
     }

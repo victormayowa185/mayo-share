@@ -220,5 +220,13 @@
   "notEnoughSpace": "Babu isasshen sarari don karɓar {{name}} ({{size}}). {{free}} kawai ya rage.",
   "storageUsage": "Amfani da ajiyar na'ura",
   "receiverNoSpace": "An dakatar: mai karɓa ba shi da isasshen sarari don {{name}}.",
-  "receiverDeclined": "Mai karɓa ya ƙi {{name}}."
+  "receiverDeclined": "Mai karɓa ya ƙi {{name}}.",
+  "browserDownload": "Zazzage",
+  "browserDownloadAllZip": "Zazzage duka a matsayin ZIP",
+  "browserBuildingZip": "Gina ZIP…",
+  "browserFileName": "Sunan fayil",
+  "browserSize": "Girman",
+  "browserFilesShared_one": "{{count}} fayil da aka raba tare da kai",
+  "browserFilesShared_other": "{{count}} fayiloli da aka raba tare da kai",
+  "browserSharedVia": "An raba ta MAYO Share • Canja wurin fayil na P2P ba tare da intanet ba"
 }

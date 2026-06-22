@@ -220,5 +220,13 @@
   "notEnoughSpace": "Enweghị ohere zuru ezu ịnata {{name}} ({{size}}). Naanị {{free}} fọdụrụ.",
   "storageUsage": "Ojiji nchekwa ngwaọrụ",
   "receiverNoSpace": "Kwụsịrị: onye nata enweghị ohere zuru ezu maka {{name}}.",
-  "receiverDeclined": "Onye nata jụrụ {{name}}."
+  "receiverDeclined": "Onye nata jụrụ {{name}}.",
+  "browserDownload": "Budata",
+  "browserDownloadAllZip": "Budata ha niile dị ka ZIP",
+  "browserBuildingZip": "Na-ewu ZIP…",
+  "browserFileName": "Aha faịlụ",
+  "browserSize": "Nha",
+  "browserFilesShared_one": "{{count}} faịlụ kesara gị",
+  "browserFilesShared_other": "{{count}} faịlụ kesara gị",
+  "browserSharedVia": "Kesara site na MAYO Share • Nnyefe faịlụ P2P na-enweghị ịntanetị"
 }

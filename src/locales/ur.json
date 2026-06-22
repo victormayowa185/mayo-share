@@ -202,5 +202,13 @@
   "notEnoughSpace": "Not enough space to receive {{name}} ({{size}}). Only {{free}} free.",
   "storageUsage": "Device storage usage",
   "receiverNoSpace": "Stopped: receiver does not have enough space for {{name}}.",
-  "receiverDeclined": "Receiver declined {{name}}."
+  "receiverDeclined": "Receiver declined {{name}}.",
+  "browserDownload": "ڈاؤن لوڈ کریں",
+  "browserDownloadAllZip": "سب کو ZIP کے طور پر ڈاؤن لوڈ کریں",
+  "browserBuildingZip": "ZIP بنا رہا ہے…",
+  "browserFileName": "فائل کا نام",
+  "browserSize": "سائز",
+  "browserFilesShared_one": "{{count}} فائل آپ کے ساتھ شیئر کی گئی",
+  "browserFilesShared_other": "{{count}} فائلیں آپ کے ساتھ شیئر کی گئیں",
+  "browserSharedVia": "MAYO Share کے ذریعے شیئر کیا گیا • آف لائن P2P فائل ٹرانسفر"
 }

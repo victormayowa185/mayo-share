@@ -6,18 +6,19 @@
   "main": "dist/backend/index.js",
   "scripts": {
     "copy:locales": "xcopy /E /I /Y src\\locales dist\\locales",
+    "copy:logo": "copy /Y src\\frontend\\src\\assets\\mayo.png dist\\backend\\mayo.png",
     "copy:icon": "copy /Y src\\frontend\\src\\assets\\mayo.ico dist\\backend\\mayo.ico",
     "build:preload": "tsc -p tsconfig.preload.json",
     "build:backend": "tsc -p tsconfig.backend.json",
     "build:frontend": "vite build",
-    "build": "npm run build:backend && npm run copy:locales && npm run copy:icon && npm run build:preload && npm run build:frontend",
+    "build": "npm run build:backend && npm run copy:locales && npm run copy:logo  && npm run copy:icon && npm run build:preload && npm run build:frontend",
     "start": "npm run build && electron .",
     "dist": "npm run build && electron-builder",
     "dev": "concurrently -k -n VITE,BACKEND,PRELOAD,ELECTRON -c cyan,yellow,magenta,green \"npm:dev:vite\" \"npm:dev:backend\" \"npm:dev:preload\" \"npm:dev:electron\"",
     "dev:vite": "vite",
     "dev:backend": "tsc -p tsconfig.backend.json -w --preserveWatchOutput",
     "dev:preload": "tsc -p tsconfig.preload.json -w --preserveWatchOutput",
-    "dev:electron": "wait-on http://localhost:5173 dist/backend/index.js dist/preload/index.js && npm run copy:locales && cross-env VITE_DEV_SERVER_URL=http://localhost:5173 electronmon ."
+    "dev:electron": "wait-on http://localhost:5173 dist/backend/index.js dist/preload/index.js && npm run copy:locales && npm run copy:logo && cross-env VITE_DEV_SERVER_URL=http://localhost:5173 electronmon ."
   },
   "build": {
     "appId": "com.mayo.share",

@@ -190,5 +190,13 @@
   "notEnoughSpace": "Not enough space to receive {{name}} ({{size}}). Only {{free}} free.",
   "storageUsage": "Device storage usage",
   "receiverNoSpace": "Stopped: receiver does not have enough space for {{name}}.",
-  "receiverDeclined": "Receiver declined {{name}}."
+  "receiverDeclined": "Receiver declined {{name}}.",
+  "browserDownload": "Gba silẹ",
+  "browserDownloadAllZip": "Gba gbogbo rẹ bi ZIP",
+  "browserBuildingZip": "N ṣe ZIP…",
+  "browserFileName": "Orukọ faili",
+  "browserSize": "Iwọn",
+  "browserFilesShared_one": "{{count}} faili pín pẹlu rẹ",
+  "browserFilesShared_other": "{{count}} awọn faili pín pẹlu rẹ",
+  "browserSharedVia": "Pín nipasẹ MAYO Share • Gbigbe faili P2P aisinipo"
 }

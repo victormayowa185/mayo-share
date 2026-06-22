@@ -204,5 +204,14 @@
   "notEnoughSpace": "Not enough space to receive {{name}} ({{size}}). Only {{free}} free.",
   "storageUsage": "Device storage usage",
   "receiverNoSpace": "Stopped: receiver does not have enough space for {{name}}.",
-  "receiverDeclined": "Receiver declined {{name}}."
+  "receiverDeclined": "Receiver declined {{name}}.",
+  "browserDownload": "Скачать",
+  "browserDownloadAllZip": "Скачать всё в ZIP",
+  "browserBuildingZip": "Сборка ZIP…",
+  "browserFileName": "Имя файла",
+  "browserSize": "Размер",
+  "browserFilesShared_one": "{{count}} файл передан вам",
+  "browserFilesShared_few": "{{count}} файла передано вам",
+  "browserFilesShared_many": "{{count}} файлов передано вам",
+  "browserSharedVia": "Передано через MAYO Share • Офлайн P2P передача файлов"
 }

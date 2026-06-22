@@ -14,8 +14,13 @@ interface SharedFile {
 export class FileServer extends EventEmitter {
   private server: Server | null = null;
   private port: number = 3000;
-  private files: SharedFile[] = [];
+
+
+    private files: SharedFile[] = [];
   private fileMap: Map<string, SharedFile> = new Map();
+  private strings: Record<string, string> = {};
+  private lang: string = "en";
+
 
   async start(
     filePaths: string[],
@@ -23,9 +28,14 @@ export class FileServer extends EventEmitter {
     port?: number,
     ip?: string,
     message?: string,
+    strings?: Record<string, string>,
+    lang?: string,
   ): Promise<string> {
     if (this.server) throw new Error("Server already running");
+    this.strings = strings || {};
+    this.lang = lang || "en";
     if (port) this.port = port;
+
 
     // Build file list, verify all exist
     this.files = [];
@@ -64,15 +74,31 @@ export class FileServer extends EventEmitter {
           }
 
           // Serve the HTML index page
-          if (url === "/" || url === "") {
-            const html = buildDownloadPage(this.files);
+               if (url === "/" || url === "") {
+            const html = buildDownloadPage(this.files, this.strings, this.lang);
+
+
             res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
             res.end(html);
             return;
           }
 
+             // Serve the MAYO logo (copied into dist/backend at build time)
+          if (url === "/mayo.png") {
+            try {
+              const data = await fs.readFile(path.join(__dirname, "mayo.png"));
+              res.writeHead(200, { "Content-Type": "image/png" });
+              res.end(data);
+            } catch {
+              res.writeHead(404);
+              res.end();
+            }
+            return;
+          }
+
           // Serve JSZip locally (offline) – fixed path for packaged app
           if (url === "/jszip.min.js") {
+
             // Use __dirname to locate the file relative to this backend module
             const filePath = path.join(__dirname, "../../node_modules/jszip/dist/jszip.min.js");
             try {
@@ -350,12 +376,26 @@ function hasSubfolders(files: SharedFile[]): boolean {
 }
 
 // ─── Download Page with dark/light mode toggle, responsive design, and collapsible folders ───
-function buildDownloadPage(files: SharedFile[]): string {
+function buildDownloadPage(
+  files: SharedFile[],
+  strings: Record<string, string> = {},
+  lang: string = "en",
+): string {
+  // Browser-page translator: use the app's translation if present, else the
+  // inline English fallback. {{vars}} are interpolated.
+  const t = (key: string, fallback: string, vars?: Record<string, string | number>) => {
+    let s = strings[key] ?? fallback;
+    if (vars) for (const k in vars) s = s.replace(new RegExp(`{{\\s*${k}\\s*}}`, "g"), String(vars[k]));
+    return s;
+  };
+  const isRTL = ["ar", "ur"].includes(lang);
+
   const fileCount = files.length;
   const useTree = hasSubfolders(files);
   let fileListHtml = "";
 
   const totalSize = files.reduce((sum, f) => sum + f.fileSize, 0);
+
 
   if (useTree) {
     const tree = buildTree(files);
@@ -395,7 +435,8 @@ function buildDownloadPage(files: SharedFile[]): string {
               </span>
               <span class="size">${formatBytes(f.fileSize)}</span>
               <span class="action">
-                <a href="/file/${encodeURIComponent(f.relativePath)}" download="${escapeHtml(f.fileName)}" class="download-btn">Download</a>
+                <a href="/file/${encodeURIComponent(f.relativePath)}" download="${escapeHtml(f.fileName)}" class="download-btn">${t("browserDownload","Download")}</a>
+
               </span>
             </div>
           </li>`;
@@ -407,7 +448,8 @@ function buildDownloadPage(files: SharedFile[]): string {
     // Responsive table: use div wrapper and adjust for mobile
     fileListHtml = `<div class="table-wrapper"><table class="file-table">
       <thead>
-        <tr><th>File name</th><th>Size</th><th></th></tr>
+             <tr><th>${t("browserFileName","File name")}</th><th>${t("browserSize","Size")}</th><th></th></tr>
+
       </thead>
       <tbody>
       ${files
@@ -438,17 +480,19 @@ function buildDownloadPage(files: SharedFile[]): string {
         <path d="M176 262.62L256 342l80-79.38M256 330.97V170"/>
         <path d="M256 64C150 64 64 150 64 256s86 192 192 192 192-86 192-192S362 64 256 64z" fill="none" stroke="currentColor" stroke-miterlimit="10" stroke-width="32"/>
       </svg>
-      <span id="zipBtnLabel">Download All as ZIP</span>
+           <span id="zipBtnLabel">${t("browserDownloadAllZip","Download All as ZIP")}</span>
+
       <span class="zip-total-size">(${formatBytes(totalSize)})</span>
     </button>
   `;
 
   return `<!DOCTYPE html>
-<html lang="en">
+<html lang="${lang}"${isRTL ? ' dir="rtl"' : ""}>
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>MAYO Share</title>
+
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     
@@ -464,8 +508,8 @@ function buildDownloadPage(files: SharedFile[]): string {
       --row-hover: #161616;
       --name-color: #ddd;
       --size-color: #666;
-      --download-bg: #b169e0;
-      --download-hover: #9a4fd4;
+      --download-bg: #7C3EFF;
+      --download-hover: #6A28E6;
       --download-text: #fff;
       --zip-bg: #4CAF50;
       --zip-hover: #43a047;
@@ -473,7 +517,7 @@ function buildDownloadPage(files: SharedFile[]): string {
       --folder-name-color: #fff;
       --tree-file-row-bg: #111;
       --footer-color: #444;
-      --folder-header-hover-border: #b169e0;
+      --folder-header-hover-border: #7C3EFF;
       --table-header-bg: #1a1a1a;
     }
 
@@ -489,8 +533,8 @@ function buildDownloadPage(files: SharedFile[]): string {
       --row-hover: #f0f0f0;
       --name-color: #222;
       --size-color: #666;
-      --download-bg: #b169e0;
-      --download-hover: #9a4fd4;
+      --download-bg: #7C3EFF;
+      --download-hover: #5a2db8;
       --download-text: #000;
       --zip-bg: #4CAF50;
       --zip-hover: #43a047;
@@ -498,7 +542,7 @@ function buildDownloadPage(files: SharedFile[]): string {
       --folder-name-color: #222;
       --tree-file-row-bg: #ffffff;
       --footer-color: #aaa;
-      --folder-header-hover-border: #b169e0;
+      --folder-header-hover-border: #7C3EFF;
       --table-header-bg: #e8e8e8;
     }
 
@@ -519,7 +563,7 @@ function buildDownloadPage(files: SharedFile[]): string {
       font-size: 2rem;
       font-weight: bold;
     }
-    .logo-mayo { color: #b169e0; }
+    .logo-mayo { color: #7C3EFF; }
     .logo-share { color: var(--share-color); }
     .subtitle { color: var(--subtitle-color); font-size: 1rem; }
     .card {
@@ -653,48 +697,57 @@ function buildDownloadPage(files: SharedFile[]): string {
     }
     .zip-total-size { font-size: 0.8rem; opacity: 0.8; }
 
-    /* Theme toggle button */
-.theme-toggle {
-  position: fixed;
-  top: 20px;
-  right: 20px;
-  border: 1px solid rgba(255,255,255,0.2);
-  border-radius: 50%;
-  width: 44px;
-  height: 44px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-  transition: all 0.2s ease;
-  backdrop-filter: blur(4px);
-  box-shadow: 0 2px 10px rgba(0,0,0,0.3);
-  background: rgba(0, 0, 0, 0.6);   
-}
 
-.theme-toggle svg {
-  stroke: #FFFFFF;
-  stroke-width: 2;
-}
 
-.theme-toggle:hover {
-  background: rgba(0,0,0,0.8);
-  transform: scale(1.05);
-}
 
-[data-theme="light"] .theme-toggle svg {
-  stroke: #000000;
-}
 
-[data-theme="light"] .theme-toggle {
-  background: rgba(255, 255, 255, 0.7);
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-}
 
-[data-theme="light"] .theme-toggle:hover {
-  background: rgba(255, 255, 255, 0.9);
-}
+    /* Top navbar: logo left, theme switch right */
+    .navbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      max-width: 1000px;
+      margin: 0 auto 24px auto;
+    }
+    .nav-logo { height: 32px; width: auto; display: block; }
+
+    /* Apple-style theme switch */
+    .theme-toggle {
+      position: relative;
+      width: 56px;
+      height: 30px;
+      border: none;
+      border-radius: 30px;
+      cursor: pointer;
+      padding: 0;
+      background: #3a3a3a;
+      transition: background 0.25s ease;
+    }
+    .toggle-thumb {
+      position: absolute;
+      top: 3px;
+      left: 3px;
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      background: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: transform 0.25s ease;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.4);
+    }
+    .theme-toggle svg { width: 14px; height: 14px; stroke: #333; stroke-width: 2; fill: none; }
+    [data-theme="light"] .theme-toggle { background: #7C3EFF; }
+    [data-theme="light"] .toggle-thumb { transform: translateX(26px); }
+
+
+
+
+
+
+
     /* Responsive design for mobile */
     @media (max-width: 600px) {
       body { padding: 20px 12px; }
@@ -747,24 +800,36 @@ function buildDownloadPage(files: SharedFile[]): string {
   </style>
   <script src="/jszip.min.js"></script>
 </head>
-<body>
-  <button class="theme-toggle" id="themeToggle">
-  
-<svg id="sunIcon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <path fill="none" stroke-linecap="round" stroke-miterlimit="10" stroke-width="32" d="M256 48v48M256 416v48M403.08 108.92l-33.94 33.94M142.86 369.14l-33.94 33.94M464 256h-48M96 256H48M403.08 403.08l-33.94-33.94M142.86 142.86l-33.94-33.94"/>
-  <circle cx="256" cy="256" r="80" fill="none" stroke-linecap="round" stroke-miterlimit="10" stroke-width="32"/>
-</svg>
-<svg id="moonIcon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" style="display: none;">
-  <path d="M160 136c0-30.62 4.51-61.61 16-88C99.57 81.27 48 159.32 48 248c0 119.29 96.71 216 216 216 88.68 0 166.73-51.57 200-128-26.39 11.49-57.38 16-88 16-119.29 0-216-96.71-216-216z" fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-width="32"/>
-</svg>
 
-  </button>
+
+<body>
+  <div class="navbar">
+    <img class="nav-logo" src="/mayo.png" alt="MAYO Share" />
+    <button class="theme-toggle" id="themeToggle" aria-label="Toggle theme">
+      <span class="toggle-thumb">
+        <svg id="sunIcon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+          <path fill="none" stroke-linecap="round" stroke-miterlimit="10" stroke-width="32" d="M256 48v48M256 416v48M403.08 108.92l-33.94 33.94M142.86 369.14l-33.94 33.94M464 256h-48M96 256H48M403.08 403.08l-33.94-33.94M142.86 142.86l-33.94-33.94"/>
+          <circle cx="256" cy="256" r="80" fill="none" stroke-linecap="round" stroke-miterlimit="10" stroke-width="32"/>
+        </svg>
+        <svg id="moonIcon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" style="display: none;">
+          <path d="M160 136c0-30.62 4.51-61.61 16-88C99.57 81.27 48 159.32 48 248c0 119.29 96.71 216 216 216 88.68 0 166.73-51.57 200-128-26.39 11.49-57.38 16-88 16-119.29 0-216-96.71-216-216z" fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-width="32"/>
+        </svg>
+      </span>
+    </button>
+  </div>
   <div class="header">
+
+
+
+
     <div class="logo">
       <span class="logo-mayo">MAYO</span>
       <span class="logo-share">Share</span>
     </div>
-    <div class="subtitle">${fileCount === 1 ? "1 file" : `${fileCount} files`} shared with you</div>
+    <div class="subtitle">${fileCount === 1
+      ? t("browserFilesShared_one", "{{count}} file shared with you", { count: fileCount })
+      : t("browserFilesShared_other", "{{count}} files shared with you", { count: fileCount })}</div>
+
   </div>
   <div class="card">
     ${useTree ? "" : ""}
@@ -772,11 +837,21 @@ function buildDownloadPage(files: SharedFile[]): string {
     ${useTree ? "" : ""}
    ${useTree ? zipButtonHtml : ""}
   </div>
-  <div class="footer">Shared via MAYO Share • Offline P2P File Transfer</div>
+  <div class="footer">${t("browserSharedVia", "Shared via MAYO Share • Offline P2P File Transfer")}</div>
+
 
   <script>
+    // --- Browser-page translations injected from the app ---
+    const __T = ${JSON.stringify(strings)};
+    function T(key, fallback, vars){
+      var s = (__T && __T[key] != null) ? __T[key] : fallback;
+      if (vars) Object.keys(vars).forEach(function(k){ s = s.split('{{'+k+'}}').join(vars[k]); });
+      return s;
+    }
+
     // --- Theme management with dual icons ---
     const themeToggle = document.getElementById('themeToggle');
+
     const sunIcon = document.getElementById('sunIcon');
     const moonIcon = document.getElementById('moonIcon');
 
@@ -844,8 +919,9 @@ function buildDownloadPage(files: SharedFile[]): string {
       const btn = document.getElementById('downloadAllBtn');
       const label = document.getElementById('zipBtnLabel');
       if (!btn || !label) return;
-      btn.disabled = true;
-      label.textContent = 'Building ZIP...';
+         btn.disabled = true;
+      label.textContent = T('browserBuildingZip','Building ZIP…');
+
       const zip = new JSZip();
       for (const file of files) {
         const resp = await fetch('/file/' + encodeURIComponent(file.r));
@@ -862,8 +938,9 @@ function buildDownloadPage(files: SharedFile[]): string {
       a.remove();
       URL.revokeObjectURL(url);
       btn.disabled = false;
-      label.textContent = 'Download All as ZIP';
+      label.textContent = T('browserDownloadAllZip','Download All as ZIP');
     }
+
     const zipBtn = document.getElementById('downloadAllBtn');
     if (zipBtn) zipBtn.addEventListener('click', downloadAllAsZip);
   </script>

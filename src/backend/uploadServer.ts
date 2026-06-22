@@ -31,7 +31,12 @@ const PORT = 3001;
 
 export class UploadServer extends EventEmitter {
   private server: Server | null = null;
+  private strings: Record<string, string> = {};
+  private lang: string = "en";
   private sessions = new Map<string, Session>();
+
+
+
   private sseClients = new Map<string, SSEClient>();
   private adminClients = new Set<ServerResponse>();
   private fileAssemblyLocks = new Map<string, Promise<void>>();
@@ -84,8 +89,13 @@ export class UploadServer extends EventEmitter {
     });
   }
 
-  async start(ip?: string): Promise<string> {
+  async start(ip?: string, strings?: Record<string, string>, lang?: string): Promise<string> {
+    this.strings = strings || {};
+    this.lang = lang || "en";
     await fs.mkdir(RECEIVE_DIR, { recursive: true });
+
+
+
     await fs.mkdir(path.join(RECEIVE_DIR, "chunks"), { recursive: true });
     this.stop();
     await new Promise((r) => setTimeout(r, 100));
@@ -330,7 +340,7 @@ export class UploadServer extends EventEmitter {
               // Read the actual binary chunk data
               const chunkData = await fs.readFile(chunkFile.filepath);
               // Clean up temp file
-              await fs.unlink(chunkFile.filepath).catch(() => {});
+              await fs.unlink(chunkFile.filepath).catch(() => { });
 
               // Update session tracking
               if (chunkIndex === 0) {
@@ -422,8 +432,22 @@ export class UploadServer extends EventEmitter {
             return;
           }
 
+          // Serve the MAYO logo (copied into dist/backend at build time)
+          if (method === "GET" && url === "/mayo.png") {
+            try {
+              const data = await fs.readFile(path.join(__dirname, "mayo.png"));
+              res.writeHead(200, { "Content-Type": "image/png" });
+              res.end(data);
+            } catch {
+              res.writeHead(404);
+              res.end();
+            }
+            return;
+          }
+
           // Serve GSAP
           if (method === "GET" && url === "/gsap.min.js") {
+
             const filePath = path.join(__dirname, "../../node_modules/gsap/dist/gsap.min.js");
             try {
               const data = await fs.readFile(filePath);
@@ -474,20 +498,20 @@ function getAdminHTML(): string {
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { background: #0A0A0A; color: white; font-family: Arial, sans-serif; padding: 40px 20px; }
     .container { max-width: 800px; margin: 0 auto; }
-    h1 { font-size: 2rem; color: #b169e0; margin-bottom: 20px; }
+    h1 { font-size: 2rem; color: #7C3EFF; margin-bottom: 20px; }
     .user-card { background: #111; border: 1px solid #222; border-radius: 12px; padding: 20px; margin-bottom: 20px; }
     .user-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 12px; }
-    .user-name { font-size: 1.3rem; font-weight: bold; color: #b169e0; }
+    .user-name { font-size: 1.3rem; font-weight: bold; color: #7C3EFF; }
     .user-status { font-size: 0.85rem; padding: 4px 8px; border-radius: 20px; background: #2a2a2a; }
     .status-pending { color: #ffaa44; }
     .status-approved { color: #44ff88; }
     .status-declined { color: #ff4444; }
     .progress-section { margin-top: 12px; }
     .progress-bar-bg { background: #333; border-radius: 8px; height: 8px; overflow: hidden; margin: 8px 0; }
-    .progress-fill { background: #b169e0; width: 0%; height: 100%; transition: width 0.2s; }
+    .progress-fill { background: #7C3EFF; width: 0%; height: 100%; transition: width 0.2s; }
     .details { font-size: 0.85rem; color: #aaa; margin-top: 8px; }
     .button-group { margin-top: 12px; }
-    button { background: #b169e0; border: none; padding: 8px 16px; border-radius: 6px; color: white; cursor: pointer; margin-right: 8px; }
+    button { background: #7C3EFF; border: none; padding: 8px 16px; border-radius: 6px; color: white; cursor: pointer; margin-right: 8px; }
     button:hover { opacity: 0.9; }
     .btn-decline { background: #aa3333; }
   </style>
@@ -578,18 +602,18 @@ function getUploadHTML(): string {
       --row-hover: #161616;
       --name-color: #ccc;
       --size-color: #888;
-      --btn-bg: #b169e0;
-      --btn-hover: #9a4fd4;
+      --btn-bg: #7C3EFF;
+      --btn-hover: #5a2db8;
       --btn-text: #fff;
       --paste-bg: #1a1a1a;
       --paste-border: #333;
       --paste-text: #ccc;
       --status-color: #aaa;
       --progress-bg: #333;
-      --progress-fill: #b169e0;
+      --progress-fill: #7C3EFF;
       --remove-hover: #f44336;
       --small-icon: #888;
-      --small-icon-hover: #b169e0;
+      --small-icon-hover: #7C3EFF;
       --edit-bg: #111;
       --edit-border: #333;
       --edit-text: #ccc;
@@ -608,18 +632,18 @@ function getUploadHTML(): string {
       --row-hover: #f0f0f0;
       --name-color: #222;
       --size-color: #666;
-      --btn-bg: #b169e0;
-      --btn-hover: #9a4fd4;
+      --btn-bg: #7C3EFF;
+      --btn-hover: #5a2db8;
       --btn-text: #000;
       --paste-bg: #ffffff;
       --paste-border: #ccc;
       --paste-text: #222;
       --status-color: #555;
       --progress-bg: #e0e0e0;
-      --progress-fill: #b169e0;
+      --progress-fill: #7C3EFF;
       --remove-hover: #f44336;
       --small-icon: #666;
-      --small-icon-hover: #b169e0;
+      --small-icon-hover: #7C3EFF;
       --edit-bg: #f9f9f9;
       --edit-border: #ddd;
       --edit-text: #222;
@@ -634,8 +658,8 @@ function getUploadHTML(): string {
       text-align: center;
       transition: background 0.2s, color 0.2s;
     }
-    .logo { font-size: 2rem; font-weight: bold; color: #b169e0; margin-bottom: 8px; display: flex; align-items: center; justify-content: center; gap: 10px; }
-    .logo svg { width: 32px; height: 32px; fill: #b169e0; }
+    .logo { font-size: 2rem; font-weight: bold; color: #7C3EFF; margin-bottom: 8px; display: flex; align-items: center; justify-content: center; gap: 10px; }
+    .logo svg { width: 32px; height: 32px; fill: #7C3EFF; }
     .subtitle { color: var(--subtitle-color); margin-bottom: 30px; }
     .card { background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 16px; max-width: 520px; margin: 0 auto; padding: 32px 24px; }
     .file-section { margin-bottom: 20px; }
@@ -659,7 +683,7 @@ function getUploadHTML(): string {
     #thumbs img { max-width: 80px; max-height: 80px; margin: 4px; border-radius: 4px; }
     .progress-bar { width: 100%; background: var(--progress-bg); border-radius: 8px; height: 8px; margin: 12px 0; overflow: hidden; display: none; }
     .progress-bar .fill { height: 100%; background: var(--progress-fill); width: 0%; transition: width 0.2s; }
-    .mayo-text { color: #b169e0; }
+    .mayo-text { color: #7C3EFF; }
     .share-text { color: var(--share-color); }
     .action-buttons-row { display: flex; gap: 8px; align-items: center; margin-top: 8px; justify-content: flex-end; }
     .small-icon-btn { background: transparent; border: none; cursor: pointer; padding: 4px; display: inline-flex; align-items: center; color: var(--small-icon); transition: color 0.2s; }
@@ -672,59 +696,81 @@ function getUploadHTML(): string {
     .assembling-spinner { width: 12px; height: 12px; border: 2px solid var(--assembling-border); border-top: 2px solid var(--btn-bg); border-radius: 50%; animation: spin 0.8s linear infinite; }
     @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 
-    /* Theme toggle button */
+
+
+
+
+     /* Top navbar: logo left, theme switch right */
+    .navbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      max-width: 520px;
+      margin: 0 auto 24px auto;
+    }
+    .nav-logo { height: 32px; width: auto; display: block; }
+
+    /* Apple-style theme switch */
     .theme-toggle {
-      position: fixed;
-      top: 20px;
-      right: 20px;
-      border: 1px solid rgba(255,255,255,0.2);
-      border-radius: 50%;
-      width: 44px;
-      height: 44px;
+      position: relative;
+      width: 56px;
+      height: 30px;
+      border: none;
+      border-radius: 30px;
       cursor: pointer;
+      padding: 0;
+      background: #3a3a3a;              /* dark-mode track */
+      transition: background 0.25s ease;
+    }
+    .toggle-thumb {
+      position: absolute;
+      top: 3px;
+      left: 3px;
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      background: #fff;
       display: flex;
       align-items: center;
       justify-content: center;
-      z-index: 1000;
-      transition: all 0.2s ease;
-      backdrop-filter: blur(4px);
-      box-shadow: 0 2px 10px rgba(0,0,0,0.3);
-      background: rgba(0, 0, 0, 0.6);
+      transition: transform 0.25s ease;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.4);
     }
-    .theme-toggle svg {
-      stroke: #FFFFFF;
-      stroke-width: 2;
-    }
-    .theme-toggle:hover {
-      background: rgba(0,0,0,0.8);
-      transform: scale(1.05);
-    }
-    [data-theme="light"] .theme-toggle svg {
-      stroke: #000000;
-    }
-    [data-theme="light"] .theme-toggle {
-      background: rgba(255, 255, 255, 0.7);
-      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-    }
-    [data-theme="light"] .theme-toggle:hover {
-      background: rgba(255, 255, 255, 0.9);
-    }
+    .theme-toggle svg { width: 14px; height: 14px; stroke: #333; stroke-width: 2; fill: none; }
+    [data-theme="light"] .theme-toggle { background: #7C3EFF; }
+    [data-theme="light"] .toggle-thumb { transform: translateX(26px); }
+
+
+
+
+
+
   </style>
 </head>
+
+
 <body>
-<button class="theme-toggle" id="themeToggle">
-  <svg id="sunIcon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-    <path fill="none" stroke-linecap="round" stroke-miterlimit="10" stroke-width="32" d="M256 48v48M256 416v48M403.08 108.92l-33.94 33.94M142.86 369.14l-33.94 33.94M464 256h-48M96 256H48M403.08 403.08l-33.94-33.94M142.86 142.86l-33.94-33.94"/>
-    <circle cx="256" cy="256" r="80" fill="none" stroke-linecap="round" stroke-miterlimit="10" stroke-width="32"/>
-  </svg>
-  <svg id="moonIcon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" style="display: none;">
-    <path d="M160 136c0-30.62 4.51-61.61 16-88C99.57 81.27 48 159.32 48 248c0 119.29 96.71 216 216 216 88.68 0 166.73-51.57 200-128-26.39 11.49-57.38 16-88 16-119.29 0-216-96.71-216-216z" fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-width="32"/>
-  </svg>
-</button>
+<div class="navbar">
+  <img class="nav-logo" src="/mayo.png" alt="MAYO Share" />
+  <button class="theme-toggle" id="themeToggle" aria-label="Toggle theme">
+    <span class="toggle-thumb">
+      <svg id="sunIcon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+        <path fill="none" stroke-linecap="round" stroke-miterlimit="10" stroke-width="32" d="M256 48v48M256 416v48M403.08 108.92l-33.94 33.94M142.86 369.14l-33.94 33.94M464 256h-48M96 256H48M403.08 403.08l-33.94-33.94M142.86 142.86l-33.94-33.94"/>
+        <circle cx="256" cy="256" r="80" fill="none" stroke-linecap="round" stroke-miterlimit="10" stroke-width="32"/>
+      </svg>
+      <svg id="moonIcon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" style="display: none;">
+        <path d="M160 136c0-30.62 4.51-61.61 16-88C99.57 81.27 48 159.32 48 248c0 119.29 96.71 216 216 216 88.68 0 166.73-51.57 200-128-26.39 11.49-57.38 16-88 16-119.29 0-216-96.71-216-216z" fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-width="32"/>
+      </svg>
+    </span>
+  </button>
+</div>
 
 <div class="logo">
   <span class="mayo-text">MAYO</span><span class="share-text">Share</span>
 </div>
+
+
+
 
 <div class="subtitle">Send files to this laptop</div>
 <div class="card" id="dropZone">
@@ -1179,15 +1225,15 @@ function getWaitingHTML(name: string): string {
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { background: #0A0A0A; color: white; font-family: Arial, sans-serif; padding: 40px 20px; text-align: center; }
-    .logo { font-size: 2rem; font-weight: bold; color: #b169e0; margin-bottom: 8px; }
+    .logo { font-size: 2rem; font-weight: bold; color: #7C3EFF; margin-bottom: 8px; }
     .subtitle { color: #888; margin-bottom: 30px; }
-    .spinner { border: 3px solid #333; border-top: 3px solid #b169e0; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 20px auto; display: none; }
+    .spinner { border: 3px solid #333; border-top: 3px solid #7C3EFF; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 20px auto; display: none; }
     @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     .input-group { margin: 16px auto; max-width: 300px; }
     .input-group input { width: 100%; padding: 12px; border-radius: 8px; border: 1px solid #333; background: #1a1a1a; color: white; font-size: 1rem; text-align: center; }
-    .mayo-text { color: #b169e0; }
+    .mayo-text { color: #7C3EFF; }
     .share-text { color: #fff; }
-    .btn { width: auto; padding: 14px; background: #b169e0; color: white; border: none; display: inline-block; border-radius: 30px; font-size: 1rem; cursor: pointer; margin-top: 12px; }
+    .btn { width: auto; padding: 14px; background: #7C3EFF; color: white; border: none; display: inline-block; border-radius: 30px; font-size: 1rem; cursor: pointer; margin-top: 12px; }
     .btn:hover { opacity: 0.9; }
   </style>
 </head>
@@ -1197,7 +1243,7 @@ function getWaitingHTML(name: string): string {
 <div id="nameForm">
   <p style="color:#aaa; margin-bottom:12px;">Enter your name to request approval:</p>
   <div class="input-group">
-    <input type="text" id="senderName" placeholder="Your name" autofocus />
+    <input style="border-radius:40px;" type="text" id="senderName" placeholder="Your name" autofocus />
   </div>
   <button class="btn" id="requestBtn">Request Approval</button>
 </div>
@@ -1265,7 +1311,7 @@ function getDeclinedHTML(): string {
   <title>Declined – MAYO Share</title>
   <style>
     body { background: #0A0A0A; color: white; font-family: Arial, sans-serif; text-align: center; padding: 40px; }
-    .logo { font-size: 2rem; font-weight: bold; color: #b169e0; }
+    .logo { font-size: 2rem; font-weight: bold; color: #7C3EFF; }
   </style>
 </head>
 <body>
