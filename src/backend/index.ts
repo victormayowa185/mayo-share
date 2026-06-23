@@ -156,19 +156,29 @@ async function getBestIP(): Promise<string> {
   return currentHotspotIP;
 }
 
-const defaultSaveDir = process.platform === "win32"
-  ? "C:\\mayo-received"
-  : path.join(os.homedir(), "mayo-received");
+// Default to the OS Downloads folder (writable without admin) instead of the
+// root of C:. Works on Windows / macOS / Linux via the user's home dir.
+const defaultSaveDir = path.join(os.homedir(), "Downloads");
 let currentSavePath = defaultSaveDir;
+
 
 function getActivityLogPath() {
   return path.join(currentSavePath, "activity.json");
 }
 
+// Settings live in a FIXED location (userData), NOT inside the save folder —
+// otherwise changing the save folder would "lose" the settings file and the
+// chosen folder wouldn't persist across restarts.
+function getSettingsPath() {
+  return path.join(app.getPath("userData"), "mayo-settings.json");
+}
+
+
 function getDeviceName(): string {
   try {
-    const settingsPath = path.join(currentSavePath, "mayo-settings.json");
+    const settingsPath = getSettingsPath();
     if (fs.existsSync(settingsPath)) {
+
       const raw = fs.readFileSync(settingsPath, "utf-8");
       const settings = JSON.parse(raw);
       if (settings.deviceName) return settings.deviceName;
@@ -313,20 +323,17 @@ ipcMain.handle("get-language", async () => {
 ipcMain.handle("set-language", async (_event, lang: string) => {
   if (translationsCache[lang]) {
     currentLanguage = lang;
-    const settingsPath = path.join(currentSavePath, "mayo-settings.json");
+    const settingsPath = getSettingsPath();
+    let settings: any = {};
+    try { settings = JSON.parse(fs.readFileSync(settingsPath, "utf-8")); } catch { }
+    settings.language = lang;
     try {
-      const settings = JSON.parse(
-        fs.readFileSync(settingsPath, "utf-8") || "{}",
-      );
-      settings.language = lang;
-      fs.writeFileSync(
-        settingsPath,
-        JSON.stringify(settings, null, 2),
-        "utf-8",
-      );
+      fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
+      fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2), "utf-8");
     } catch { }
   }
 });
+
 
 ipcMain.handle("start-hotspot", async (): Promise<string> => {
   if (process.platform === "win32") {
@@ -599,8 +606,9 @@ ipcMain.handle(
 
 ipcMain.handle("get-hostname", async () => {
   try {
-    const settingsPath = path.join(currentSavePath, "mayo-settings.json");
+    const settingsPath = getSettingsPath();
     if (fs.existsSync(settingsPath)) {
+
       const raw = fs.readFileSync(settingsPath, "utf-8");
       const settings = JSON.parse(raw);
       if (settings.deviceName) return settings.deviceName;
@@ -1229,16 +1237,19 @@ discoveryManager.on("answer-received", (answerSDP: string) => {
 
 async function loadSettings() {
   try {
-    const settingsPath = path.join(currentSavePath, "mayo-settings.json");
+    const settingsPath = getSettingsPath();
     const raw = await fs.promises.readFile(settingsPath, "utf-8");
     const settings = JSON.parse(raw);
-    if (settings.savePath) {
+    if (settings.language && translationsCache[settings.language]) {
       currentLanguage = settings.language;
+    }
+    if (settings.savePath) {
       currentSavePath = settings.savePath;
       setReceiveDir(currentSavePath);
     }
   } catch { }
 }
+
 
 ipcMain.handle("get-save-path", async (): Promise<string> => {
   return currentSavePath;
@@ -1275,13 +1286,18 @@ ipcMain.handle(
     if (newPath && newPath.trim().length > 0) {
       currentSavePath = newPath.trim();
       setReceiveDir(currentSavePath);
+
+      const settingsPath = getSettingsPath();
+      // Merge into existing settings so we don't wipe language / deviceName.
+      let settings: any = {};
+      try { settings = JSON.parse(fs.readFileSync(settingsPath, "utf-8")); } catch { }
+      settings.savePath = currentSavePath;
       try {
-        await fs.promises.mkdir(path.dirname(currentSavePath), {
-          recursive: true,
-        });
+        await fs.promises.mkdir(currentSavePath, { recursive: true });
+        await fs.promises.mkdir(path.dirname(settingsPath), { recursive: true });
         await fs.promises.writeFile(
-          path.join(currentSavePath, "mayo-settings.json"),
-          JSON.stringify({ savePath: currentSavePath }),
+          settingsPath,
+          JSON.stringify(settings, null, 2),
           "utf-8",
         );
       } catch { }
@@ -1289,14 +1305,16 @@ ipcMain.handle(
   },
 );
 
+
 ipcMain.handle(
   "set-device-name",
   async (_event, name: string): Promise<void> => {
     if (name && name.trim().length > 0) {
       try {
-        const settingsPath = path.join(currentSavePath, "mayo-settings.json");
+            const settingsPath = getSettingsPath();
         let settings: any = {};
         if (fs.existsSync(settingsPath)) {
+
           const raw = fs.readFileSync(settingsPath, "utf-8");
           settings = JSON.parse(raw);
         }

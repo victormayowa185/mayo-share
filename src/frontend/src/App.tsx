@@ -2,6 +2,8 @@ import React, { useState, useEffect, useRef } from "react";
 import HomeScreen from "./screens/Home/HomeScreen";
 import SetupStepper from "./screens/Onboarding/SetupStepper";
 import LanguageSelectScreen from "./screens/LanguageSelect/LanguageSelectScreen";
+import SaveFolderScreen from "./screens/Onboarding/SaveFolderScreen";
+
 import HotspotCheck from "./screens/Share/HotspotCheck";
 import TransferMethodPicker from "./screens/Share/TransferMethodPicker";
 import QuickShare from "./screens/Share/QuickShare";
@@ -47,6 +49,8 @@ const App: React.FC = () => {
   const [screenHistory, setScreenHistory] = useState<Screen[]>([]);
   const [setupComplete, setSetupComplete] = useState<boolean | null>(null);
   const [languageSet, setLanguageSet] = useState<boolean | null>(null);
+  const [saveFolderSet, setSaveFolderSet] = useState<boolean | null>(null);
+
   const [hotspotActive, setHotspotActive] = useState(false);
   const [hotspotIP, setHotspotIP] = useState("");
   const [connectedDevicesCount, setConnectedDevicesCount] = useState(0);
@@ -106,6 +110,8 @@ const App: React.FC = () => {
     const init = async () => {
       const done = localStorage.getItem("mayo-setup-complete");
       const langDone = localStorage.getItem("mayo-language-set");
+      const saveFolderDone = localStorage.getItem("mayo-savefolder-set");
+
 
       const plat = await window.electronAPI.getPlatform();
       setPlatform(plat);
@@ -117,6 +123,8 @@ const App: React.FC = () => {
         setSetupComplete(done === "true");
       }
       setLanguageSet(langDone === "true");
+      setSaveFolderSet(saveFolderDone === "true");
+
 
       // Restore last screen from sessionStorage (within a single app session)
       try {
@@ -241,7 +249,8 @@ const App: React.FC = () => {
 
 
   // ----- EARLY RETURNS (loading, language, setup) -----
-  if (setupComplete === null || languageSet === null) {
+  if (setupComplete === null || languageSet === null || saveFolderSet === null) {
+
     return (
       <div
         style={{
@@ -268,9 +277,21 @@ const App: React.FC = () => {
     );
   }
 
+  if (!saveFolderSet) {
+    return (
+      <SaveFolderScreen
+        onComplete={() => {
+          localStorage.setItem("mayo-savefolder-set", "true");
+          setSaveFolderSet(true);
+        }}
+      />
+    );
+  }
+
   if (!setupComplete) {
     return <SetupStepper onComplete={completeSetup} />;
   }
+
 
   // ----- MAIN APP (home & all screens) -----
   return (
