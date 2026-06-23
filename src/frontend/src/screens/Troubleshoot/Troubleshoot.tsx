@@ -106,9 +106,18 @@ const TroubleshootScreen: React.FC<Props> = ({ onBack }) => {
     </span>
   );
 
+  const Dots = () => (
+    <span className={styles.dots} role="status" aria-label={t('working')}>
+      <span className={styles.dot} />
+      <span className={styles.dot} />
+      <span className={styles.dot} />
+    </span>
+  );
+
   return (
     <div className={styles.container}>
       <BackButton onClick={onBack} />
+
       <h2 className={styles.title}>{t('troubleshoot')}</h2>
       <p className={styles.subtitle}>{t('troubleshootSubtitle')}</p>
 
@@ -125,7 +134,8 @@ const TroubleshootScreen: React.FC<Props> = ({ onBack }) => {
             onClick={handleFixFirewall}
             disabled={firewallStatus === 'working'}
           >
-            {firewallStatus === 'working' ? t('working') : t('fixFirewall')}
+             {firewallStatus === 'working' ? <Dots /> : t('fixFirewall')}
+
           </button>
           {firewallStatus === 'success' && (
             <div className={styles.successMsg}>
@@ -156,7 +166,8 @@ const TroubleshootScreen: React.FC<Props> = ({ onBack }) => {
             onClick={handleDiagnoseNetwork}
             disabled={diagnosisWorking}
           >
-            {diagnosisWorking ? t('checking') : t('runDiagnostics')}
+                      {diagnosisWorking ? <Dots /> : t('runDiagnostics')}
+
           </button>
           {diagnosisResult && (
             <div className={styles.diagnosisResult}>
