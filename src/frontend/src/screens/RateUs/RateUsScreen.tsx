@@ -44,7 +44,7 @@ const RateUsScreen: React.FC<Props> = ({ onBack }) => {
           setSubmitted(true);
         }
       }
-    } catch {}
+    } catch { }
   }, []);
 
   useEffect(() => {
@@ -125,7 +125,7 @@ const RateUsScreen: React.FC<Props> = ({ onBack }) => {
             >
               <FaStar
                 size={32}
-                color={star <= (hoverRating || selectedRating) ? "#b169e0" : "#333"}
+                color={star <= (hoverRating || selectedRating) ? "var(--accent)" : "#333"}
                 aria-hidden="true"
               />
             </button>

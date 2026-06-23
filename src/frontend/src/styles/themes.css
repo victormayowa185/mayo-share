@@ -19,8 +19,8 @@
   --connected-badge-bg: #0a1a0a;
   --progress-bar-bg: #333;
   --drag-over-bg: rgba(124, 62, 255, 0.05);
-  --sponsor-bg: #c96198;
-  --sponsor-hover-bg: #a84d7e;
+  --sponsor-bg: var(--accent);
+  --sponsor-hover-bg: var(--accent-hover);
 
   --border: #222;
   --border-light: #333;
@@ -236,8 +236,8 @@
   --connected-badge-bg: #e8f5e9;
   --progress-bar-bg: #ddd;
   --drag-over-bg: rgba(124, 62, 255, 0.1);
-  --sponsor-bg: #c96198;
-  --sponsor-hover-bg: #a84d7e;
+  --sponsor-bg: var(--accent);
+  --sponsor-hover-bg: var(--accent-hover);
 
   --border: #ddd;
   --border-light: #ccc;

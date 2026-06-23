@@ -1350,9 +1350,18 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
           <div className={styles.codeDisplay}>
             {myCode ? myCode.split("").map((d, i) => <span key={i} className={styles.codeDigit}>{d}</span>) : <div className={styles.spinner} />}
           </div>
-          <button onClick={() => setShowIPDetails(!showIPDetails)} className={styles.ghostBtn} style={{ marginTop: 20, border: 'none' }}>
-            Advanced Info {showIPDetails ? <FaChevronUp /> : <FaChevronDown />}
+
+          <button
+            onClick={() => setShowIPDetails(!showIPDetails)}
+            className={styles.ghostBtn}
+            style={{ marginTop: 20, border: 'none', display: 'flex', alignItems: 'center', gap: '6px' }}
+          >
+            Advanced Info
+            <span className={`${styles.arrow} ${showIPDetails ? styles.arrowOpen : ''}`}>
+              <FaChevronDown size={14} />
+            </span>
           </button>
+
           {showIPDetails && (
             <div className={styles.ipDisplay}>
               <code>{myIP}</code>
