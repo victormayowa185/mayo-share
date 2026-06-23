@@ -24,7 +24,7 @@
 .card {
   background: var(--bg-card);
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 20px;
   padding: 20px 24px;
   width: 100%;
   max-width: 520px;
@@ -55,7 +55,7 @@
   background: var(--accent);
   color: var(--text-inverse);
   border: none;
-  border-radius: 8px;
+  border-radius: 40px;
   font-size: 0.95rem;
   cursor: pointer;
 }

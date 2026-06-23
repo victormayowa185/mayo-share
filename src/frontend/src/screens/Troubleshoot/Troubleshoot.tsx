@@ -87,6 +87,25 @@ const TroubleshootScreen: React.FC<Props> = ({ onBack }) => {
     }
   };
 
+  // The ✅/❌ live inside the translation strings — strip them so we can show a
+  // crisp React icon instead of an emoji.
+  const stripEmoji = (s: string) => s.replace(/[✅❌]/g, "").trim();
+
+  const renderStatus = (ok: boolean, okKey: string, badKey: string) => (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 6,
+        color: ok ? "#4CAF50" : "#f44336",
+        fontWeight: 600,
+      }}
+    >
+      {ok ? <FaCheckCircle size={14} /> : <FaTimesCircle size={14} />}
+      {stripEmoji(t(ok ? okKey : badKey))}
+    </span>
+  );
+
   return (
     <div className={styles.container}>
       <BackButton onClick={onBack} />
@@ -97,7 +116,7 @@ const TroubleshootScreen: React.FC<Props> = ({ onBack }) => {
         {/* ── Firewall Auto‑Fix ── */}
         <div className={styles.card}>
           <div className={styles.cardHeader}>
-            <FaShieldAlt size={20} color="#b169e0" />
+            <FaShieldAlt size={20} color="#7C3EFF" />
             <h3>{t('firewallAutoFix')}</h3>
           </div>
           <p className={styles.cardDesc}>{t('firewallAutoFixDesc')}</p>
@@ -128,7 +147,7 @@ const TroubleshootScreen: React.FC<Props> = ({ onBack }) => {
         {/* ── Network & Port Status Checker ── */}
         <div className={styles.card}>
           <div className={styles.cardHeader}>
-            <FaNetworkWired size={20} color="#b169e0" />
+            <FaNetworkWired size={20} color="#7C3EFF" />
             <h3>{t('networkPortStatus')}</h3>
           </div>
           <p className={styles.cardDesc}>{t('networkPortStatusDesc')}</p>
@@ -145,12 +164,13 @@ const TroubleshootScreen: React.FC<Props> = ({ onBack }) => {
               <p><strong>{t('networkCategory')}:</strong> {diagnosisResult.profileCategory || t('unknown')}</p>
               <p>
                 <strong>{t('loopbackAdapter')}:</strong>{' '}
-                {diagnosisResult.loopbackAdapterPresent ? t('present') : t('notFound')}
+                {renderStatus(diagnosisResult.loopbackAdapterPresent, 'present', 'notFound')}
               </p>
               <p>
                 <strong>{t('port3001')}:</strong>{' '}
-                {diagnosisResult.port3001Listening ? t('listening') : t('notListening')}
+                {renderStatus(diagnosisResult.port3001Listening, 'listening', 'notListening')}
               </p>
+
             </div>
           )}
         </div>
@@ -159,7 +179,7 @@ const TroubleshootScreen: React.FC<Props> = ({ onBack }) => {
         {diagnosisResult && diagnosisResult.profileCategory?.toLowerCase() === 'public' && (
           <div className={styles.card}>
             <div className={styles.cardHeader}>
-              <FaWrench size={20} color="#b169e0" />
+              <FaWrench size={20} color="#7C3EFF" />
               <h3>{t('smartAdvice')}</h3>
             </div>
             <p className={styles.cardDesc}>

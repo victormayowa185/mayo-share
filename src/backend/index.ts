@@ -841,26 +841,63 @@ ipcMain.handle(
 ipcMain.handle(
   "fix-firewall",
   async (): Promise<{ success: boolean; output?: string; error?: string }> => {
+    if (process.platform !== "win32") {
+      return { success: false, error: "Firewall fix is only available on Windows." };
+    }
+
+    // Allow the app EXECUTABLE itself (covers WebRTC's random high UDP ports that
+    // can't be predicted), then also open the known TCP/UDP ports as a fallback
+    // (5353 = mDNS discovery). Old duplicate rules are removed first so re-running
+    // stays clean.
+    const exePath = process.execPath;
+    const psScript = [
+      `netsh advfirewall firewall delete rule name="MAYO Share" >$null 2>&1`,
+      `netsh advfirewall firewall delete rule name="MAYO Share (Ports)" >$null 2>&1`,
+      `netsh advfirewall firewall add rule name="MAYO Share" dir=in action=allow program="${exePath}" enable=yes profile=any`,
+      `netsh advfirewall firewall add rule name="MAYO Share (Ports)" dir=in action=allow protocol=TCP localport=3000,3001,3004 enable=yes profile=any`,
+      `netsh advfirewall firewall add rule name="MAYO Share (Ports)" dir=in action=allow protocol=UDP localport=3000,3001,3004,5353 enable=yes profile=any`,
+      `Write-Output "FIREWALL_OK"`,
+    ].join("\n");
+
+    const tempScriptPath = path.join(os.tmpdir(), `mayo-firewall-${Date.now()}.ps1`);
+    try {
+      fs.writeFileSync(tempScriptPath, psScript, "utf8");
+    } catch (err: any) {
+      return { success: false, error: "Could not write firewall script: " + err.message };
+    }
+
     return new Promise((resolve) => {
-      const cmd = `netsh advfirewall firewall add rule name="MAYO Share" dir=in action=allow protocol=TCP localport=3000,3001,3004`;
-      execFile(
-        "powershell.exe",
-        ["-Command", cmd],
-        { timeout: 15000 },
-        (error: Error | null, stdout: string, stderr: string) => {
-          if (error) {
-            resolve({ success: false, error: stderr || error.message });
-          } else {
-            resolve({
-              success: true,
-              output: stdout || "Rule added successfully.",
-            });
+      // Firewall changes need admin, so elevate this ONE script via a single UAC
+      // prompt (same pattern as the hotspot) instead of requiring the whole app
+      // to run as administrator.
+      const command = `powershell.exe -NoProfile -ExecutionPolicy Bypass -File "${tempScriptPath}"`;
+      sudo.exec(
+        command,
+        { name: "MAYO Share" },
+        (error: any, stdout: any, stderr: any) => {
+          try { fs.unlinkSync(tempScriptPath); } catch { }
+          const out = (stdout as string) || "";
+          if (out.includes("FIREWALL_OK")) {
+            resolve({ success: true, output: "Firewall rules added successfully." });
+            return;
           }
+          if (error) {
+            const msg = (error.message || String(error)).toLowerCase();
+            if (msg.includes("did not grant") || msg.includes("denied") || msg.includes("cancel")) {
+              // Keep the word "administrator" so the UI shows the needs-admin hint.
+              resolve({ success: false, error: "Permission denied — please allow the administrator prompt and try again." });
+            } else {
+              resolve({ success: false, error: error.message || String(error) });
+            }
+            return;
+          }
+          resolve({ success: false, error: (stderr as string) || "Firewall command produced no output." });
         },
       );
     });
   },
 );
+
 
 ipcMain.handle("diagnose-network", async (): Promise<any> => {
   if (process.platform === "win32") {
