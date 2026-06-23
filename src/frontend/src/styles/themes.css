@@ -172,7 +172,7 @@
   /* medium gray */
   --setup-logo-color: #000000;
   /* black logo */
-  --setup-btn-text: #000000;
+  --setup-btn-text: #ffffff;
   /* black button text */
   --setup-ghost-border: #000000;
   /* black border */
@@ -184,7 +184,7 @@
   /* white text on hover */
   --lang-share-color: #181717;
   /* black in light mode */
-  --lang-continue-text: #000000;
+  --lang-continue-text: #ffffff;
   /* black in light mode */
   --receive-title-color: #000000;
   /* black in light mode */
@@ -288,7 +288,7 @@
   --ghost-hover-text: #000000;
   /* same as dark but explicit */
   --title-light: #000000;
-  --btn-text: #000000;
+  --btn-text: #ffffff;
 
   --back-btn-bg: #000000;
   --back-btn-hover-bg: #1a1a1a;
