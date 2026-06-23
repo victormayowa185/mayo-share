@@ -150,7 +150,16 @@ const SetupStepper: React.FC<Props> = ({ onComplete }) => {
   const isLastStep = currentStep === steps.length - 1;
   const verifyPassed = verifyStatus === "ok" || verifyStatus === "no-admin";
 
+  const Dots = () => (
+    <span className={styles.dots} role="status" aria-label={t("checking")}>
+      <span className={styles.dot} />
+      <span className={styles.dot} />
+      <span className={styles.dot} />
+    </span>
+  );
+
   return (
+
     <div className={styles.container}>
 
 
@@ -207,7 +216,8 @@ const SetupStepper: React.FC<Props> = ({ onComplete }) => {
               className={styles.btn}
               disabled={verifyStatus === "checking"}
             >
-              {verifyStatus === "checking" ? t("checking") : t("verifySetup")}
+                 {verifyStatus === "checking" ? <Dots /> : t("verifySetup")}
+
             </button>
 
             {verifyStatus === "ok" && (
