@@ -1,4 +1,5 @@
-import { contextBridge, ipcRenderer } from "electron";
+import { contextBridge, ipcRenderer, webUtils } from "electron";
+
 
 interface FolderFile {
   absolute: string;
@@ -144,8 +145,13 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // ==================== ADDED FOR P2P ACTIVITY & FULL PASTE SUPPORT ====================
   logP2pActivity: (type: "sent" | "received", fileName: string) =>
     ipcRenderer.invoke("log-p2p-activity", type, fileName),
-  isDirectory: (filePath: string) => ipcRenderer.invoke("is-directory", filePath),
+    isDirectory: (filePath: string) => ipcRenderer.invoke("is-directory", filePath),
   walkDirectory: (dirPath: string) => ipcRenderer.invoke("walk-directory", dirPath),
+
+  // Modern Electron removed File.path — this returns the real on-disk path for a
+  // dragged-and-dropped File/folder. Runs in the preload, not over IPC.
+  getPathForFile: (file: File): string => webUtils.getPathForFile(file),
+
 
   // ---------- Solana offline integrity ----------
   getPublicKey: (): Promise<string> => ipcRenderer.invoke("get-public-key"),

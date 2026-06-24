@@ -5,8 +5,9 @@ import {
   FaCircle, FaTimes, FaCheck, FaCopy,
   FaChevronDown, FaChevronUp, FaChevronRight, FaFolderOpen,
   FaPlus, FaUpload, FaWifi, FaPlay, FaTrash,
-  FaLock, FaShieldAlt, FaExclamationTriangle
+  FaLock, FaShieldAlt, FaExclamationTriangle, FaCloudUploadAlt
 } from "react-icons/fa";
+
 
 
 import gsap from "gsap";
@@ -511,7 +512,82 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
     setFileQueue(prev => [...prev, ...newFiles]);
   };
 
+  // ─── Drag & drop (files + folders) ──────────────────────────────────────────
+  const [isDragging, setIsDragging] = useState(false);
+  const dragCounter = useRef(0);
+
+  const processDroppedItems = async (fileList: FileList) => {
+    const newFiles: QueueFile[] = [];
+    const mk = (name: string, path: string, size: number): QueueFile => ({
+      id: Math.random().toString(36).substring(2, 9),
+      name,
+      path,
+      size,
+      status: "queued",
+      progress: 0,
+      source: "file",
+    });
+    for (let i = 0; i < fileList.length; i++) {
+      const f = fileList[i];
+      let filePath = "";
+      try { filePath = window.electronAPI.getPathForFile(f); } catch { }
+
+      if (!filePath) {
+        if (isInvalidFile(f.name)) continue;
+        try {
+          const base64 = await blobToBase64(f);
+          filePath = await window.electronAPI.saveTempFile(f.name, base64);
+        } catch { continue; }
+        newFiles.push(mk(f.name, filePath, f.size));
+        continue;
+      }
+
+      let isDir = false;
+      try { isDir = await window.electronAPI.isDirectory(filePath); } catch { }
+      if (isDir) {
+        try {
+          const walked = await window.electronAPI.walkDirectory(filePath);
+          for (const w of walked) {
+            if (isInvalidFile(w.relative)) continue;
+            let size = 0;
+            try { size = await window.electronAPI.getFileSize(w.absolute); } catch { }
+            newFiles.push(mk(w.relative, w.absolute, size));
+          }
+        } catch { }
+        continue;
+      }
+
+      const name = f.name || filePath.split(/[\\/]/).pop() || filePath;
+      if (isInvalidFile(name)) continue;
+      let size = f.size;
+      try { size = await window.electronAPI.getFileSize(filePath); } catch { }
+      newFiles.push(mk(name, filePath, size));
+    }
+    if (newFiles.length > 0) setFileQueue(prev => [...prev, ...newFiles]);
+  };
+
+  const handleDragEnter = (e: React.DragEvent) => {
+    e.preventDefault(); e.stopPropagation();
+    dragCounter.current++;
+    if (Array.from(e.dataTransfer.types || []).includes("Files")) setIsDragging(true);
+  };
+  const handleDragOver = (e: React.DragEvent) => { e.preventDefault(); e.stopPropagation(); };
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault(); e.stopPropagation();
+    dragCounter.current--;
+    if (dragCounter.current <= 0) { dragCounter.current = 0; setIsDragging(false); }
+  };
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault(); e.stopPropagation();
+    dragCounter.current = 0;
+    setIsDragging(false);
+    const dropped = e.dataTransfer.files;
+    if (!dropped || dropped.length === 0) return;
+    await processDroppedItems(dropped);
+  };
+
   const cancelFile = (id: string) => {
+
     stopSendRef.current.add(id);
     setFileQueue(prev => prev.map(f =>
       f.id === id && (f.status === "queued" || f.status === "transferring")
@@ -1366,9 +1442,56 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
   }
 
   return (
-    <div className={styles.container}>
+    <div
+      className={styles.container}
+      onDragEnter={handleDragEnter}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
+         {isDragging && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 9999,
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 18,
+            // Glassy: just blur the page content with a faint frosted layer —
+            // no solid color, so it looks right in both light & dark mode.
+            background: "rgba(255, 255, 255, 0.04)",
+            backdropFilter: "blur(10px) saturate(120%)",
+            WebkitBackdropFilter: "blur(10px) saturate(120%)",
+            pointerEvents: "none",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              gap: 14,
+              padding: "32px 44px",
+              borderRadius: 24,
+              background: "rgba(124, 62, 255, 0.10)",
+              border: "1px solid rgba(124, 62, 255, 0.25)",
+              boxShadow: "0 8px 40px rgba(0, 0, 0, 0.18)",
+            }}
+          >
+            <FaCloudUploadAlt size={60} color="var(--accent)" />
+            <span style={{ color: "var(--text-primary)", fontSize: "1.15rem", fontWeight: 600 }}>
+              Drop files or folders to add
+            </span>
+          </div>
+        </div>
+      )}
+
       <BackButton onClick={() => { cleanupWebRTC(); onBack(); }} />
       <h2 className={styles.title}>{t("deviceConnect")}</h2>
+
 
       {!connected && mode === "send" && (
         <div className={styles.createPanel}>

@@ -116,7 +116,9 @@ declare global {
       getHostname: () => Promise<string>;
 
       // ---------- Solana offline integrity ----------
+      getPathForFile: (file: File) => string;
       getPublicKey: () => Promise<string>;
+
       signFile: (
         filePath: string,
       ) => Promise<{ hash: string; signature: string; publicKey: string }>;

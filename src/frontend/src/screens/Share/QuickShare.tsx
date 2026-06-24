@@ -9,7 +9,9 @@ import {
   FaChevronRight,
   FaLayerGroup,
   FaPen,
+  FaCloudUploadAlt,
 } from "react-icons/fa";
+
 import QRCode from "qrcode";
 import gsap from "gsap";
 import { useGSAP } from "@gsap/react";
@@ -512,54 +514,113 @@ const QuickShare: React.FC<Props> = ({ onBack, shareIP }) => {
   const folderContentRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 
   const [isDragging, setIsDragging] = useState(false);
+  const dragCounter = useRef(0);
+
+  // Turn dropped files/folders into shareable entries. Folders are walked so
+  // every file inside is added with its relative path (keeps the tree).
+  const processDroppedFiles = async (fileList: FileList) => {
+    const newFiles: FileEntry[] = [];
+    for (let i = 0; i < fileList.length; i++) {
+      const f = fileList[i];
+      // Modern Electron: real on-disk path of a dragged file/folder.
+      let filePath = "";
+      try { filePath = window.electronAPI.getPathForFile(f); } catch { }
+
+      // No path (rare synthetic blob): save its bytes to a temp file.
+      if (!filePath) {
+        if (isInvalidFile(f.name)) continue;
+        try {
+          const base64 = await blobToBase64(f);
+          const saved = await window.electronAPI.saveTempFile(f.name, base64);
+          newFiles.push({
+            id: crypto.randomUUID(),
+            path: saved,
+            relativePath: f.name,
+            name: f.name,
+            size: f.size,
+            downloadStatus: "idle",
+          });
+        } catch { }
+        continue;
+      }
+
+      // Folder → walk it and add every file inside (with relative paths).
+      let isDir = false;
+      try { isDir = await window.electronAPI.isDirectory(filePath); } catch { }
+      if (isDir) {
+        try {
+          const walked = await window.electronAPI.walkDirectory(filePath);
+          for (const w of walked) {
+            if (isInvalidFile(w.relative)) continue;
+            let size = 0;
+            try { size = await window.electronAPI.getFileSize(w.absolute); } catch { }
+            newFiles.push({
+              id: crypto.randomUUID(),
+              path: w.absolute,
+              relativePath: w.relative,
+              name: w.absolute.split(/[\\/]/).pop() || w.relative,
+              size,
+              downloadStatus: "idle",
+            });
+          }
+        } catch { }
+        continue;
+      }
+
+      // Single file
+      const name = f.name || filePath.split(/[\\/]/).pop() || filePath;
+      if (isInvalidFile(name)) continue;
+      let size = f.size;
+      try { size = await window.electronAPI.getFileSize(filePath); } catch { }
+      newFiles.push({
+        id: crypto.randomUUID(),
+        path: filePath,
+        relativePath: name,
+        name,
+        size,
+        downloadStatus: "idle",
+      });
+    }
+    if (newFiles.length > 0) setFiles((prev) => [...prev, ...newFiles]);
+  };
+
+  // Use a counter so moving over child elements doesn't flicker the overlay.
+  const handleDragEnter = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (isSharing) return;
+    dragCounter.current++;
+    if (Array.from(e.dataTransfer.types || []).includes("Files")) {
+      setIsDragging(true);
+    }
+  };
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    setIsDragging(true);
   };
 
   const handleDragLeave = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    setIsDragging(false);
+    dragCounter.current--;
+    if (dragCounter.current <= 0) {
+      dragCounter.current = 0;
+      setIsDragging(false);
+    }
   };
 
   const handleDrop = async (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    dragCounter.current = 0;
     setIsDragging(false);
     if (isSharing) return;
-
     const droppedFiles = e.dataTransfer.files;
     if (!droppedFiles || droppedFiles.length === 0) return;
-
-    const newFiles: FileEntry[] = [];
-    for (let i = 0; i < droppedFiles.length; i++) {
-      const f = droppedFiles[i];
-      const filePath = (f as any).path;
-      if (filePath) {
-        const name = f.name || filePath.split("\\").pop() || filePath;
-        let size = f.size;
-        try {
-          size = await window.electronAPI.getFileSize(filePath);
-        } catch { }
-        if (!isInvalidFile(name)) {
-          newFiles.push({
-            id: crypto.randomUUID(),
-            path: filePath,
-            relativePath: name,
-            name,
-            size,
-            downloadStatus: "idle",
-          });
-        }
-      }
-    }
-    if (newFiles.length > 0) {
-      setFiles((prev) => [...prev, ...newFiles]);
-    }
+    await processDroppedFiles(droppedFiles);
   };
+
 
   const handleFolderToggle = (folderName: string) => {
     const contentEl = folderContentRefs.current.get(folderName);
@@ -699,13 +760,56 @@ const QuickShare: React.FC<Props> = ({ onBack, shareIP }) => {
   };
 
   return (
-    <div
+     <div
       className={`${styles.container} ${isDragging ? styles.dragOver : ""}`}
+      onDragEnter={handleDragEnter}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
+        {isDragging && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 9999,
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 18,
+            // Glassy: just blur the page content with a faint frosted layer —
+            // no solid color, so it looks right in both light & dark mode.
+            background: "rgba(255, 255, 255, 0.04)",
+            backdropFilter: "blur(10px) saturate(120%)",
+            WebkitBackdropFilter: "blur(10px) saturate(120%)",
+            pointerEvents: "none",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              gap: 14,
+              padding: "32px 44px",
+              borderRadius: 24,
+              background: "rgba(124, 62, 255, 0.10)",
+              border: "1px solid rgba(124, 62, 255, 0.25)",
+              boxShadow: "0 8px 40px rgba(0, 0, 0, 0.18)",
+            }}
+          >
+            <FaCloudUploadAlt size={60} color="var(--accent)" />
+            <span style={{ color: "var(--text-primary)", fontSize: "1.15rem", fontWeight: 600 }}>
+              Drop files or folders to add
+            </span>
+          </div>
+        </div>
+      )}
+
       <BackButton
+
+
         onClick={() => {
           stopSharing();
           onBack();
