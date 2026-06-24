@@ -806,33 +806,68 @@ ipcMain.handle(
   "get-clipboard-files",
   async (): Promise<{ paths: string[]; type: "files" | "none" }> => {
     const { clipboard } = await import("electron");
+
+    // Keep only paths that actually exist on disk. lstatSync (not existsSync) so
+    // .lnk/.url shortcuts are kept as-is instead of being resolved to a target
+    // that may not exist.
+    const keepReal = (list: string[]) =>
+      list
+        .map((p) => p.replace(/^"|"$/g, "").trim())
+        .filter((p) => {
+          if (!p) return false;
+          try { fs.lstatSync(p); return true; } catch { return false; }
+        });
+
     try {
-      const rawFilenames = clipboard.read("FileNameW");
-      if (rawFilenames && rawFilenames.length > 0) {
-        const paths: string[] = rawFilenames
-          .split("\0")
-          .map((p) => p.trim())
-          .filter((p) => {
-            if (p.length === 0) return false;
-            // Use lstatSync so .lnk, .url, and other shortcut/special files
-            // are included as-is rather than being resolved to their target.
-            // fs.existsSync follows symlinks (and on Windows, shortcuts),
-            // which can return false for .lnk when the target doesn't exist.
-            try {
-              fs.lstatSync(p);
-              return true;
-            } catch {
-              return false;
-            }
-          });
-        if (paths.length > 0) return { paths, type: "files" };
+      const candidates: string[] = [];
+
+      // 1) Windows "FileNameW" is UTF-16LE (the "W" = wide). Reading it as a
+      //    normal UTF-8 string mangled it into many "/" fragments at 0 B — so we
+      //    read the RAW BYTES and decode them as utf16le, then split on NUL.
+      if (process.platform === "win32") {
+        try {
+          const buf = clipboard.readBuffer("FileNameW");
+          if (buf && buf.length > 0) {
+            const decoded = buf.toString("utf16le").replace(/\0+$/g, "");
+            candidates.push(...decoded.split("\0"));
+          }
+        } catch { /* format not present */ }
+
+        // Legacy single-path "FileName" (ANSI) fallback.
+        if (candidates.length === 0) {
+          try {
+            const ansi = clipboard.read("FileName");
+            if (ansi) candidates.push(ansi);
+          } catch { /* not present */ }
+        }
       }
+
+      // 2) Cross-platform fallback: some apps put newline-separated paths (or
+      //    file:// URIs) on the clipboard as text.
+      if (candidates.length === 0) {
+        const text = clipboard.readText();
+        if (text && /(^[a-zA-Z]:\\)|(^\/)|(^file:\/\/)/m.test(text)) {
+          candidates.push(
+            ...text
+              .split(/\r?\n/)
+              .map((line) =>
+                line.startsWith("file://")
+                  ? decodeURIComponent(line.replace(/^file:\/\//, ""))
+                  : line
+              )
+          );
+        }
+      }
+
+      const paths = keepReal(candidates);
+      if (paths.length > 0) return { paths, type: "files" };
     } catch {
       /* not available */
     }
     return { paths: [], type: "none" };
   },
 );
+
 
 ipcMain.handle(
   "save-temp-file",

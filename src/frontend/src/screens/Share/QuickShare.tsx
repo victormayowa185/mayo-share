@@ -46,6 +46,17 @@ const formatBytes = (b: number) => {
   return parseFloat((b / Math.pow(k, i)).toFixed(1)) + " " + sizes[i];
 };
 
+// Read a Blob/File's bytes as base64 — used when clipboard content has no file
+// path (e.g. an image blob or a browser File in modern Electron).
+const blobToBase64 = (blob: Blob): Promise<string> =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve((reader.result as string).split(",")[1]);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+
+
 const QuickShare: React.FC<Props> = ({ onBack, shareIP }) => {
   const { t } = useTranslation();
   const [downloadIps, setDownloadIps] = useState<Map<string, Set<string>>>(new Map());
@@ -104,30 +115,88 @@ const QuickShare: React.FC<Props> = ({ onBack, shareIP }) => {
     };
   }, []);
 
-  // Ctrl+V paste handler
+  // Ctrl+V paste handler — pastes ANYTHING: files copied from Explorer/Finder
+  // (video, pdf, zip, …), images/screenshots, or text.
   const handlePaste = useCallback(
     async (e: ClipboardEvent) => {
       if (isSharing) return;
-      e.preventDefault();
+
+      // Don't hijack paste while typing in an input/textarea (e.g. editing text).
+      const target = e.target as HTMLElement;
+      if (
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
 
       const clipboard = e.clipboardData;
       if (!clipboard) return;
+      e.preventDefault();
 
-      // Case 1: files
+      // Case 0: a real file copied from the OS file manager (ANY type). The
+      // browser clipboard can't read its bytes, but the OS clipboard holds the
+      // path — getClipboardFiles() reads it natively. This makes
+      // "copy a video in Explorer → Ctrl+V" actually work.
+      try {
+        const native = await window.electronAPI.getClipboardFiles();
+        if (native.paths && native.paths.length > 0) {
+          const newFiles: FileEntry[] = [];
+          for (const p of native.paths) {
+            const name = p.split(/[\\/]/).pop() || p;
+            if (isInvalidFile(name)) continue;
+            let size = 0;
+            try { size = await window.electronAPI.getFileSize(p); } catch { }
+            newFiles.push({
+              id: crypto.randomUUID(),
+              path: p,
+              relativePath: name,
+              name,
+              size,
+              downloadStatus: "idle",
+            });
+          }
+          if (newFiles.length > 0) {
+            setFiles((prev) => [...prev, ...newFiles]);
+            return;
+          }
+        }
+      } catch { /* fall through to browser clipboard */ }
+
+      // Case 1: browser File objects. Modern Electron removed File.path, so we
+      // read the bytes and stash them in a temp file — works for any type.
       if (clipboard.files && clipboard.files.length > 0) {
         const newFiles: FileEntry[] = [];
         for (let i = 0; i < clipboard.files.length; i++) {
           const f = clipboard.files[i];
+          if (isInvalidFile(f.name)) continue;
           const filePath = (f as any).path;
           if (filePath) {
+            let size = f.size;
+            try { size = await window.electronAPI.getFileSize(filePath); } catch { }
             newFiles.push({
               id: crypto.randomUUID(),
               path: filePath,
               relativePath: f.name,
               name: f.name,
-              size: f.size,
+              size,
               downloadStatus: "idle",
             });
+          } else {
+            try {
+              const base64 = await blobToBase64(f);
+              const savedPath = await window.electronAPI.saveTempFile(f.name, base64);
+              newFiles.push({
+                id: crypto.randomUUID(),
+                path: savedPath,
+                relativePath: f.name,
+                name: f.name,
+                size: f.size,
+                downloadStatus: "idle",
+              });
+            } catch { /* skip this one */ }
           }
         }
         if (newFiles.length > 0) {
@@ -136,33 +205,28 @@ const QuickShare: React.FC<Props> = ({ onBack, shareIP }) => {
         }
       }
 
-      // Case 2: image
+      // Case 2: image (screenshot or copied image data, not a file)
       const imageItem = Array.from(clipboard.items).find((item) =>
         item.type.startsWith("image/")
       );
       if (imageItem) {
         const blob = imageItem.getAsFile();
         if (blob) {
-          const reader = new FileReader();
-          reader.onload = async () => {
-            const base64 = (reader.result as string).split(",")[1];
-            const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-            const fileName = `screenshot-${timestamp}.png`;
-            const savedPath = await window.electronAPI.saveTempFile(fileName, base64);
-            const size = blob.size;
-            setFiles((prev) => [
-              ...prev,
-              {
-                id: crypto.randomUUID(),
-                path: savedPath,
-                relativePath: fileName,
-                name: fileName,
-                size,
-                downloadStatus: "idle",
-              },
-            ]);
-          };
-          reader.readAsDataURL(blob);
+          const base64 = await blobToBase64(blob);
+          const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+          const fileName = `screenshot-${timestamp}.png`;
+          const savedPath = await window.electronAPI.saveTempFile(fileName, base64);
+          setFiles((prev) => [
+            ...prev,
+            {
+              id: crypto.randomUUID(),
+              path: savedPath,
+              relativePath: fileName,
+              name: fileName,
+              size: blob.size,
+              downloadStatus: "idle",
+            },
+          ]);
           return;
         }
       }
@@ -190,6 +254,7 @@ const QuickShare: React.FC<Props> = ({ onBack, shareIP }) => {
     },
     [isSharing]
   );
+
 
   useEffect(() => {
     document.addEventListener("paste", handlePaste as any);

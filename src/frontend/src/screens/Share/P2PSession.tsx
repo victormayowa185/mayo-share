@@ -61,6 +61,17 @@ const formatBytes = (b: number) => {
 
 const shortName = (name: string) => name.split("/").pop() || name;
 
+// Read a Blob/File's bytes as base64 — used when clipboard content has no file
+// path (modern Electron removed File.path).
+const blobToBase64 = (blob: Blob): Promise<string> =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve((reader.result as string).split(",")[1]);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+
+
 interface FileGroup {
   folderName: string;
   files: QueueFile[];
@@ -389,11 +400,18 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
     if (browserFiles.length > 0) {
       const newFiles: QueueFile[] = [];
       for (const f of browserFiles) {
-        const filePath = (f as any).path || null;
         const name = f.name;
         if (isInvalidFile(name)) continue;
+        let filePath = (f as any).path || null;
         let size = f.size;
-        if (size === 0 && filePath) {
+        // Modern Electron removed File.path, so clipboard blobs have no path —
+        // persist their bytes to a temp file so ANY copied content can be sent.
+        if (!filePath) {
+          try {
+            const base64 = await blobToBase64(f);
+            filePath = await window.electronAPI.saveTempFile(name, base64);
+          } catch { continue; }
+        } else if (size === 0) {
           try { size = await window.electronAPI.getFileSize(filePath); } catch { }
         }
         newFiles.push({
@@ -411,6 +429,7 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
         return;
       }
     }
+
 
     const imageItem = items.find(item => item.type.startsWith("image/"));
     if (imageItem) {
