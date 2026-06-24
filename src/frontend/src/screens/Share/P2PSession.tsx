@@ -362,7 +362,12 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
     const browserFiles = Array.from(clipboard.files);
     const items = Array.from(clipboard.items);
     const plainText = clipboard.getData("text/plain");
+    // Capture the image blob NOW — after the first await, getAsFile() returns
+    // null because the clipboard event data is detached.
+    const imageItemSync = items.find(item => item.type.startsWith("image/"));
+    const imageBlobSync = imageItemSync ? imageItemSync.getAsFile() : null;
     e.preventDefault();
+
 
     let clipboardPaths: { paths: string[]; type: string } = { paths: [], type: "none" };
     try {
@@ -431,30 +436,22 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
       }
     }
 
-
-    const imageItem = items.find(item => item.type.startsWith("image/"));
-    if (imageItem) {
-      const blob = imageItem.getAsFile();
-      if (blob) {
-        const reader = new FileReader();
-        reader.onload = async () => {
-          const base64 = (reader.result as string).split(",")[1];
-          const fileName = `screenshot-${Date.now()}.png`;
-          const savedPath = await window.electronAPI.saveTempFile(fileName, base64);
-          setFileQueue(prev => [...prev, {
-            id: Math.random().toString(36).substring(2, 9),
-            name: fileName,
-            path: savedPath,
-            size: blob.size,
-            status: "queued",
-            progress: 0,
-            source: "file",
-          }]);
-        };
-        reader.readAsDataURL(blob);
-        return;
-      }
+    if (imageBlobSync) {
+      const base64 = await blobToBase64(imageBlobSync);
+      const fileName = `screenshot-${Date.now()}.png`;
+      const savedPath = await window.electronAPI.saveTempFile(fileName, base64);
+      setFileQueue(prev => [...prev, {
+        id: Math.random().toString(36).substring(2, 9),
+        name: fileName,
+        path: savedPath,
+        size: imageBlobSync.size,
+        status: "queued",
+        progress: 0,
+        source: "file",
+      }]);
+      return;
     }
+
 
     if (plainText && plainText.trim()) {
       const fileName = `note-${Date.now()}.txt`;

@@ -117,13 +117,13 @@ const QuickShare: React.FC<Props> = ({ onBack, shareIP }) => {
     };
   }, []);
 
-  // Ctrl+V paste handler — pastes ANYTHING: files copied from Explorer/Finder
-  // (video, pdf, zip, …), images/screenshots, or text.
+  // Ctrl+V paste — pastes ANYTHING already copied: OS files (video/pdf/zip/…),
+  // screenshots/images, or text.
   const handlePaste = useCallback(
     async (e: ClipboardEvent) => {
       if (isSharing) return;
 
-      // Don't hijack paste while typing in an input/textarea (e.g. editing text).
+      // Don't hijack paste while typing in an input/textarea.
       const target = e.target as HTMLElement;
       if (
         target &&
@@ -138,10 +138,17 @@ const QuickShare: React.FC<Props> = ({ onBack, shareIP }) => {
       if (!clipboard) return;
       e.preventDefault();
 
-      // Case 0: a real file copied from the OS file manager (ANY type). The
-      // browser clipboard can't read its bytes, but the OS clipboard holds the
-      // path — getClipboardFiles() reads it natively. This makes
-      // "copy a video in Explorer → Ctrl+V" actually work.
+      // IMPORTANT: read everything from clipboardData SYNCHRONOUSLY now. After
+      // the first `await`, the event's clipboardData is emptied — which is why
+      // text and images silently failed to paste before.
+      const text = clipboard.getData("text/plain");
+      const browserFiles = Array.from(clipboard.files);
+      const imageItem = Array.from(clipboard.items).find((it) =>
+        it.type.startsWith("image/")
+      );
+      const imageBlob = imageItem ? imageItem.getAsFile() : null;
+
+      // Case 0: a real file copied from the OS file manager (ANY type).
       try {
         const native = await window.electronAPI.getClipboardFiles();
         if (native.paths && native.paths.length > 0) {
@@ -165,41 +172,25 @@ const QuickShare: React.FC<Props> = ({ onBack, shareIP }) => {
             return;
           }
         }
-      } catch { /* fall through to browser clipboard */ }
+      } catch { /* fall through */ }
 
-      // Case 1: browser File objects. Modern Electron removed File.path, so we
-      // read the bytes and stash them in a temp file — works for any type.
-      if (clipboard.files && clipboard.files.length > 0) {
+      // Case 1: browser File objects (no path in modern Electron → save bytes).
+      if (browserFiles.length > 0) {
         const newFiles: FileEntry[] = [];
-        for (let i = 0; i < clipboard.files.length; i++) {
-          const f = clipboard.files[i];
+        for (const f of browserFiles) {
           if (isInvalidFile(f.name)) continue;
-          const filePath = (f as any).path;
-          if (filePath) {
-            let size = f.size;
-            try { size = await window.electronAPI.getFileSize(filePath); } catch { }
+          try {
+            const base64 = await blobToBase64(f);
+            const saved = await window.electronAPI.saveTempFile(f.name, base64);
             newFiles.push({
               id: crypto.randomUUID(),
-              path: filePath,
+              path: saved,
               relativePath: f.name,
               name: f.name,
-              size,
+              size: f.size,
               downloadStatus: "idle",
             });
-          } else {
-            try {
-              const base64 = await blobToBase64(f);
-              const savedPath = await window.electronAPI.saveTempFile(f.name, base64);
-              newFiles.push({
-                id: crypto.randomUUID(),
-                path: savedPath,
-                relativePath: f.name,
-                name: f.name,
-                size: f.size,
-                downloadStatus: "idle",
-              });
-            } catch { /* skip this one */ }
-          }
+          } catch { }
         }
         if (newFiles.length > 0) {
           setFiles((prev) => [...prev, ...newFiles]);
@@ -207,34 +198,27 @@ const QuickShare: React.FC<Props> = ({ onBack, shareIP }) => {
         }
       }
 
-      // Case 2: image (screenshot or copied image data, not a file)
-      const imageItem = Array.from(clipboard.items).find((item) =>
-        item.type.startsWith("image/")
-      );
-      if (imageItem) {
-        const blob = imageItem.getAsFile();
-        if (blob) {
-          const base64 = await blobToBase64(blob);
-          const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-          const fileName = `screenshot-${timestamp}.png`;
-          const savedPath = await window.electronAPI.saveTempFile(fileName, base64);
-          setFiles((prev) => [
-            ...prev,
-            {
-              id: crypto.randomUUID(),
-              path: savedPath,
-              relativePath: fileName,
-              name: fileName,
-              size: blob.size,
-              downloadStatus: "idle",
-            },
-          ]);
-          return;
-        }
+      // Case 2: pasted image / screenshot (image data, not a file).
+      if (imageBlob) {
+        const base64 = await blobToBase64(imageBlob);
+        const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+        const fileName = `screenshot-${timestamp}.png`;
+        const savedPath = await window.electronAPI.saveTempFile(fileName, base64);
+        setFiles((prev) => [
+          ...prev,
+          {
+            id: crypto.randomUUID(),
+            path: savedPath,
+            relativePath: fileName,
+            name: fileName,
+            size: imageBlob.size,
+            downloadStatus: "idle",
+          },
+        ]);
+        return;
       }
 
-      // Case 3: text
-      const text = clipboard.getData("text/plain");
+      // Case 3: plain text.
       if (text && text.trim()) {
         const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
         const fileName = `pasted-text-${timestamp}.txt`;
@@ -256,6 +240,7 @@ const QuickShare: React.FC<Props> = ({ onBack, shareIP }) => {
     },
     [isSharing]
   );
+
 
 
   useEffect(() => {
@@ -314,6 +299,13 @@ const QuickShare: React.FC<Props> = ({ onBack, shareIP }) => {
 
   const removeFile = (id: string) =>
     setFiles((prev) => prev.filter((f) => f.id !== id));
+
+  // Remove an ENTIRE folder (all files under it) in one click.
+  const removeFolder = (folderFiles: FileEntry[]) => {
+    const ids = new Set(folderFiles.map((f) => f.id));
+    setFiles((prev) => prev.filter((f) => !ids.has(f.id)));
+  };
+
 
   const startEditing = async (file: FileEntry) => {
     try {
@@ -730,7 +722,7 @@ const QuickShare: React.FC<Props> = ({ onBack, shareIP }) => {
       const totalSize = group.files.reduce((sum, f) => sum + f.size, 0);
       return (
         <div key={group.folderName} className={styles.folderGroup}>
-          <div
+              <div
             className={styles.folderHeader}
             onClick={() => handleFolderToggle(group.folderName)}
           >
@@ -741,7 +733,20 @@ const QuickShare: React.FC<Props> = ({ onBack, shareIP }) => {
             <span className={styles.folderMeta}>
               {t("fileCount", { count: group.files.length })} · {formatBytes(totalSize)}
             </span>
+            {!isSharing && (
+              <button
+                className={styles.removeBtn}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  removeFolder(group.files);
+                }}
+                title={t("removeFile")}
+              >
+                <FaTimes size={14} />
+              </button>
+            )}
           </div>
+
           <div
             ref={(el) => {
               if (el) folderContentRefs.current.set(group.folderName, el);
@@ -820,20 +825,18 @@ const QuickShare: React.FC<Props> = ({ onBack, shareIP }) => {
         {isSharing ? t("shareLinkOrQR") : t("addFilesThenStart")}
       </p>
 
-      {files.length > 0 && !isSharing && (
+         {files.length > 0 && !isSharing && (
         <div className={styles.stickyActionBar}>
           <div className={styles.stickyInfo}>
-            <span className={styles.stickyCount}>
-              {files.length} {t("fileCount", { count: files.length })} · {formatBytes(files.reduce((sum, f) => sum + f.size, 0))}
-            </span>
-          </div>
-          <div className={styles.stickyActions}>
+            {/* Expand/Collapse lives here, but ONLY when folders are present */}
             {hasFolders && (
               <button className={styles.toggleAllBtn} onClick={toggleAll}>
                 <FaLayerGroup size={14} style={{ marginRight: 6 }} />
                 {allExpanded ? t("collapseAll") : t("expandAll")}
               </button>
             )}
+          </div>
+          <div className={styles.stickyActions}>
             <button className={styles.shareBtn} onClick={startSharing}>
               {t("startSharing")} ({formatBytes(files.reduce((sum, f) => sum + f.size, 0))})
             </button>
@@ -841,12 +844,7 @@ const QuickShare: React.FC<Props> = ({ onBack, shareIP }) => {
         </div>
       )}
 
-      {files.length > 0 && !isSharing && (
-        <div className={styles.fileList} ref={fileListRef}>
-          {renderGroups()}
-        </div>
-      )}
-
+      {/* Add buttons sit right under the Send button, ABOVE the file list */}
       {!isSharing && (
         <div className={styles.actionRow}>
           <button className={styles.btn} onClick={addFiles}>
@@ -855,6 +853,13 @@ const QuickShare: React.FC<Props> = ({ onBack, shareIP }) => {
           <button className={styles.ghostBtn} onClick={addFolder}>
             {t("addFolder")}
           </button>
+        </div>
+      )}
+
+
+      {files.length > 0 && !isSharing && (
+        <div className={styles.fileList} ref={fileListRef}>
+          {renderGroups()}
         </div>
       )}
 
