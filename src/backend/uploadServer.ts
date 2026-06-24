@@ -193,7 +193,8 @@ export class UploadServer extends EventEmitter {
             }
             let session = this.sessions.get(sessionId);
             if (!session) {
-              const saveDir = path.join(RECEIVE_DIR, `Sender-${sessionId}`);
+
+              const saveDir = path.join(RECEIVE_DIR, "MAYO Share", `Sender-${sessionId}`);
               session = {
                 id: sessionId,
                 status: "pending",
@@ -201,6 +202,7 @@ export class UploadServer extends EventEmitter {
                 saveDir,
                 deviceType: "",
               };
+
               this.sessions.set(sessionId, session);
               this.emit("sender-connected", sessionId, session.senderName);
             }
@@ -256,7 +258,7 @@ export class UploadServer extends EventEmitter {
                   session.senderName = name;
                   if (deviceType) session.deviceType = deviceType;
                   const safeName = name.replace(/[^a-zA-Z0-9_\- ]/g, "").trim() || sessionId!;
-                  session.saveDir = path.join(RECEIVE_DIR, `Sender-${safeName}`);
+                  session.saveDir = path.join(RECEIVE_DIR, "MAYO Share", `Sender-${safeName}`);
                   this.emit("sender-connected", sessionId, name, session.deviceType);
                   this.broadcastAdminUpdate();
                   res.writeHead(200, { "Content-Type": "application/json" });
