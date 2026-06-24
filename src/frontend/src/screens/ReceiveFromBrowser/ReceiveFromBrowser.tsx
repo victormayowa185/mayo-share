@@ -57,7 +57,7 @@ const ReceiveFromBrowser: React.FC<Props> = ({
   const [pendingSenders, setPendingSenders] = useState<{ sessionId: string; senderName: string; deviceType: string }[]>([]);
 
   useEffect(() => {
-    window.electronAPI.onUploadUpdate((data) => {
+    const unsubscribe = window.electronAPI.onUploadUpdate((data) => {
       if (data.event === "received") {
         const newFile: ReceivedFile = {
           id: Date.now().toString() + Math.random(),
@@ -69,10 +69,12 @@ const ReceiveFromBrowser: React.FC<Props> = ({
         setApprovedSenders((prev) => prev.filter((s) => s.senderName !== data.senderName));
       }
     });
+    return () => unsubscribe();
   }, []);
 
+
   useEffect(() => {
-    window.electronAPI.onSenderConnected((data: { sessionId: string; senderName: string; deviceType: string }) => {
+    const unsubscribe = window.electronAPI.onSenderConnected((data: { sessionId: string; senderName: string; deviceType: string }) => {
       setPendingSenders((prev) => {
         const existingIdx = prev.findIndex((s) => s.sessionId === data.sessionId);
         if (existingIdx !== -1) {
@@ -83,7 +85,9 @@ const ReceiveFromBrowser: React.FC<Props> = ({
         return [...prev, data];
       });
     });
+    return () => unsubscribe();
   }, []);
+
 
   useEffect(() => {
     if (!isReceiving || !shareUrl) return;

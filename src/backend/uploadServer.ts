@@ -117,6 +117,13 @@ export class UploadServer extends EventEmitter {
           const url = req.url || "/";
           const method = req.method || "GET";
 
+          // FIX: Move this to the VERY top to stop the "Double Load"
+          if (url === "/favicon.ico") {
+            res.writeHead(204);
+            res.end();
+            return;
+          }
+
           if (method === "GET" && url === "/favicon.ico") {
             res.writeHead(204);
             res.end();
