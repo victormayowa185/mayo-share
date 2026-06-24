@@ -729,11 +729,15 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
     // The RECEIVER is the source of truth: we check how many bytes are ACTUALLY
     // on disk for each offered file and resume from exactly there.
     if (msg.type === "handshake-offer") {
-      const saveDir = await window.electronAPI.getSavePath();
+          const saveDir = await window.electronAPI.getSavePath();
+      // Use the OS-native separator: Windows save paths contain "\", Mac/Linux "/".
+      // Hardcoding "\" created literal "folder\file" names on macOS/Linux.
+      const sep = saveDir.includes("\\") ? "\\" : "/";
       const offsets: Record<string, number> = {};
       for (const f of msg.files) {
-        const safeName = f.name.replace(/\//g, "\\");
-        const savePath = saveDir + "\\" + safeName;
+        const safeName = f.name.replace(/\//g, sep);
+        const savePath = saveDir + sep + safeName;
+
         let onDisk = 0;
         try {
           onDisk = await window.electronAPI.getFileSize(savePath);
@@ -924,9 +928,12 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
         return n;
       });
 
-      const saveDir = await window.electronAPI.getSavePath();
-      const safeName = msg.name.replace(/\//g, "\\");
-      const savePath = saveDir + "\\" + safeName;
+          const saveDir = await window.electronAPI.getSavePath();
+      // OS-native separator (see note in handshake-offer).
+      const sep = saveDir.includes("\\") ? "\\" : "/";
+      const safeName = msg.name.replace(/\//g, sep);
+      const savePath = saveDir + sep + safeName;
+
 
       const isResuming = msg.offset && msg.offset > 0;
       await window.electronAPI.createReceiveFile(savePath, isResuming);

@@ -849,9 +849,17 @@ ipcMain.handle(
 ipcMain.handle(
   "fix-firewall",
   async (): Promise<{ success: boolean; output?: string; error?: string }> => {
-    if (process.platform !== "win32") {
-      return { success: false, error: "Firewall fix is only available on Windows." };
+    // macOS/Linux don't need a manual port rule: the macOS Application Firewall
+    // is off by default and otherwise prompts to "Allow incoming connections"
+    // automatically on first listen; common Linux setups don't block LAN by
+    // default. So this is informational, not a failure.
+    if (process.platform === "darwin") {
+      return { success: true, output: "No firewall change needed on macOS. If prompted, click \"Allow\" so other devices can connect." };
     }
+    if (process.platform !== "win32") {
+      return { success: true, output: "No firewall change needed on this platform." };
+    }
+
 
     // Allow the app EXECUTABLE itself (covers WebRTC's random high UDP ports that
     // can't be predicted), then also open the known TCP/UDP ports as a fallback

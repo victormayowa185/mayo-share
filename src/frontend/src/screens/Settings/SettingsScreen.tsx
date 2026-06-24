@@ -240,7 +240,7 @@ const SettingsScreen: React.FC<Props> = ({ onBack }) => {
         {/* Save Folder Card */}
         <div className={styles.card}>
           <div className={styles.cardHeader}>
-            <FaFolderOpen size={20} color="#b169e0" />
+            <FaFolderOpen size={20} color="#7C3EFF" />
             <h3>{t("saveFolder")}</h3>
           </div>
           <p className={styles.cardDesc}>{t("saveFolderDesc")}</p>
