@@ -226,9 +226,13 @@ const HotspotCheck: React.FC<Props> = ({
             <FaCheckCircle style={{ marginRight: 8 }} />
             {t("hotspotActiveMessage")}
           </div>
+
+
           <button className={styles.btn} onClick={onReady}>
-            {t("continue")} <FaArrowRight style={{ marginLeft: 6 }} />
+            {t("continue")} <FaArrowRight />
           </button>
+
+
         </div>
       )}
     </div>

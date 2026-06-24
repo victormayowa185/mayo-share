@@ -108,10 +108,18 @@ const App: React.FC = () => {
   // Check setup flags and platform on mount — also restore last screen
   useEffect(() => {
     const init = async () => {
+
+
       const done = localStorage.getItem("mayo-setup-complete");
-      const langDone = localStorage.getItem("mayo-language-set");
       const saveFolderDone = localStorage.getItem("mayo-savefolder-set");
 
+
+      // Use a dedicated "is-language-set" IPC flag (stored in settings.json)
+      // rather than checking the language string itself. The language string
+      // can be "en" both when the user explicitly chose English AND when the
+      // app just loaded a previous session's settings — so it's not a reliable
+      // indicator. This flag is only written when the user clicks Continue.
+      const langExplicitlySet = await window.electronAPI.isLanguageSet();
 
       const plat = await window.electronAPI.getPlatform();
       setPlatform(plat);
@@ -122,8 +130,11 @@ const App: React.FC = () => {
       } else {
         setSetupComplete(done === "true");
       }
-      setLanguageSet(langDone === "true");
+      setLanguageSet(langExplicitlySet); // only true after user clicked Continue
       setSaveFolderSet(saveFolderDone === "true");
+
+
+
 
 
       // Restore last screen from sessionStorage (within a single app session)
@@ -270,12 +281,13 @@ const App: React.FC = () => {
     return (
       <LanguageSelectScreen
         onComplete={() => {
-          localStorage.setItem("mayo-language-set", "true");
           setLanguageSet(true);
         }}
       />
     );
   }
+
+
 
   if (!saveFolderSet) {
     return (

@@ -56,6 +56,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
 
   getLanguage: () => ipcRenderer.invoke("get-language"),
   setLanguage: (lang: string) => ipcRenderer.invoke("set-language", lang),
+  isLanguageSet: () => ipcRenderer.invoke("is-language-set"),
   getSavePath: () => ipcRenderer.invoke("get-save-path"),
   getDiskSpace: () => ipcRenderer.invoke("get-disk-space"),
   setSavePath: (path: string) => ipcRenderer.invoke("set-save-path", path),

@@ -276,7 +276,8 @@ const isDev = !!process.env.VITE_DEV_SERVER_URL;
 const LOCALES_DIR = isDev
   ? path.join(__dirname, "../../src/locales")
   : path.join(__dirname, "../locales");
-let currentLanguage = "en";
+let currentLanguage = ""; // Empty string = user has never explicitly chosen a language
+let languageExplicitlySet = false; // true only after user clicks Continue on language screen
 
 
 const translationsCache: Record<string, any> = {};
@@ -320,13 +321,19 @@ ipcMain.handle("get-language", async () => {
   return currentLanguage;
 });
 
+ipcMain.handle("is-language-set", async () => {
+  return languageExplicitlySet;
+});
+
 ipcMain.handle("set-language", async (_event, lang: string) => {
   if (translationsCache[lang]) {
     currentLanguage = lang;
+    languageExplicitlySet = true; // mark that user explicitly chose this language
     const settingsPath = getSettingsPath();
     let settings: any = {};
     try { settings = JSON.parse(fs.readFileSync(settingsPath, "utf-8")); } catch { }
     settings.language = lang;
+    settings.languageSet = true; // persisted so the production exe also knows
     try {
       fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
       fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2), "utf-8");
@@ -1283,8 +1290,11 @@ async function loadSettings() {
     const settingsPath = getSettingsPath();
     const raw = await fs.promises.readFile(settingsPath, "utf-8");
     const settings = JSON.parse(raw);
-    if (settings.language && translationsCache[settings.language]) {
+if (settings.language && translationsCache[settings.language]) {
       currentLanguage = settings.language;
+    }
+    if (settings.languageSet === true) {
+      languageExplicitlySet = true;
     }
     if (settings.savePath) {
       currentSavePath = settings.savePath;

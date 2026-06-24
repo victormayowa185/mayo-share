@@ -43,8 +43,9 @@ declare global {
       onDeviceNameChanged: (callback: (name: string) => void) => void;
       setDeviceName: (name: string) => Promise<void>;
       getTranslations: (lang: string) => Promise<Record<string, string>>;
-      getLanguage: () => Promise<string>;
+  getLanguage: () => Promise<string>;
       setLanguage: (lang: string) => Promise<void>;
+      isLanguageSet: () => Promise<boolean>;
       getSavePath: () => Promise<string>;
       getDiskSpace: () => Promise<{ free: number; total: number }>;
       setSavePath: (path: string) => Promise<void>;

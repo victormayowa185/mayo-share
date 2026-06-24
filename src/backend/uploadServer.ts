@@ -643,7 +643,7 @@ function getUploadHTML(): string {
       --size-color: #666;
       --btn-bg: #7C3EFF;
       --btn-hover: #5a2db8;
-      --btn-text: #000;
+       --btn-text: #ffff;
       --paste-bg: #ffffff;
       --paste-border: #ccc;
       --paste-text: #222;

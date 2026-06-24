@@ -113,15 +113,22 @@ const LanguageSelectScreen: React.FC<Props> = ({ onComplete }) => {
   }, []);
 
   const handleLanguageChange = async (lang: string) => {
-    await window.electronAPI.setLanguage(lang);
+    // Only switch the in-memory UI language for live preview.
+    // Do NOT call setLanguage() here — that persists languageSet:true and would
+    // permanently skip this screen just because the user previewed a language.
+    // Persistence happens only in handleContinue() when the user clicks Continue.
     const newTranslations = await window.electronAPI.getTranslations(lang);
     i18next.addResourceBundle(lang, "translation", newTranslations, true, true);
     await i18next.changeLanguage(lang);
     setCurrentLang(lang);
   };
 
-  const handleContinue = () => {
-    localStorage.setItem("mayo-language-set", "true");
+
+const handleContinue = async () => {
+    // Always persist the selected language via IPC (even if user never touched
+    // the dropdown). This is what App.tsx checks — not localStorage — so it
+    // works correctly in both dev and the production exe.
+    await window.electronAPI.setLanguage(currentLang);
     onComplete();
   };
 

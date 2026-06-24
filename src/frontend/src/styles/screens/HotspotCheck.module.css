@@ -25,11 +25,12 @@
 
 
 .btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   padding: 12px 32px;
   background: var(--accent);
-  /* Force white text so it's readable on the purple background in Light Mode */
-  color: #ffffff; 
-  /* Added a transparent border so it can "glow" on hover in Dark Mode */
+  color: #ffffff;
   border: 1px solid transparent;
   border-radius: 40px;
   font-size: 1rem;
