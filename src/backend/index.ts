@@ -19,6 +19,9 @@ import {
   signFile,
   verifyFile,
   safetyNumber,
+  createStreamingSigner,
+  createVerifier,
+  verifyDigest,
 } from "./solanaManager";
 
 import { startHotspot, stopHotspot, configureHotspot } from "./hotspot-mac";
@@ -313,6 +316,50 @@ function getBrowserStrings(): Record<string, string> {
 
 
 
+// ─── Integrity Check Setting ──────────────────────────────
+ipcMain.handle('get-integrity-check', async (): Promise<boolean> => {
+  try {
+    const settingsPath = getSettingsPath();
+    const raw = await fs.promises.readFile(settingsPath, 'utf-8');
+    const settings = JSON.parse(raw);
+    return settings.integrityCheck === true;
+  } catch {
+    return false; // default off
+  }
+});
+
+ipcMain.handle('set-integrity-check', async (_event, enabled: boolean) => {
+  const settingsPath = getSettingsPath();
+  let settings: any = {};
+  try {
+    const raw = await fs.promises.readFile(settingsPath, 'utf-8');
+    settings = JSON.parse(raw);
+  } catch {}
+  settings.integrityCheck = enabled;
+  await fs.promises.writeFile(settingsPath, JSON.stringify(settings, null, 2), 'utf-8');
+});
+
+// ─── Streaming Signer (for sender) ────────────────────────
+const signers = new Map<string, ReturnType<typeof createStreamingSigner>>();
+
+ipcMain.handle('start-stream-sign', async () => {
+  const id = Math.random().toString(36).slice(2);
+  signers.set(id, createStreamingSigner());
+  return id;
+});
+
+ipcMain.handle('stream-sign-chunk', async (_event, id: string, base64Chunk: string) => {
+  const signer = signers.get(id);
+  if (signer) signer.update(Buffer.from(base64Chunk, 'base64'));
+});
+
+ipcMain.handle('finish-stream-sign', async (_event, id: string) => {
+  const signer = signers.get(id);
+  if (!signer) return null;
+  signers.delete(id);
+  return signer.finalize();
+});
+
 ipcMain.handle("get-translations", async (_event, lang: string) => {
   return translationsCache[lang] || translationsCache["en"] || {};
 });
@@ -452,7 +499,7 @@ ipcMain.handle(
       );
 
 
-        const serverIP = ip || (await getBestIP());
+      const serverIP = ip || (await getBestIP());
       const url = await fileServer.start(
         filePaths,
         relativePaths,
@@ -1290,7 +1337,7 @@ async function loadSettings() {
     const settingsPath = getSettingsPath();
     const raw = await fs.promises.readFile(settingsPath, "utf-8");
     const settings = JSON.parse(raw);
-if (settings.language && translationsCache[settings.language]) {
+    if (settings.language && translationsCache[settings.language]) {
       currentLanguage = settings.language;
     }
     if (settings.languageSet === true) {
@@ -1364,7 +1411,7 @@ ipcMain.handle(
   async (_event, name: string): Promise<void> => {
     if (name && name.trim().length > 0) {
       try {
-            const settingsPath = getSettingsPath();
+        const settingsPath = getSettingsPath();
         let settings: any = {};
         if (fs.existsSync(settingsPath)) {
 
@@ -1403,8 +1450,38 @@ ipcMain.handle("get-platform", async (): Promise<string> => {
 // is never exposed to the renderer.
 ipcMain.handle("get-public-key", async (): Promise<string> => getPublicKey());
 
+// Keep signFile for any legacy callers
 ipcMain.handle("sign-file", async (_event, filePath: string) => {
   return signFile(filePath);
+});
+
+// Streaming signer — the renderer calls these 3 in sequence:
+// 1. start-stream-sign  → creates a signer, returns a signerKey
+// 2. stream-sign-chunk  → feeds each base64 chunk into the hasher
+// 3. finish-stream-sign → finalizes and returns { hash, signature, publicKey }
+// ---------- Streaming Verifier (receiver) ----------
+const verifiers = new Map<string, ReturnType<typeof createVerifier>>();
+
+ipcMain.handle("start-verify-hash", async (): Promise<string> => {
+  const id = Math.random().toString(36).slice(2);
+  verifiers.set(id, createVerifier());
+  return id;
+});
+
+ipcMain.handle("update-verify-hash", async (_event, id: string, base64Chunk: string): Promise<void> => {
+  const verifier = verifiers.get(id);
+  if (verifier) verifier.update(Buffer.from(base64Chunk, "base64"));
+});
+
+ipcMain.handle("finish-verify-hash", async (_event, id: string): Promise<string | null> => {
+  const verifier = verifiers.get(id);
+  if (!verifier) return null;
+  verifiers.delete(id);
+  return verifier.digest();
+});
+
+ipcMain.handle("verify-hash", async (_event, hash: string, signature: string, publicKey: string) => {
+  return verifyDigest(hash, signature, publicKey);
 });
 
 ipcMain.handle(

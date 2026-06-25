@@ -43,7 +43,7 @@ declare global {
       onDeviceNameChanged: (callback: (name: string) => void) => void;
       setDeviceName: (name: string) => Promise<void>;
       getTranslations: (lang: string) => Promise<Record<string, string>>;
-  getLanguage: () => Promise<string>;
+      getLanguage: () => Promise<string>;
       setLanguage: (lang: string) => Promise<void>;
       isLanguageSet: () => Promise<boolean>;
       getSavePath: () => Promise<string>;
@@ -112,23 +112,34 @@ declare global {
         type: "files" | "none";
       }>;
 
+      getIntegrityCheck: () => Promise<boolean>;
+      setIntegrityCheck: (enabled: boolean) => Promise<void>;
+      startStreamSign: () => Promise<string>;
+      streamSignChunk: (signerKey: string, base64Chunk: string) => Promise<void>;
+      finishStreamSign: (signerKey: string) => Promise<{ hash: string; signature: string; publicKey: string } | null>;
+
 
       saveTempFile: (fileName: string, base64Data: string) => Promise<string>;
       getHostname: () => Promise<string>;
 
       // ---------- Solana offline integrity ----------
       getPathForFile: (file: File) => string;
-      getPublicKey: () => Promise<string>;
 
-      signFile: (
-        filePath: string,
-      ) => Promise<{ hash: string; signature: string; publicKey: string }>;
-      verifyFile: (
-        filePath: string,
-        signature: string,
-        senderPublicKey: string,
-      ) => Promise<{ valid: boolean; hash: string; reason?: string }>;
+
+      getPublicKey: () => Promise<string>;
+      signFile: (filePath: string) => Promise<{ hash: string; signature: string; publicKey: string }>;
+      verifyFile: (filePath: string, signature: string, senderPublicKey: string) => Promise<{ valid: boolean; hash: string; reason?: string }>;
       safetyNumber: (pubA: string, pubB: string) => Promise<string>;
+
+
+
+      startVerifyHash: () => Promise<string>;
+      updateVerifyHash: (verifierId: string, base64Chunk: string) => Promise<void>;
+      finishVerifyHash: (verifierId: string) => Promise<string | null>;
+      verifyHash: (hash: string, signature: string, publicKey: string) => Promise<{ valid: boolean; reason?: string }>;
+
+
+
     };
   }
 }

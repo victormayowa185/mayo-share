@@ -146,26 +146,33 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // ==================== ADDED FOR P2P ACTIVITY & FULL PASTE SUPPORT ====================
   logP2pActivity: (type: "sent" | "received", fileName: string) =>
     ipcRenderer.invoke("log-p2p-activity", type, fileName),
-    isDirectory: (filePath: string) => ipcRenderer.invoke("is-directory", filePath),
+  isDirectory: (filePath: string) => ipcRenderer.invoke("is-directory", filePath),
   walkDirectory: (dirPath: string) => ipcRenderer.invoke("walk-directory", dirPath),
 
   // Modern Electron removed File.path — this returns the real on-disk path for a
   // dragged-and-dropped File/folder. Runs in the preload, not over IPC.
   getPathForFile: (file: File): string => webUtils.getPathForFile(file),
-
+  getIntegrityCheck: () => ipcRenderer.invoke('get-integrity-check'),
+  setIntegrityCheck: (enabled: boolean) => ipcRenderer.invoke('set-integrity-check', enabled),
+  startStreamSign: () => ipcRenderer.invoke('start-stream-sign'),
+  streamSignChunk: (signerKey: string, base64Chunk: string) => ipcRenderer.invoke('stream-sign-chunk', signerKey, base64Chunk),
+  finishStreamSign: (signerKey: string) => ipcRenderer.invoke('finish-stream-sign', signerKey),
 
   // ---------- Solana offline integrity ----------
-  getPublicKey: (): Promise<string> => ipcRenderer.invoke("get-public-key"),
-  signFile: (
-    filePath: string,
-  ): Promise<{ hash: string; signature: string; publicKey: string }> =>
-    ipcRenderer.invoke("sign-file", filePath),
-  verifyFile: (
-    filePath: string,
-    signature: string,
-    senderPublicKey: string,
-  ): Promise<{ valid: boolean; hash: string; reason?: string }> =>
+  getPublicKey: () => ipcRenderer.invoke("get-public-key"),
+  signFile: (filePath: string) => ipcRenderer.invoke("sign-file", filePath),
+  verifyFile: (filePath: string, signature: string, senderPublicKey: string) =>
     ipcRenderer.invoke("verify-file", filePath, signature, senderPublicKey),
-  safetyNumber: (pubA: string, pubB: string): Promise<string> =>
-    ipcRenderer.invoke("safety-number", pubA, pubB),
-});
+  safetyNumber: (pubA: string, pubB: string) => ipcRenderer.invoke("safety-number", pubA, pubB),
+
+
+
+  startVerifyHash: () => ipcRenderer.invoke("start-verify-hash"),
+  updateVerifyHash: (verifierId: string, base64Chunk: string) =>
+    ipcRenderer.invoke("update-verify-hash", verifierId, base64Chunk),
+  finishVerifyHash: (verifierId: string) => ipcRenderer.invoke("finish-verify-hash", verifierId),
+  verifyHash: (hash: string, signature: string, publicKey: string) =>
+    ipcRenderer.invoke("verify-hash", hash, signature, publicKey), startStreamSign: () => ipcRenderer.invoke("start-stream-sign"),
+  streamSignChunk: (signerKey: string, base64Chunk: string) =>
+    ipcRenderer.invoke("stream-sign-chunk", signerKey, base64Chunk),
+  finishStreamSign: (signerKey: string) => ipcRenderer.invoke("finish-stream-sign", signerKey),

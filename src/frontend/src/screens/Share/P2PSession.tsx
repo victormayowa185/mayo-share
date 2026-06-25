@@ -8,8 +8,6 @@ import {
   FaLock, FaShieldAlt, FaExclamationTriangle, FaCloudUploadAlt
 } from "react-icons/fa";
 
-
-
 import gsap from "gsap";
 import { useGSAP } from "@gsap/react";
 import BackButton from "../../components/BackButton";
@@ -40,7 +38,6 @@ interface ReceiveEntry {
   cancelled?: boolean;
 }
 
-
 interface ReceivedFile {
   id: string;
   name: string;
@@ -62,8 +59,6 @@ const formatBytes = (b: number) => {
 
 const shortName = (name: string) => name.split("/").pop() || name;
 
-// Read a Blob/File's bytes as base64 — used when clipboard content has no file
-// path (modern Electron removed File.path).
 const blobToBase64 = (blob: Blob): Promise<string> =>
   new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -71,7 +66,6 @@ const blobToBase64 = (blob: Blob): Promise<string> =>
     reader.onerror = reject;
     reader.readAsDataURL(blob);
   });
-
 
 interface FileGroup {
   folderName: string;
@@ -177,10 +171,12 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
   const [allCollapsed, setAllCollapsed] = useState(false);
 
   // ─── Solana integrity state ───────────────────────────────────────────────
-  const [safetyCode, setSafetyCode] = useState("");                       // shown on both screens to compare
-  const [verifyMap, setVerifyMap] =
-    useState<Record<string, "pending" | "verified" | "tampered">>({});    // per received-file result
+  const [integrityEnabled, setIntegrityEnabled] = useState(false);
+  const integrityEnabledRef = useRef(false);
 
+  const [safetyCode, setSafetyCode] = useState("");
+  const [verifyMap, setVerifyMap] =
+    useState<Record<string, "pending" | "verified" | "tampered">>({});
 
   // ─── Resume state ────────────────────────────────────────────────────────────
   const [resumeOffer, setResumeOffer] = useState<{
@@ -197,28 +193,29 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
   const rejectedRef = useRef<Set<string>>(new Set());
   const stopSendRef = useRef<Set<string>>(new Set());
   const abortBatchRef = useRef(false);
-  const fileQueueRef = useRef<QueueFile[]>([]);   // for handshake
-  // --- NEW REFS ---
+  const fileQueueRef = useRef<QueueFile[]>([]);
   const resumeOfferRef = useRef<{ offsets: Record<string, number> } | null>(null);
   const intentionalCloseRef = useRef(false);
-  // Guard so only ONE send loop runs at a time — it drains the live queue,
-  // so files you add mid-transfer get picked up automatically.
   const sendingRef = useRef(false);
 
   // ─── Solana integrity refs ────────────────────────────────────────────────
-  const myPubKeyRef = useRef<string>("");    // our own Solana public key
-  const peerPubKeyRef = useRef<string>("");  // the OTHER device's key, PINNED at handshake
-  const incomingProofRef = useRef<
-    Record<string, { hash: string; signature: string; publicKey: string }>
-  >({}); // signature/hash that arrived with each incoming file, checked on file-end
-
-
+  const myPubKeyRef = useRef<string>("");
+  const peerPubKeyRef = useRef<string>("");
+  const verifierMap = useRef<Record<string, string>>({});
 
   // Refs to the rendered rows / folder groups so we can animate them out
   const rowRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const folderRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
-  // Keep a cancelled row visible for 2s, then collapse + fade it out and remove it.
+  // ─── Load integrity setting ────────────────────────────────────────────────
+  useEffect(() => {
+    window.electronAPI.getIntegrityCheck().then(val => {
+      setIntegrityEnabled(val);
+      integrityEnabledRef.current = val;
+    });
+  }, []);
+
+  // ─── Fade helpers ──────────────────────────────────────────────────────────
   const fadeOutRow = (id: string, remove: () => void) => {
     const el = rowRefs.current[id];
     if (!el) { setTimeout(remove, 2400); return; }
@@ -230,7 +227,6 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
     });
   };
 
-  // Same idea, but for a whole folder group on the sender's queue.
   const fadeOutFolder = (folderName: string, remove: () => void) => {
     const el = folderRefs.current[folderName];
     if (!el) { setTimeout(remove, 2400); return; }
@@ -240,7 +236,6 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
       onComplete: () => { delete folderRefs.current[folderName]; remove(); },
     });
   };
-
 
   const showFileArea = useCallback(() => {
     setConnected(true);
@@ -252,8 +247,7 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
     window.electronAPI.getPublicKey().then((pk) => { myPubKeyRef.current = pk; });
   }, []);
 
-  // Once we know BOTH keys, compute the shared safety code so the two users
-  // can confirm nobody swapped a key (anti man-in-the-middle).
+  // Once we know BOTH keys, compute the shared safety code.
   const updateSafetyCode = async () => {
     const mine = myPubKeyRef.current;
     const peer = peerPubKeyRef.current;
@@ -264,23 +258,19 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
     } catch { /* ignore */ }
   };
 
-
   useEffect(() => {
     receiveMapRef.current = receiveMap;
   }, [receiveMap]);
 
-  // Keep queue ref in sync for handshake
   useEffect(() => {
     fileQueueRef.current = fileQueue;
   }, [fileQueue]);
 
-  // Keep resume offer in a ref so DC message handlers see the latest value
   useEffect(() => {
     resumeOfferRef.current = resumeOffer;
   }, [resumeOffer]);
 
-  // Restore an interrupted SEND session so its files are ready to resume
-  // after the user goes back and reconnects the normal way.
+  // Restore an interrupted SEND session
   useEffect(() => {
     if (initialMode !== "send") return;
     const saved = loadSessionFromDisk();
@@ -314,7 +304,6 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
   const setupConnectionMonitor = useCallback((pc: RTCPeerConnection) => {
     pc.onconnectionstatechange = () => {
       const state = pc.connectionState;
-      // "closed" only happens when WE close (back button / cleanup) – ignore it.
       if (state === "failed" || state === "disconnected") {
         if (intentionalCloseRef.current) return;
         setConnectionState("disconnected");
@@ -333,7 +322,7 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
 
   // ─── Cleanup ──────────────────────────────────────────────────────────────────
   const cleanupWebRTC = useCallback(() => {
-    intentionalCloseRef.current = true; // so the monitor doesn't flag a disconnect
+    intentionalCloseRef.current = true;
     if (localDC.current) {
       localDC.current.close();
       localDC.current = null;
@@ -346,28 +335,22 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
     setJoining(false);
     setIsSending(false);
     setResumeOffer(null);
-    // NOTE: we intentionally do NOT clear the saved session here, so the
-    // unfinished transfer can be detected and resumed after reconnect.
   }, []);
 
-  // ─── Paste handler (unchanged) ──────────────────────────────────────────────
+  // ─── Paste handler ──────────────────────────────────────────────────────────
   const handlePaste = useCallback(async (e: ClipboardEvent) => {
     const target = e.target as HTMLElement;
     if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
       return;
     }
     const clipboard = e.clipboardData;
-
     if (!clipboard) return;
     const browserFiles = Array.from(clipboard.files);
     const items = Array.from(clipboard.items);
     const plainText = clipboard.getData("text/plain");
-    // Capture the image blob NOW — after the first await, getAsFile() returns
-    // null because the clipboard event data is detached.
     const imageItemSync = items.find(item => item.type.startsWith("image/"));
     const imageBlobSync = imageItemSync ? imageItemSync.getAsFile() : null;
     e.preventDefault();
-
 
     let clipboardPaths: { paths: string[]; type: string } = { paths: [], type: "none" };
     try {
@@ -410,8 +393,6 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
         if (isInvalidFile(name)) continue;
         let filePath = (f as any).path || null;
         let size = f.size;
-        // Modern Electron removed File.path, so clipboard blobs have no path —
-        // persist their bytes to a temp file so ANY copied content can be sent.
         if (!filePath) {
           try {
             const base64 = await blobToBase64(f);
@@ -452,7 +433,6 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
       return;
     }
 
-
     if (plainText && plainText.trim()) {
       const fileName = `note-${Date.now()}.txt`;
       const base64 = btoa(unescape(encodeURIComponent(plainText)));
@@ -474,7 +454,7 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
     return () => document.removeEventListener("paste", handlePaste as any);
   }, [handlePaste]);
 
-  // ─── File & folder pickers (unchanged) ──────────────────────────────────────
+  // ─── File & folder pickers ──────────────────────────────────────────────────
   const addFiles = async () => {
     const paths = await window.electronAPI.selectFile();
     if (!paths) return;
@@ -509,7 +489,7 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
     setFileQueue(prev => [...prev, ...newFiles]);
   };
 
-  // ─── Drag & drop (files + folders) ──────────────────────────────────────────
+  // ─── Drag & drop ─────────────────────────────────────────────────────────────
   const [isDragging, setIsDragging] = useState(false);
   const dragCounter = useRef(0);
 
@@ -584,23 +564,19 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
   };
 
   const cancelFile = (id: string) => {
-
     stopSendRef.current.add(id);
     setFileQueue(prev => prev.map(f =>
       f.id === id && (f.status === "queued" || f.status === "transferring")
         ? { ...f, status: "cancelled" }
         : f
     ));
-    // Tell the receiver so its stuck incoming row cancels too
     if (localDC.current && localDC.current.readyState === "open") {
       localDC.current.send(JSON.stringify({ type: "cancel-file", id }));
     }
-    // Show "cancelled" for 2s, then remove the row from the queue
     fadeOutRow(id, () =>
       setFileQueue(prev => prev.filter(f => f.id !== id))
     );
   };
-
 
   const cancelFolder = (folderName: string) => {
     const ids = fileQueueRef.current
@@ -613,11 +589,9 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
     setFileQueue(prev => prev.map(f =>
       ids.includes(f.id) ? { ...f, status: "cancelled" as const } : f
     ));
-    // Tell the receiver so its stuck incoming row cancels too
     if (localDC.current && localDC.current.readyState === "open") {
       localDC.current.send(JSON.stringify({ type: "cancel-folder", folderName }));
     }
-    // Show "cancelled" for 2s, then remove the whole folder from the queue
     fadeOutFolder(folderName, () =>
       setFileQueue(prev => prev.filter(f => !ids.includes(f.id)))
     );
@@ -628,19 +602,16 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
     });
   };
 
-
   const cancelIncomingFile = (id: string) => {
     const entry = receiveMapRef.current[id];
     rejectedRef.current.add(id);
     delete receivePathsRef.current[id];
-    // Show "cancelled" for 2s, then fade out and remove
     setReceiveMap(prev =>
       prev[id] ? { ...prev, [id]: { ...prev[id], cancelled: true } } : prev
     );
     fadeOutRow(id, () =>
       setReceiveMap(prev => { const n = { ...prev }; delete n[id]; return n; })
     );
-    // Tell the sender to stop sending this file
     if (localDC.current && localDC.current.readyState === "open") {
       localDC.current.send(JSON.stringify({
         type: "receiver-cancel-file",
@@ -650,9 +621,6 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
     }
   };
 
-  // ─── Receiver side: cancel an entire incoming folder ──────────────────────
-  // The receiver only "sees" the file currently arriving, so we send the
-  // folder name and let the sender drop every remaining file in that folder.
   const cancelIncomingFolder = (folderName: string) => {
     const ids: string[] = [];
     for (const [id, entry] of Object.entries(receiveMapRef.current)) {
@@ -681,8 +649,6 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
     }
   };
 
-
-
   const toggleFolder = (folderName: string) => {
     setCollapsedFolders(prev => {
       const next = new Set(prev);
@@ -702,12 +668,10 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
     }
   };
 
-  // ─── UPDATED sendAll with offset support and persistence ────────────────────
-  // ─── sendAll: drains the LIVE queue, so files added mid-transfer are sent too ─
+  // ─── sendAll with conditional integrity ────────────────────────────────────
   const sendAll = async (startOffsets: Record<string, number> = {}) => {
     const dc = localDC.current;
     if (!dc || dc.readyState !== "open") return;
-    // A loop is already running — it will pick up any newly-queued files itself
     if (sendingRef.current) return;
 
     sendingRef.current = true;
@@ -715,8 +679,6 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
     setIsSending(true);
     saveSessionToDisk(fileQueueRef.current);
 
-    // Tracks files we've already started this run (synchronous, so the live
-    // `find` below never re-picks the same file while state catches up).
     const processed = new Set<string>();
 
     try {
@@ -734,13 +696,14 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
             : f
         ));
 
-        // Sign the file OFFLINE: hash it (SHA-256) + sign the hash with our
-        // Ed25519/Solana key. Sent alongside file-start; verified on file-end.
-        let proof: { hash: string; signature: string; publicKey: string } | null = null;
-        try {
-          proof = await window.electronAPI.signFile(file.path!);
-        } catch (err) {
-          console.error("signFile failed:", err);
+        // Start a streaming signer ONLY if integrity is enabled
+        let signerKey: string | null = null;
+        if (integrityEnabledRef.current) {
+          try {
+            signerKey = await window.electronAPI.startStreamSign();
+          } catch (err) {
+            console.error("startStreamSign failed:", err);
+          }
         }
 
         dc.send(JSON.stringify({
@@ -749,18 +712,17 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
           name: file.name,
           size: file.size,
           offset,
-          hash: proof?.hash,
-          signature: proof?.signature,
-          publicKey: proof?.publicKey,
         }));
 
-
-
-        const CHUNK_SIZE = 16384;
+        const CHUNK_SIZE = 256 * 1024;
         let currentOffset = offset;
+        let cancelled = false;
 
         while (currentOffset < file.size) {
-          if (abortBatchRef.current || stopSendRef.current.has(file.id)) break;
+          if (abortBatchRef.current || stopSendRef.current.has(file.id)) {
+            cancelled = true;
+            break;
+          }
           if (dc.bufferedAmount > 1024 * 1024) {
             await new Promise(resolve => {
               const check = () => {
@@ -772,6 +734,14 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
           }
 
           const base64 = await window.electronAPI.readFileChunk(file.path!, currentOffset, CHUNK_SIZE);
+
+          // Feed chunk into hasher only if integrity is on
+          if (signerKey) {
+            try {
+              await window.electronAPI.streamSignChunk(signerKey, base64);
+            } catch { /* non-fatal */ }
+          }
+
           dc.send(JSON.stringify({ type: "file-chunk", id: file.id, data: base64, offset: currentOffset }));
 
           currentOffset += CHUNK_SIZE;
@@ -787,12 +757,32 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
           }
         }
 
-        // Cancelled / aborted mid-file — don't mark done, just move on
-        if (stopSendRef.current.has(file.id) || abortBatchRef.current) continue;
+        if (cancelled) {
+          if (signerKey) {
+            try { await window.electronAPI.finishStreamSign(signerKey); } catch { }
+          }
+          continue;
+        }
 
-        // NOTE: name + size are now included so the receiver always shows a
-        // correct "Received Files" row (fixes blank/invisible received rows).
-        dc.send(JSON.stringify({ type: "file-end", id: file.id, name: file.name, size: file.size }));
+        let proof: { hash: string; signature: string; publicKey: string } | null = null;
+        if (signerKey) {
+          try {
+            proof = await window.electronAPI.finishStreamSign(signerKey);
+          } catch (err) {
+            console.error("finishStreamSign failed:", err);
+          }
+        }
+
+        dc.send(JSON.stringify({
+          type: "file-end",
+          id: file.id,
+          name: file.name,
+          size: file.size,
+          hash: proof?.hash,
+          signature: proof?.signature,
+          publicKey: proof?.publicKey,
+        }));
+
         setFileQueue(prev => {
           const next = prev.map(f =>
             f.id === file.id ? { ...f, status: "done", progress: 100 } : f
@@ -812,44 +802,31 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
     }
   };
 
-
-  // ─── UPDATED handleDCMessage with handshake and resume ─────────────────────
+  // ─── handleDCMessage with conditional integrity ──────────────────────────
   const handleDCMessage = useCallback(async (raw: string) => {
     let msg: any; try { msg = JSON.parse(raw); } catch { return; }
 
-    // ─── Handshake: sender offers file list; receiver replies with byte offsets
-    // The RECEIVER is the source of truth: we check how many bytes are ACTUALLY
-    // on disk for each offered file and resume from exactly there.
     if (msg.type === "handshake-offer") {
-
-
       const saveDir = await window.electronAPI.getSavePath();
-      // Use the OS-native separator: Windows save paths contain "\", Mac/Linux "/".
-      // Hardcoding "\" created literal "folder\file" names on macOS/Linux.
       const sep = saveDir.includes("\\") ? "\\" : "/";
       const mayoShareDir = saveDir + sep + "MAYO Share";
       const offsets: Record<string, number> = {};
       for (const f of msg.files) {
         const safeName = f.name.replace(/\//g, sep);
         const savePath = mayoShareDir + sep + safeName;
-
-
-
         let onDisk = 0;
         try {
           onDisk = await window.electronAPI.getFileSize(savePath);
         } catch {
-          onDisk = 0; // file not there yet
+          onDisk = 0;
         }
         if (onDisk > 0 && onDisk < f.size) {
           offsets[f.id] = onDisk;
         }
       }
 
-
-      // Pin the sender's Solana key for this session, then surface the shared
-      // safety code so both users can confirm no key was swapped (anti-MITM).
-      if (msg.senderPublicKey) {
+      // Only pin keys and compute safety code if integrity is enabled
+      if (integrityEnabledRef.current && msg.senderPublicKey) {
         peerPubKeyRef.current = msg.senderPublicKey;
         updateSafetyCode();
       }
@@ -858,21 +835,18 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
         localDC.current.send(JSON.stringify({
           type: "handshake-response",
           offsets,
-          receiverPublicKey: myPubKeyRef.current,
+          receiverPublicKey: integrityEnabledRef.current ? myPubKeyRef.current : "",
         }));
       }
 
-      // Only prompt if there's actually an unfinished transfer to resume
       if (Object.keys(offsets).length > 0) {
         setResumeOffer({ offsets });
       }
       return;
-
     }
 
-    // ─── Handshake response: receiver tells sender where to start ───────────
     if (msg.type === "handshake-response") {
-      if (msg.receiverPublicKey) {
+      if (integrityEnabledRef.current && msg.receiverPublicKey) {
         peerPubKeyRef.current = msg.receiverPublicKey;
         updateSafetyCode();
       }
@@ -884,8 +858,6 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
       return;
     }
 
-
-    // ─── Receiver pressed a resume button – tell the sender to (re)start sending
     if (msg.type === "request-send") {
       setResumeOffer(null);
       if (msg.fresh) clearSessionFromDisk();
@@ -894,16 +866,11 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
       return;
     }
 
-    // ─── Sender pressed a resume button – dismiss our (receiver) prompt
     if (msg.type === "resume-dismiss") {
       setResumeOffer(null);
       return;
     }
 
-    // ─── File reject (unchanged) ─────────────────────────────────────────────
-    // âââ File reject (unchanged) âââââââââââââââââââââââââââââââââââââââââââ
-    // âââ File reject (no-space is a real error, so keep that message; a plain
-    //     decline shows no text â the row just fades out) âââââââââââââââââââââ
     if (msg.type === "file-reject") {
       stopSendRef.current.add(msg.id);
       abortBatchRef.current = true;
@@ -916,11 +883,14 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
       return;
     }
 
-    // âââ Sender cancelled a single file (handled on the receiver) ââââââââââââ
-    // Ignore any in-flight chunks, mark the incoming row cancelled, then fade.
     if (msg.type === "cancel-file") {
       rejectedRef.current.add(msg.id);
       delete receivePathsRef.current[msg.id];
+      const vid = verifierMap.current[msg.id];
+      if (vid) {
+        try { await window.electronAPI.finishVerifyHash(vid); } catch {}
+        delete verifierMap.current[msg.id];
+      }
       setReceiveMap(prev =>
         prev[msg.id] ? { ...prev, [msg.id]: { ...prev[msg.id], cancelled: true } } : prev
       );
@@ -930,7 +900,6 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
       return;
     }
 
-    // âââ Sender cancelled a whole folder (handled on the receiver) âââââââââââ
     if (msg.type === "cancel-folder") {
       const ids = Object.keys(receiveMapRef.current).filter(id => {
         const name = receiveMapRef.current[id].name;
@@ -940,6 +909,11 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
       ids.forEach(id => {
         rejectedRef.current.add(id);
         delete receivePathsRef.current[id];
+        const vid = verifierMap.current[id];
+        if (vid) {
+          try { window.electronAPI.finishVerifyHash(vid); } catch {}
+          delete verifierMap.current[id];
+        }
       });
       setReceiveMap(prev => {
         const n = { ...prev };
@@ -954,11 +928,6 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
       return;
     }
 
-
-    // âââ Receiver cancelled a single incoming file (handled on sender) âââ
-    // ─── Receiver cancelled a single file (handled on sender) ─────────────
-    // Only stops THIS file — the rest of the batch keeps sending. No text;
-    // the row just shows "cancelled" for 2s then fades out.
     if (msg.type === "receiver-cancel-file") {
       stopSendRef.current.add(msg.id);
       setFileQueue(prev => prev.map(f =>
@@ -972,7 +941,6 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
       return;
     }
 
-    // ─── Receiver cancelled a whole folder (handled on sender) ───────────
     if (msg.type === "receiver-cancel-folder") {
       const ids = fileQueueRef.current
         .filter(f => {
@@ -990,9 +958,6 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
       return;
     }
 
-
-
-    // ─── File start (with resume support AND clears stale entries) ──────────
     if (msg.type === "file-start") {
       try {
         const { free } = await window.electronAPI.getDiskSpace();
@@ -1018,58 +983,44 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
         }
       } catch { }
 
-      // Clear any stale receiveMap entry for this file ID
-      setReceiveMap(prev => {
-        const n = { ...prev };
-        delete n[msg.id];
-        return n;
-      });
+      setReceiveMap(prev => { const n = { ...prev }; delete n[msg.id]; return n; });
 
-   const saveDir = await window.electronAPI.getSavePath();
-  // OS-native separator (see note in handshake-offer).
-  const sep = saveDir.includes("\\") ? "\\" : "/";
-  const mayoShareDir = saveDir + sep + "MAYO Share";
-  const safeName = msg.name.replace(/\//g, sep);
-  const savePath = mayoShareDir + sep + safeName;
-
+      const saveDir = await window.electronAPI.getSavePath();
+      const sep = saveDir.includes("\\") ? "\\" : "/";
+      const mayoShareDir = saveDir + sep + "MAYO Share";
+      const safeName = msg.name.replace(/\//g, sep);
+      const savePath = mayoShareDir + sep + safeName;
 
       const isResuming = msg.offset && msg.offset > 0;
       await window.electronAPI.createReceiveFile(savePath, isResuming);
-
-
-
       receivePathsRef.current[msg.id] = savePath;
-      // Remember the signature/hash that came with this file so we can verify
-      // it against the sender's PINNED key once the last byte lands.
-      if (msg.signature && msg.hash) {
-        incomingProofRef.current[msg.id] = {
-          hash: msg.hash,
-          signature: msg.signature,
-          publicKey: msg.publicKey || "",
-        };
-        setVerifyMap(prev => ({ ...prev, [msg.id]: "pending" }));
+
+      // Start verifier only if integrity is enabled
+      let verifierId: string | null = null;
+      if (integrityEnabledRef.current) {
+        try {
+          verifierId = await window.electronAPI.startVerifyHash();
+        } catch { /* ignore */ }
       }
-      setReceiveMap(prev => ({
-        ...prev,
-        [msg.id]: {
-          name: msg.name,
-          size: msg.size,
-          path: savePath,
-          received: msg.offset || 0
-        }
-      }));
+      verifierMap.current[msg.id] = verifierId || "";
+
+      setReceiveMap(prev => ({ ...prev, [msg.id]: { name: msg.name, size: msg.size, path: savePath, received: msg.offset || 0 } }));
       return;
-
-
-
     }
 
-    // ─── File chunk (unchanged) ──────────────────────────────────────────────
     if (msg.type === "file-chunk") {
       if (rejectedRef.current.has(msg.id)) return;
       const path = receivePathsRef.current[msg.id];
       if (!path) return;
       await window.electronAPI.appendReceiveChunk(path, msg.data);
+
+      const verifierId = verifierMap.current[msg.id];
+      if (verifierId) {
+        try {
+          await window.electronAPI.updateVerifyHash(verifierId, msg.data);
+        } catch { /* non-fatal */ }
+      }
+
       const chunkLen = atob(msg.data).length;
       setReceiveMap(prev => {
         const entry = prev[msg.id];
@@ -1079,15 +1030,29 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
       return;
     }
 
-    // ─── File end (unchanged) ────────────────────────────────────────────────
     if (msg.type === "file-end") {
       if (rejectedRef.current.has(msg.id)) {
         rejectedRef.current.delete(msg.id);
+        const vid = verifierMap.current[msg.id];
+        if (vid) {
+          try { await window.electronAPI.finishVerifyHash(vid); } catch {}
+          delete verifierMap.current[msg.id];
+        }
         return;
       }
       const entry = receiveMapRef.current[msg.id];
       const savedPath = receivePathsRef.current[msg.id] || entry?.path || "";
       delete receivePathsRef.current[msg.id];
+
+      let fileHash: string | null = null;
+      const vid = verifierMap.current[msg.id];
+      if (vid) {
+        try {
+          fileHash = await window.electronAPI.finishVerifyHash(vid);
+        } catch { }
+        delete verifierMap.current[msg.id];
+      }
+
       setReceiveMap(prev => { const n = { ...prev }; delete n[msg.id]; return n; });
       setReceivedFiles(prev => [
         ...prev,
@@ -1099,36 +1064,32 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
         },
       ]);
 
-
       setSessionStatus(t("fileReceived", { name: msg.name || "" }));
       window.electronAPI.logP2pActivity("received", msg.name || entry?.name || "");
 
-      // ─── Offline integrity check (Solana / Ed25519) ──────────────────────
-      // Re-hash the file we ACTUALLY received and verify the sender's signature
-      // against the key we PINNED at handshake. One changed byte (or a swapped
-      // key) makes this fail.
-      const proof = incomingProofRef.current[msg.id];
-      delete incomingProofRef.current[msg.id];
-      if (proof && savedPath) {
-        const pinnedKey = peerPubKeyRef.current || proof.publicKey;
-        // Anti-MITM: the per-file key MUST match the key pinned at handshake.
-        if (peerPubKeyRef.current && proof.publicKey && proof.publicKey !== peerPubKeyRef.current) {
-          setVerifyMap(prev => ({ ...prev, [msg.id]: "tampered" }));
-        } else {
-          try {
-            const res = await window.electronAPI.verifyFile(savedPath, proof.signature, pinnedKey);
-            setVerifyMap(prev => ({ ...prev, [msg.id]: res.valid ? "verified" : "tampered" }));
-          } catch {
+      // Only verify if integrity is enabled and we have a proof
+      if (integrityEnabledRef.current) {
+        const proof = (msg.hash && msg.signature)
+          ? { hash: msg.hash, signature: msg.signature, publicKey: msg.publicKey || "" }
+          : null;
+
+        if (proof && fileHash) {
+          const pinnedKey = peerPubKeyRef.current || proof.publicKey;
+          if (peerPubKeyRef.current && proof.publicKey && proof.publicKey !== peerPubKeyRef.current) {
             setVerifyMap(prev => ({ ...prev, [msg.id]: "tampered" }));
+          } else {
+            try {
+              const res = await window.electronAPI.verifyHash(fileHash, proof.signature, pinnedKey);
+              setVerifyMap(prev => ({ ...prev, [msg.id]: res.valid ? "verified" : "tampered" }));
+            } catch {
+              setVerifyMap(prev => ({ ...prev, [msg.id]: "tampered" }));
+            }
           }
         }
       }
+      return;
     }
   }, [t, sendAll]);
-
-
-
-
 
   const processMessageQueue = useCallback(async () => {
     if (processingRef.current) return;
@@ -1140,7 +1101,7 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
     processingRef.current = false;
   }, [handleDCMessage]);
 
-  // ─── startSendMode (sender) with handshake on open ─────────────────────────
+  // ─── startSendMode ──────────────────────────────────────────────────────────
   const startSendMode = async () => {
     cleanupWebRTC();
     try {
@@ -1159,23 +1120,15 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
       const dc = pc.createDataChannel("mayo-share", { ordered: true });
       localDC.current = dc;
 
-
       dc.onopen = () => {
         showFileArea();
-        // Send handshake: file list + our Solana public key (so the receiver
-        // can pin it and build the shared safety code).
         const queue = fileQueueRef.current;
         dc.send(JSON.stringify({
           type: "handshake-offer",
           files: queue,
-          senderPublicKey: myPubKeyRef.current,
+          senderPublicKey: integrityEnabledRef.current ? myPubKeyRef.current : "",
         }));
       };
-
-
-
-
-
 
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
@@ -1211,7 +1164,7 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
       new Promise<void>(resolve => setTimeout(resolve, 1500)),
     ]);
 
-  // ─── connectWithCode (receiver) ─────────────────────────────────────────────
+  // ─── connectWithCode ────────────────────────────────────────────────────────
   const connectWithCode = async () => {
     const code = joinCode.join("");
     if (code.length !== 4) return;
@@ -1233,7 +1186,6 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
         localDC.current = event.channel;
         localDC.current.onopen = () => {
           showFileArea();
-          // Receiver doesn't send handshake; sender will
         };
         localDC.current.onmessage = e => { messageQueueRef.current.push(e.data); processMessageQueue(); };
       };
@@ -1263,7 +1215,7 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
     }
   };
 
-  // ─── Digit input handlers (unchanged) ──────────────────────────────────────
+  // ─── Digit input handlers ──────────────────────────────────────────────────
   const handleDigitChange = (index: number, value: string) => {
     const digit = value.replace(/\D/g, "").slice(-1);
     const newCode = [...joinCode]; newCode[index] = digit; setJoinCode(newCode);
@@ -1316,6 +1268,7 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
 
   // ─── Render helpers ─────────────────────────────────────────────────────────
   const renderVerifyBadge = (id: string) => {
+    if (!integrityEnabledRef.current) return null;
     const v = verifyMap[id];
     if (!v) return null;
     if (v === "verified") {
@@ -1338,14 +1291,11 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
   };
 
   const renderQueueRow = (f: QueueFile) => (
-
-
     <div
       key={f.id}
       ref={el => { rowRefs.current[f.id] = el; }}
       className={styles.queueItem}
     >
-
       <div className={styles.queueName}>{f.name}</div>
       <div className={styles.queueSize}>{formatBytes(f.size)}</div>
       {f.status === "transferring" && <progress value={f.progress} max="100" className={styles.progress} />}
@@ -1360,8 +1310,6 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
                 : f.status}
         </div>
       )}
-
-
       {(f.status === "queued" || f.status === "transferring") && (
         <button className={styles.removeBtn} onClick={() => cancelFile(f.id)} title="Cancel">
           <FaTimes />
@@ -1370,7 +1318,7 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
     </div>
   );
 
-  // ─── Resume / Start-Fresh controls (either side can trigger) ──────────────
+  // ─── Resume controls ────────────────────────────────────────────────────────
   const beginSend = (offsets: Record<string, number>) => {
     setResumeOffer(null);
     if (localDC.current && localDC.current.readyState === "open") {
@@ -1388,9 +1336,6 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
     }
   };
 
-  // Cancel just dismisses the resume prompt (on BOTH sides) without sending
-  // anything. The partial file is left as-is — the user simply doesn't want
-  // to continue with it.
   const handleCancelResume = () => {
     clearSessionFromDisk();
     setResumeOffer(null);
@@ -1399,8 +1344,7 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
     }
   };
 
-
-  // ─── Connection-lost screen: the other device dropped off the network ─────
+  // ─── Connection-lost screen ────────────────────────────────────────────────
   if (connectionState === "disconnected") {
     return (
       <div className={styles.container}>
@@ -1444,6 +1388,7 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
     );
   }
 
+  // ─── Main render ────────────────────────────────────────────────────────────
   return (
     <div
       className={styles.container}
@@ -1463,8 +1408,6 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
             alignItems: "center",
             justifyContent: "center",
             gap: 18,
-            // Glassy: just blur the page content with a faint frosted layer —
-            // no solid color, so it looks right in both light & dark mode.
             background: "rgba(255, 255, 255, 0.04)",
             backdropFilter: "blur(10px) saturate(120%)",
             WebkitBackdropFilter: "blur(10px) saturate(120%)",
@@ -1494,7 +1437,6 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
 
       <BackButton onClick={() => { cleanupWebRTC(); onBack(); }} />
       <h2 className={styles.title}>{t("deviceConnect")}</h2>
-
 
       {!connected && mode === "send" && (
         <div className={styles.createPanel}>
@@ -1548,7 +1490,6 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
 
       {connected && (
         <div className={styles.fileArea}>
-          {/* ─── Resume prompt ────────────────────────────────────────── */}
           {resumeOffer && (
             <div style={{
               border: '2px solid var(--accent)',
@@ -1571,15 +1512,13 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
                 <button className={styles.ghostBtn} onClick={handleCancelResume}>
                   <FaTimes style={{ marginRight: 6 }} /> Cancel
                 </button>
-
               </div>
             </div>
           )}
 
-
           <div className={styles.connectedBadge}><FaCircle size={10} color="#4CAF50" /> {t("connected")}</div>
 
-          {safetyCode && (
+          {safetyCode && integrityEnabled && (
             <div
               style={{
                 display: "flex", alignItems: "center", gap: 10,
@@ -1602,23 +1541,16 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
 
           <p className={styles.subtitle}>Add files, then start sharing.</p>
 
-
-
-          {/* Send button — only when nothing is transferring. During a transfer,
-              files added are queued and auto-sent, so the button isn't needed. */}
           {fileQueue.some(f => f.status === "queued") && !isSending && !resumeOffer && (
             <button className={styles.sendBtn} onClick={() => sendAll({})} style={{ width: '100%' }}>
               <FaUpload /> {t("send")} ({formatBytes(fileQueue.filter(f => f.status === "queued").reduce((sum, f) => sum + f.size, 0))})
             </button>
           )}
 
-
-
           <div className={styles.actionRow}>
             <button className={styles.btn} onClick={addFiles}><FaPlus /> Add Files</button>
             <button className={styles.ghostBtn} onClick={addFolder}><FaFolderOpen /> Add Folder</button>
           </div>
-
 
           {fileQueue.length === 0 && Object.keys(receiveMap).length === 0 && receivedFiles.length === 0 && (
             <div className={styles.emptyState}>
@@ -1659,7 +1591,6 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
                             className={styles.folderGroup}
                           >
                             <div className={styles.folderHeader} onClick={() => toggleFolder(group.folderName)}>
-
                               <span className={styles.folderArrow}>{collapsed ? <FaChevronRight /> : <FaChevronDown />}</span>
                               <span className={styles.folderName}>{group.folderName}</span>
                               <span className={styles.folderMeta}>{group.files.length} files · {formatBytes(totalSize)}</span>
@@ -1746,9 +1677,6 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
             </div>
           )}
 
-
-
-
           {receivedFiles.length > 0 && (
             <>
               <div className={styles.sectionDivider}>
@@ -1760,7 +1688,6 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
               <div className={styles.queue}>
                 {receivedGroups.map(group => {
                   if (group.folderName === "") {
-
                     return group.files.map(f => (
                       <div key={f.id} className={styles.queueItem}>
                         <div className={styles.queueName}>{f.name}</div>
@@ -1770,10 +1697,6 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
                         </div>
                       </div>
                     ));
-
-
-
-
                   }
                   const collapsed = collapsedFolders.has(`received-${group.folderName}`);
                   const totalSize = group.files.reduce((s, f) => s + f.size, 0);
@@ -1790,8 +1713,6 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
                           {collapsed ? "Expand" : "Collapse"}
                         </button>
                       </div>
-
-
                       {!collapsed && group.files.map(f => (
                         <div key={f.id} className={styles.queueItem}>
                           <div className={styles.queueName}>{f.name.split("/").slice(1).join("/") || f.name}</div>
@@ -1801,12 +1722,6 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
                           </div>
                         </div>
                       ))}
-
-
-
-
-
-
                     </div>
                   );
                 })}

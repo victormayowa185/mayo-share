@@ -7,7 +7,7 @@ import gsap from "gsap";
 import { useGSAP } from "@gsap/react";
 import { getTheme, applyTheme } from "../../themeInit";
 import styles from "../../styles/screens/SettingsScreen.module.css";
-import LanguagePicker from "../../components/LanguagePicker"; // ✅ IMPORT
+import LanguagePicker from "../../components/LanguagePicker";
 
 gsap.registerPlugin(useGSAP);
 
@@ -42,6 +42,7 @@ const SettingsScreen: React.FC<Props> = ({ onBack }) => {
   const [deviceName, setDeviceName] = useState("");
   const [editDeviceName, setEditDeviceName] = useState("");
   const [editingDevice, setEditingDevice] = useState(false);
+  const [integrityEnabled, setIntegrityEnabled] = useState(false); // ✅ only once
   const [themeMode, setThemeMode] = useState<"system" | "light" | "dark">("system");
 
   const cardsRef = useRef<HTMLDivElement>(null);
@@ -65,6 +66,20 @@ const SettingsScreen: React.FC<Props> = ({ onBack }) => {
       return () => ctx.revert();
     }
   }, []);
+
+  // Load integrity setting
+  useEffect(() => {
+    (async () => {
+      const val = await window.electronAPI.getIntegrityCheck();
+      setIntegrityEnabled(val);
+    })();
+  }, []);
+
+  const handleIntegrityToggle = async () => {
+    const newVal = !integrityEnabled;
+    setIntegrityEnabled(newVal);
+    await window.electronAPI.setIntegrityCheck(newVal);
+  };
 
   useEffect(() => {
     const saved = getTheme();
@@ -195,8 +210,7 @@ const SettingsScreen: React.FC<Props> = ({ onBack }) => {
           )}
         </div>
 
-        {/* Language Card – NOW USING CUSTOM PICKER */}
-
+        {/* Language Card */}
         <div className={styles.card}>
           <h3>{t("language")}</h3>
           <p className={styles.cardDesc}>Select your preferred interface language.</p>
@@ -208,8 +222,6 @@ const SettingsScreen: React.FC<Props> = ({ onBack }) => {
             />
           </div>
         </div>
-
-
 
         {/* Theme Card */}
         <div className={styles.card}>
@@ -234,6 +246,26 @@ const SettingsScreen: React.FC<Props> = ({ onBack }) => {
             >
               {t("dark")}
             </button>
+          </div>
+        </div>
+
+        {/* File Integrity Toggle Card */}
+        {/* File Integrity Toggle Card */}
+        <div className={styles.card}>
+          <div className={styles.integrityRow}>
+            <div>
+              <h3>{t("fileIntegrity")}</h3>
+              <p className={styles.cardDesc}>{t("integrityDesc")}</p>
+            </div>
+            <div className={styles.integrityToggleGroup}>
+              <button
+                className={`${styles.toggleSwitch} ${integrityEnabled ? styles.active : ''}`}
+                onClick={handleIntegrityToggle}
+                aria-label="Toggle file integrity"
+              >
+                <span className={`${styles.toggleThumb} ${integrityEnabled ? styles.active : ''}`} />
+              </button>
+            </div>
           </div>
         </div>
 

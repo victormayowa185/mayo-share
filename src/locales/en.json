@@ -221,7 +221,6 @@
   "storageUsage": "Device storage usage",
   "receiverNoSpace": "Stopped: receiver does not have enough space for {{name}}.",
   "receiverDeclined": "Receiver declined {{name}}.",
-
   "browserDownload": "Download",
   "browserDownloadAllZip": "Download All as ZIP",
   "browserBuildingZip": "Building ZIP…",
@@ -229,5 +228,7 @@
   "browserSize": "Size",
   "browserFilesShared_one": "{{count}} file shared with you",
   "browserFilesShared_other": "{{count}} files shared with you",
-  "browserSharedVia": "Shared via MAYO Share • Offline P2P File Transfer"
+  "browserSharedVia": "Shared via MAYO Share • Offline P2P File Transfer",
+  "fileIntegrity": "File Integrity (Solana)",
+  "integrityDesc": "Verify received files haven't been altered. Uses Solana Ed25519 signatures. May add small latency."
 }

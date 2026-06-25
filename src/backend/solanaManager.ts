@@ -72,6 +72,30 @@ export async function signFile(
   };
 }
 
+// Streaming signer: accepts chunks one at a time so the caller can feed
+// each chunk as it reads it — no second disk pass, zero extra wait time.
+export function createStreamingSigner() {
+  const kp = loadOrCreateKeypair();
+  const hash = crypto.createHash("sha256");
+
+  return {
+    // Call this for every chunk you read (same Buffer/Uint8Array you're sending)
+    update(chunk: Buffer | Uint8Array) {
+      hash.update(chunk);
+    },
+    // Call this once after the last chunk — returns the same shape as signFile()
+    finalize(): { hash: string; signature: string; publicKey: string } {
+      const digest = hash.digest();
+      const sig = nacl.sign.detached(new Uint8Array(digest), kp.secretKey);
+      return {
+        hash: bs58.encode(digest),
+        signature: bs58.encode(sig),
+        publicKey: kp.publicKey.toBase58(),
+      };
+    },
+  };
+}
+
 // Verify a received file against the sender's PINNED public key.
 // If a single byte changed in transit (or the key was swapped) -> valid:false.
 export async function verifyFile(
@@ -97,9 +121,32 @@ export async function verifyFile(
 // A short human-comparable "safety code" derived from BOTH public keys.
 // Both devices compute the SAME 8-digit number (keys are sorted first), so the
 // two users just read it aloud / eyeball it. Mismatch == possible MITM.
-export function safetyNumber(pubA: string, pubB: string): string {
-  const [a, b] = [pubA, pubB].sort();
-  const h = crypto.createHash("sha256").update(a + b).digest();
-  const num = (h.readUInt32BE(0) * 256 + h[4]) % 100000000;
-  return num.toString().padStart(8, "0");
+// Verify a signature against a hash (already computed)
+export function verifyDigest(
+  hashB58: string,
+  signatureB58: string,
+  publicKeyB58: string
+): { valid: boolean; reason?: string } {
+  try {
+    const digest = bs58.decode(hashB58);
+    const sig = bs58.decode(signatureB58);
+    const pub = bs58.decode(publicKeyB58);
+    const valid = nacl.sign.detached.verify(new Uint8Array(digest), sig, pub);
+    return { valid, reason: valid ? undefined : "signature-mismatch" };
+  } catch (e: any) {
+    return { valid: false, reason: e?.message || "verify-error" };
+  }
+}
+
+// Streaming verifier (receiver side) – only hashes, no signing.
+export function createVerifier() {
+  const hash = crypto.createHash("sha256");
+  return {
+    update(chunk: Buffer | Uint8Array) {
+      hash.update(chunk);
+    },
+    digest(): string {
+      return bs58.encode(hash.digest());
+    },
+  };
 }
