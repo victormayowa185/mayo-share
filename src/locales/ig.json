@@ -226,7 +226,8 @@
   "browserBuildingZip": "Na-ewu ZIP…",
   "browserFileName": "Aha faịlụ",
   "browserSize": "Nha",
-  "browserFilesShared_one": "{{count}} faịlụ kesara gị",
+  "fileIntegrity": "Eziokwu Faịlụ (Solana)",
+  "integrityDesc": "Nyochaa faịlụ ndị enwetara na emebeghị ha. Na-eji mbinye aka Solana Ed25519. Nwere ike itinye obere igbu oge.""browserFilesShared_one": "{{count}} faịlụ kesara gị",
   "browserFilesShared_other": "{{count}} faịlụ kesara gị",
   "browserSharedVia": "Kesara site na MAYO Share • Nnyefe faịlụ P2P na-enweghị ịntanetị"
 }

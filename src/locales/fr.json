@@ -211,5 +211,7 @@
   "browserSize": "Taille",
   "browserFilesShared_one": "{{count}} fichier partagé avec vous",
   "browserFilesShared_other": "{{count}} fichiers partagés avec vous",
-  "browserSharedVia": "Partagé via MAYO Share • Transfert de fichiers P2P hors ligne"
+  "browserSharedVia": "Partagé via MAYO Share • Transfert de fichiers P2P hors ligne",
+  "fileIntegrity": "Intégrité des fichiers (Solana)",
+  "integrityDesc": "Vérifie que les fichiers reçus n'ont pas été modifiés. Utilise les signatures Ed25519 de Solana. Peut ajouter une petite latence."
 }

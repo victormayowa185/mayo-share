@@ -211,5 +211,7 @@
   "browserSize": "আকার",
   "browserFilesShared_one": "{{count}}টি ফাইল আপনার সাথে শেয়ার করা হয়েছে",
   "browserFilesShared_other": "{{count}}টি ফাইল আপনার সাথে শেয়ার করা হয়েছে",
-  "browserSharedVia": "MAYO Share এর মাধ্যমে শেয়ার করা হয়েছে • অফলাইন P2P ফাইল স্থানান্তর"
+  "browserSharedVia": "MAYO Share এর মাধ্যমে শেয়ার করা হয়েছে • অফলাইন P2P ফাইল স্থানান্তর",
+  "fileIntegrity": "ফাইল অখণ্ডতা (Solana)",
+  "integrityDesc": "প্রাপ্ত ফাইলগুলি পরিবর্তন করা হয়নি তা যাচাই করুন। Solana Ed25519 স্বাক্ষর ব্যবহার করে। সামান্য লেটেন্সি যোগ করতে পারে।"
 }

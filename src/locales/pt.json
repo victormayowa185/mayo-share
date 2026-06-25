@@ -209,6 +209,8 @@
   "browserBuildingZip": "Construindo ZIP…",
   "browserFileName": "Nome do arquivo",
   "browserSize": "Tamanho",
+  "fileIntegrity": "Integridade do arquivo (Solana)",
+  "integrityDesc": "Verifique se os arquivos recebidos não foram alterados. Usa assinaturas Ed25519 da Solana. Pode adicionar pequena latência.",
   "browserFilesShared_one": "{{count}} arquivo compartilhado com você",
   "browserFilesShared_other": "{{count}} arquivos compartilhados com você",
   "browserSharedVia": "Compartilhado via MAYO Share • Transferência de arquivos P2P offline"

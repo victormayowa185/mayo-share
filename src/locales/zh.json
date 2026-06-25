@@ -209,6 +209,8 @@
   "browserBuildingZip": "正在构建ZIP…",
   "browserFileName": "文件名",
   "browserSize": "大小",
+  "fileIntegrity": "文件完整性 (Solana)",
+  "integrityDesc": "验证接收的文件未被篡改。使用 Solana Ed25519 签名。可能会增加少量延迟。",
   "browserFilesShared_one": "{{count}}个文件已分享给您",
   "browserFilesShared_other": "{{count}}个文件已分享给您",
   "browserSharedVia": "通过MAYO Share分享 • 离线P2P文件传输"

@@ -224,6 +224,8 @@
   "browserDownload": "Zazzage",
   "browserDownloadAllZip": "Zazzage duka a matsayin ZIP",
   "browserBuildingZip": "Gina ZIP…",
+  "fileIntegrity": "Ingantacciyar Fayil (Solana)",
+  "integrityDesc": "Tabbatar da fayilolin da aka karɓa ba a canza su ba. Yana amfani da sa hannun Solana Ed25519. Yana iya ƙara ɗan jinkiri.",
   "browserFileName": "Sunan fayil",
   "browserSize": "Girman",
   "browserFilesShared_one": "{{count}} fayil da aka raba tare da kai",

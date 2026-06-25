@@ -211,5 +211,7 @@
   "browserSize": "الحجم",
   "browserFilesShared_one": "{{count}} ملف مشارك معك",
   "browserFilesShared_other": "{{count}} ملفات مشاركة معك",
-  "browserSharedVia": "تم المشاركة عبر MAYO Share • نقل الملفات P2P دون اتصال"
+  "browserSharedVia": "تم المشاركة عبر MAYO Share • نقل الملفات P2P دون اتصال",
+  "fileIntegrity": "سلامة الملف (Solana)",
+  "integrityDesc": "التحقق من أن الملفات المستلمة لم يتم تغييرها. يستخدم توقيعات Ed25519 من Solana. قد يضيف بعض التأخير."
 }

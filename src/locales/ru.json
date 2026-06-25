@@ -209,6 +209,8 @@
   "browserDownloadAllZip": "Скачать всё в ZIP",
   "browserBuildingZip": "Сборка ZIP…",
   "browserFileName": "Имя файла",
+  "fileIntegrity": "Целостность файлов (Solana)",
+  "integrityDesc": "Проверяет, что полученные файлы не были изменены. Использует подписи Ed25519 от Solana. Может добавить небольшую задержку.",
   "browserSize": "Размер",
   "browserFilesShared_one": "{{count}} файл передан вам",
   "browserFilesShared_few": "{{count}} файла передано вам",
