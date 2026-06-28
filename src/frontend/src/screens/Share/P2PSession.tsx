@@ -211,6 +211,7 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
   const resumeOfferRef = useRef<{ offsets: Record<string, number> } | null>(null);
   const intentionalCloseRef = useRef(false);
   const sendingRef = useRef(false);
+  const lastSaveRef = useRef(0);
 
   // ─── Solana integrity refs ────────────────────────────────────────────────
   const myPubKeyRef = useRef<string>("");
@@ -714,6 +715,18 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
     }
   };
 
+  // Persist the send queue for crash/disconnect resume. Reads the authoritative
+  // ref (kept in sync with state) so it can run OUTSIDE React state updaters —
+  // never call localStorage from inside a setState updater (impure + double
+  // writes under StrictMode). Throttled so we don't re-serialize a large queue
+  // on every progress tick. force=true bypasses the throttle (status changes).
+  const persistSession = (force = false) => {
+    const now = Date.now();
+    if (!force && now - lastSaveRef.current < 1500) return;
+    lastSaveRef.current = now;
+    saveSessionToDisk(fileQueueRef.current);
+  };
+
   // ─── sendAll with conditional integrity ────────────────────────────────────
   const sendAll = async (startOffsets: Record<string, number> = {}) => {
     const dc = localDC.current;
@@ -723,7 +736,7 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
     sendingRef.current = true;
     abortBatchRef.current = false;
     setIsSending(true);
-    saveSessionToDisk(fileQueueRef.current);
+    persistSession(true);
 
     const processed = new Set<string>();
 
@@ -800,13 +813,10 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
           currentOffset += CHUNK_SIZE;
           const progress = Math.min(100, Math.round((currentOffset / file.size) * 100));
           if (progress % 5 === 0) {
-            setFileQueue(prev => {
-              const next = prev.map(f =>
-                f.id === file.id ? { ...f, status: "transferring", progress } : f
-              );
-              saveSessionToDisk(next);
-              return next;
-            });
+            setFileQueue(prev => prev.map(f =>
+              f.id === file.id ? { ...f, status: "transferring", progress } : f
+            ));
+            persistSession();
           }
         }
 
@@ -836,13 +846,10 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
           publicKey: proof?.publicKey,
         }));
 
-        setFileQueue(prev => {
-          const next = prev.map(f =>
-            f.id === file.id ? { ...f, status: "done", progress: 100 } : f
-          );
-          saveSessionToDisk(next);
-          return next;
-        });
+        setFileQueue(prev => prev.map(f =>
+          f.id === file.id ? { ...f, status: "done", progress: 100 } : f
+        ));
+        persistSession(true);
         window.electronAPI.logP2pActivity("sent", file.name);
       }
     } finally {
