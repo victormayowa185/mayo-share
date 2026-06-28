@@ -9,7 +9,7 @@ import path from "path";
 import { execFile } from "child_process";
 import { FileServer } from "./fileServer";
 import http from "http";
-import { open, close, read, appendFileSync } from "fs";
+import { open, close, read } from "fs";
 import { DiscoveryManager } from "./discovery";
 import { UploadServer, setReceiveDir } from "./uploadServer";
 import { saveRating } from "./firebase";
@@ -820,11 +820,27 @@ ipcMain.handle(
   },
 );
 
+// ─── Streaming receive writers ──────────────────────────────────────────────
+// One persistent write stream per active incoming file, keyed by its on-disk
+// path. This replaces the old open-write-close-per-chunk (appendFileSync) model
+// that blocked the main process thousands of times per file.
+const receiveStreams = new Map<string, fs.WriteStream>();
+
 ipcMain.handle(
   "create-receive-file",
-  async (_event, filePath: string): Promise<void> => {
+  async (_event, filePath: string, resume?: boolean): Promise<void> => {
     await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
-    await fs.promises.writeFile(filePath, "");
+
+    // Close any stale stream lingering for this path (e.g. a re-sent file).
+    const stale = receiveStreams.get(filePath);
+    if (stale) {
+      await new Promise<void>((res) => stale.end(() => res()));
+      receiveStreams.delete(filePath);
+    }
+
+    // Fresh transfer truncates; resume keeps the existing partial bytes.
+    const stream = fs.createWriteStream(filePath, { flags: resume ? "a" : "w" });
+    receiveStreams.set(filePath, stream);
   },
 );
 
@@ -832,7 +848,38 @@ ipcMain.handle(
   "append-receive-chunk",
   async (_event, filePath: string, base64Data: string): Promise<void> => {
     const buf = Buffer.from(base64Data, "base64");
-    appendFileSync(filePath, buf);
+    let stream = receiveStreams.get(filePath);
+    if (!stream) {
+      // Safety net: stream missing (renderer reload mid-transfer). Reopen append.
+      stream = fs.createWriteStream(filePath, { flags: "a" });
+      receiveStreams.set(filePath, stream);
+    }
+    // Honour backpressure: if the OS buffer is full, wait for it to drain so we
+    // don't balloon memory on multi-GB transfers.
+    const s = stream;
+    if (!s.write(buf)) {
+      await new Promise<void>((res, rej) => {
+        const onDrain = () => { s.off("error", onError); res(); };
+        const onError = (e: Error) => { s.off("drain", onDrain); rej(e); };
+        s.once("drain", onDrain);
+        s.once("error", onError);
+      });
+    }
+  },
+);
+
+ipcMain.handle(
+  "finish-receive-file",
+  async (_event, filePath: string): Promise<void> => {
+    const stream = receiveStreams.get(filePath);
+    if (!stream) return;
+    receiveStreams.delete(filePath);
+    // Flush remaining buffered bytes to disk before the renderer treats the file
+    // as complete.
+    await new Promise<void>((res, rej) => {
+      stream.once("error", rej);
+      stream.end(() => res());
+    });
   },
 );
 

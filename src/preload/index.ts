@@ -133,6 +133,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.invoke("create-receive-file", filePath, resume),
   appendReceiveChunk: (filePath: string, data: string) =>
     ipcRenderer.invoke("append-receive-chunk", filePath, data),
+  finishReceiveFile: (filePath: string) =>
+    ipcRenderer.invoke("finish-receive-file", filePath),
   saveResumeState: (transferId: string, offset: number, filePath: string) =>
     ipcRenderer.invoke("save-resume-state", transferId, offset, filePath),
   getResumeState: (transferId: string) =>
@@ -172,7 +174,5 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.invoke("update-verify-hash", verifierId, base64Chunk),
   finishVerifyHash: (verifierId: string) => ipcRenderer.invoke("finish-verify-hash", verifierId),
   verifyHash: (hash: string, signature: string, publicKey: string) =>
-    ipcRenderer.invoke("verify-hash", hash, signature, publicKey), startStreamSign: () => ipcRenderer.invoke("start-stream-sign"),
-  streamSignChunk: (signerKey: string, base64Chunk: string) =>
-    ipcRenderer.invoke("stream-sign-chunk", signerKey, base64Chunk),
-  finishStreamSign: (signerKey: string) => ipcRenderer.invoke("finish-stream-sign", signerKey),
+    ipcRenderer.invoke("verify-hash", hash, signature, publicKey),
+});

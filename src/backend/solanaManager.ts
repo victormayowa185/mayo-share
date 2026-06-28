@@ -10,6 +10,19 @@ import { Keypair } from "@solana/web3.js";
 import nacl from "tweetnacl";
 import bs58 from "bs58";
 
+
+// ─── Shared safety code (anti‑MITM) ──────────────────────────
+export function safetyNumber(pubA: string, pubB: string): string {
+  // Sort the two public keys lexicographically so both sides get the same order
+  const sorted = [pubA, pubB].sort();
+  const combined = sorted[0] + sorted[1];
+  const hash = crypto.createHash('sha256').update(combined).digest();
+  // Use the first 4 bytes as a 32‑bit unsigned integer
+  const num = hash.readUInt32BE(0);
+  // Format as an 8‑digit number (pad with leading zeros if needed)
+  return num.toString().padStart(8, '0').slice(0, 8);
+}
+
 let keypair: Keypair | null = null;
 let identityPath = "";
 

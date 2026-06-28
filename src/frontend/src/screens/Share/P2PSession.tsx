@@ -59,6 +59,15 @@ const formatBytes = (b: number) => {
 
 const shortName = (name: string) => name.split("/").pop() || name;
 
+// Exact decoded byte length of a base64 string WITHOUT decoding it.
+// (atob() on a 256KB chunk, ~8000 times for a 2GB file, was choking the receiver.)
+const base64ByteLength = (b64: string): number => {
+  const len = b64.length;
+  if (len === 0) return 0;
+  const padding = b64.endsWith("==") ? 2 : b64.endsWith("=") ? 1 : 0;
+  return Math.floor((len * 3) / 4) - padding;
+};
+
 const blobToBase64 = (blob: Blob): Promise<string> =>
   new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -188,6 +197,11 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
   const digitRefs = useRef<(HTMLInputElement | null)[]>([]);
   const receivePathsRef = useRef<Record<string, string>>({});
   const receiveMapRef = useRef<Record<string, ReceiveEntry>>({});
+  // Per-file running progress kept in a ref so we can accumulate every chunk's
+  // bytes WITHOUT re-rendering React on each of the ~8000 chunks. We only push
+  // to state (which re-renders the progress bar) when the whole-number percent
+  // actually changes.
+  const receiveProgressRef = useRef<Record<string, { received: number; size: number; lastPct: number }>>({});
   const messageQueueRef = useRef<string[]>([]);
   const processingRef = useRef(false);
   const rejectedRef = useRef<Set<string>>(new Set());
@@ -317,6 +331,30 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
         setConnected(true);
         setSessionStatus("");
       }
+    };
+  }, []);
+
+  // ─── Data-channel death detection ───────────────────────────────────────────
+  // The peer connection can stay "connected" while the SCTP data channel quietly
+  // closes (e.g. buffer overflow mid multi-GB transfer). Without these handlers
+  // the sender keeps "sending" into a dead channel and marks files done.
+  const setupDataChannelMonitor = useCallback((dc: RTCDataChannel) => {
+    dc.onclose = () => {
+      if (intentionalCloseRef.current) return;
+      sendingRef.current = false;
+      abortBatchRef.current = true;
+      setIsSending(false);
+      setConnectionState("disconnected");
+      setConnected(false);
+      setSessionStatus("");
+    };
+    dc.onerror = () => {
+      if (intentionalCloseRef.current) return;
+      sendingRef.current = false;
+      abortBatchRef.current = true;
+      setIsSending(false);
+      setConnectionState("disconnected");
+      setConnected(false);
     };
   }, []);
 
@@ -605,7 +643,11 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
   const cancelIncomingFile = (id: string) => {
     const entry = receiveMapRef.current[id];
     rejectedRef.current.add(id);
+    const cancelPath = receivePathsRef.current[id];
     delete receivePathsRef.current[id];
+    if (cancelPath) {
+      try { window.electronAPI.finishReceiveFile(cancelPath); } catch { /* ignore */ }
+    }
     setReceiveMap(prev =>
       prev[id] ? { ...prev, [id]: { ...prev[id], cancelled: true } } : prev
     );
@@ -629,7 +671,11 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
     }
     ids.forEach(id => {
       rejectedRef.current.add(id);
+      const cancelPath = receivePathsRef.current[id];
       delete receivePathsRef.current[id];
+      if (cancelPath) {
+        try { window.electronAPI.finishReceiveFile(cancelPath); } catch { /* ignore */ }
+      }
     });
     setReceiveMap(prev => {
       const n = { ...prev };
@@ -721,6 +767,13 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
         while (currentOffset < file.size) {
           if (abortBatchRef.current || stopSendRef.current.has(file.id)) {
             cancelled = true;
+            break;
+          }
+          // Bail out if the channel died mid-transfer instead of "sending" into
+          // the void and then marking the file done.
+          if (dc.readyState !== "open") {
+            cancelled = true;
+            abortBatchRef.current = true;
             break;
           }
           if (dc.bufferedAmount > 1024 * 1024) {
@@ -885,7 +938,11 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
 
     if (msg.type === "cancel-file") {
       rejectedRef.current.add(msg.id);
+      const cancelPath = receivePathsRef.current[msg.id];
       delete receivePathsRef.current[msg.id];
+      if (cancelPath) {
+        try { await window.electronAPI.finishReceiveFile(cancelPath); } catch { /* ignore */ }
+      }
       const vid = verifierMap.current[msg.id];
       if (vid) {
         try { await window.electronAPI.finishVerifyHash(vid); } catch {}
@@ -908,7 +965,11 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
       });
       ids.forEach(id => {
         rejectedRef.current.add(id);
+        const cancelPath = receivePathsRef.current[id];
         delete receivePathsRef.current[id];
+        if (cancelPath) {
+          try { window.electronAPI.finishReceiveFile(cancelPath); } catch {}
+        }
         const vid = verifierMap.current[id];
         if (vid) {
           try { window.electronAPI.finishVerifyHash(vid); } catch {}
@@ -1004,6 +1065,7 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
       }
       verifierMap.current[msg.id] = verifierId || "";
 
+      receiveProgressRef.current[msg.id] = { received: msg.offset || 0, size: msg.size, lastPct: -1 };
       setReceiveMap(prev => ({ ...prev, [msg.id]: { name: msg.name, size: msg.size, path: savePath, received: msg.offset || 0 } }));
       return;
     }
@@ -1012,7 +1074,26 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
       if (rejectedRef.current.has(msg.id)) return;
       const path = receivePathsRef.current[msg.id];
       if (!path) return;
-      await window.electronAPI.appendReceiveChunk(path, msg.data);
+
+      try {
+        await window.electronAPI.appendReceiveChunk(path, msg.data);
+      } catch (err) {
+        // Disk/IPC write failed. Abandon THIS file (it would be corrupt anyway)
+        // but keep the session alive so later files still transfer. Marking it
+        // rejected makes file-end skip finalizing it as a good received file.
+        console.error("appendReceiveChunk failed; abandoning file:", msg.id, err);
+        rejectedRef.current.add(msg.id);
+        delete receivePathsRef.current[msg.id];
+        delete receiveProgressRef.current[msg.id];
+        try { await window.electronAPI.finishReceiveFile(path); } catch { /* ignore */ }
+        const vid = verifierMap.current[msg.id];
+        if (vid) {
+          try { await window.electronAPI.finishVerifyHash(vid); } catch { /* ignore */ }
+          delete verifierMap.current[msg.id];
+        }
+        setReceiveMap(prev => { const n = { ...prev }; delete n[msg.id]; return n; });
+        return;
+      }
 
       const verifierId = verifierMap.current[msg.id];
       if (verifierId) {
@@ -1021,12 +1102,30 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
         } catch { /* non-fatal */ }
       }
 
-      const chunkLen = atob(msg.data).length;
-      setReceiveMap(prev => {
-        const entry = prev[msg.id];
-        if (!entry) return prev;
-        return { ...prev, [msg.id]: { ...entry, received: entry.received + chunkLen } };
-      });
+      // Measure the chunk without decoding it, and only re-render when the
+      // displayed percentage changes — not on every single chunk.
+      const chunkLen = base64ByteLength(msg.data);
+      const prog = receiveProgressRef.current[msg.id];
+      if (prog) {
+        prog.received += chunkLen;
+        const pct = prog.size > 0 ? Math.floor((prog.received / prog.size) * 100) : 0;
+        if (pct !== prog.lastPct) {
+          prog.lastPct = pct;
+          const received = prog.received;
+          setReceiveMap(prev => {
+            const entry = prev[msg.id];
+            if (!entry) return prev;
+            return { ...prev, [msg.id]: { ...entry, received } };
+          });
+        }
+      } else {
+        // Fallback (no progress entry): keep the old accurate-but-eager behaviour.
+        setReceiveMap(prev => {
+          const entry = prev[msg.id];
+          if (!entry) return prev;
+          return { ...prev, [msg.id]: { ...entry, received: entry.received + chunkLen } };
+        });
+      }
       return;
     }
 
@@ -1043,6 +1142,13 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
       const entry = receiveMapRef.current[msg.id];
       const savedPath = receivePathsRef.current[msg.id] || entry?.path || "";
       delete receivePathsRef.current[msg.id];
+      delete receiveProgressRef.current[msg.id];
+
+      // Flush & close the write stream so all bytes are on disk before we treat
+      // the file as complete (and before any integrity check reads it).
+      if (savedPath) {
+        try { await window.electronAPI.finishReceiveFile(savedPath); } catch { /* ignore */ }
+      }
 
       let fileHash: string | null = null;
       const vid = verifierMap.current[msg.id];
@@ -1094,11 +1200,24 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
   const processMessageQueue = useCallback(async () => {
     if (processingRef.current) return;
     processingRef.current = true;
-    while (messageQueueRef.current.length > 0) {
-      const next = messageQueueRef.current.shift()!;
-      await handleDCMessage(next);
+    try {
+      while (messageQueueRef.current.length > 0) {
+        const next = messageQueueRef.current.shift()!;
+        // A single bad message must never kill the whole pump. If it threw and
+        // we let it bubble, the `finally` below would still run, but every
+        // remaining queued message would be dropped — so isolate each one.
+        try {
+          await handleDCMessage(next);
+        } catch (err) {
+          console.error("handleDCMessage failed for a message:", err);
+        }
+      }
+    } finally {
+      // CRITICAL: always release the lock, even on error. If this stayed `true`
+      // the receiver would silently ignore every future message (the classic
+      // "sender shows sent, receiver gets nothing" freeze).
+      processingRef.current = false;
     }
-    processingRef.current = false;
   }, [handleDCMessage]);
 
   // ─── startSendMode ──────────────────────────────────────────────────────────
@@ -1119,6 +1238,7 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
 
       const dc = pc.createDataChannel("mayo-share", { ordered: true });
       localDC.current = dc;
+      setupDataChannelMonitor(dc);
 
       dc.onopen = () => {
         showFileArea();
@@ -1184,6 +1304,7 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
 
       pc.ondatachannel = event => {
         localDC.current = event.channel;
+        setupDataChannelMonitor(localDC.current);
         localDC.current.onopen = () => {
           showFileArea();
         };
