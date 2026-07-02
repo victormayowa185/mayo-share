@@ -8,6 +8,7 @@ import { useGSAP } from "@gsap/react";
 import { getTheme, applyTheme } from "../../themeInit";
 import styles from "../../styles/screens/SettingsScreen.module.css";
 import LanguagePicker from "../../components/LanguagePicker";
+import ConfirmModal from "../../components/ConfirmModal";
 
 gsap.registerPlugin(useGSAP);
 
@@ -44,6 +45,8 @@ const SettingsScreen: React.FC<Props> = ({ onBack }) => {
   const [editingDevice, setEditingDevice] = useState(false);
   const [integrityEnabled, setIntegrityEnabled] = useState(false); // ✅ only once
   const [themeMode, setThemeMode] = useState<"system" | "light" | "dark">("system");
+  const [webEncryptionEnabled, setWebEncryptionEnabled] = useState(true);
+  const [showWebEncModal, setShowWebEncModal] = useState<"on" | "off" | null>(null);
 
   const cardsRef = useRef<HTMLDivElement>(null);
 
@@ -79,6 +82,29 @@ const SettingsScreen: React.FC<Props> = ({ onBack }) => {
     const newVal = !integrityEnabled;
     setIntegrityEnabled(newVal);
     await window.electronAPI.setIntegrityCheck(newVal);
+  };
+
+  // Load web encryption setting
+  useEffect(() => {
+    (async () => {
+      const val = await window.electronAPI.getWebEncryption();
+      setWebEncryptionEnabled(val);
+    })();
+  }, []);
+
+  const handleWebEncryptionToggleClick = () => {
+    setShowWebEncModal(webEncryptionEnabled ? "off" : "on");
+  };
+
+  const confirmWebEncryptionChange = async () => {
+    const newVal = showWebEncModal === "on";
+    setWebEncryptionEnabled(newVal);
+    await window.electronAPI.setWebEncryption(newVal);
+    setShowWebEncModal(null);
+  };
+
+  const cancelWebEncryptionChange = () => {
+    setShowWebEncModal(null);
   };
 
   useEffect(() => {
@@ -249,13 +275,30 @@ const SettingsScreen: React.FC<Props> = ({ onBack }) => {
           </div>
         </div>
 
-        {/* File Integrity Toggle Card */}
-        {/* File Integrity Toggle Card */}
+        {/* Encryption Card */}
         <div className={styles.card}>
-          <div className={styles.integrityRow}>
+          <h3>{t("encryptionTitle")}</h3>
+
+          <div className={styles.integrityRow} style={{ marginTop: "14px" }}>
             <div>
-              <h3>{t("fileIntegrity")}</h3>
-              <p className={styles.cardDesc}>{t("integrityDesc")}</p>
+              <h3 style={{ fontSize: "0.95rem" }}>{t("webModeLabel")}</h3>
+              <p className={styles.cardDesc}>{t("webModeDesc")}</p>
+            </div>
+            <div className={styles.integrityToggleGroup}>
+              <button
+                className={`${styles.toggleSwitch} ${webEncryptionEnabled ? styles.active : ''}`}
+                onClick={handleWebEncryptionToggleClick}
+                aria-label="Toggle web mode encryption"
+              >
+                <span className={`${styles.toggleThumb} ${webEncryptionEnabled ? styles.active : ''}`} />
+              </button>
+            </div>
+          </div>
+
+          <div className={styles.integrityRow} style={{ marginTop: "18px" }}>
+            <div>
+              <h3 style={{ fontSize: "0.95rem" }}>{t("p2pModeLabel")}</h3>
+              <p className={styles.cardDesc}>{t("p2pModeDesc")}</p>
             </div>
             <div className={styles.integrityToggleGroup}>
               <button
@@ -268,6 +311,27 @@ const SettingsScreen: React.FC<Props> = ({ onBack }) => {
             </div>
           </div>
         </div>
+
+        {showWebEncModal === "on" && (
+          <ConfirmModal
+            title={t("webEncryptionOnTitle")}
+            body={t("webEncryptionOnBody")}
+            confirmLabel={t("gotIt")}
+            onConfirm={confirmWebEncryptionChange}
+          />
+        )}
+
+        {showWebEncModal === "off" && (
+          <ConfirmModal
+            title={t("webEncryptionOffTitle")}
+            body={t("webEncryptionOffBody")}
+            confirmLabel={t("turnOffAnyway")}
+            cancelLabel={t("cancel")}
+            onCancel={cancelWebEncryptionChange}
+            onConfirm={confirmWebEncryptionChange}
+            danger
+          />
+        )}
 
         {/* Save Folder Card */}
         <div className={styles.card}>

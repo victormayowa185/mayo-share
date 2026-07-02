@@ -157,6 +157,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
   getPathForFile: (file: File): string => webUtils.getPathForFile(file),
   getIntegrityCheck: () => ipcRenderer.invoke('get-integrity-check'),
   setIntegrityCheck: (enabled: boolean) => ipcRenderer.invoke('set-integrity-check', enabled),
+  getWebEncryption: () => ipcRenderer.invoke('get-web-encryption'),
+  setWebEncryption: (enabled: boolean) => ipcRenderer.invoke('set-web-encryption', enabled),
   startStreamSign: () => ipcRenderer.invoke('start-stream-sign'),
   streamSignChunk: (signerKey: string, chunk: Uint8Array) => ipcRenderer.invoke('stream-sign-chunk', signerKey, chunk),
   finishStreamSign: (signerKey: string) => ipcRenderer.invoke('finish-stream-sign', signerKey),

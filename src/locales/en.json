@@ -230,5 +230,17 @@
   "browserFilesShared_other": "{{count}} files shared with you",
   "browserSharedVia": "Shared via MAYO Share • Offline P2P File Transfer",
   "fileIntegrity": "File Integrity (Solana)",
-  "integrityDesc": "Verify received files haven't been altered. Uses Solana Ed25519 signatures. May add small latency."
+  "integrityDesc": "Verify received files haven't been altered. Uses Solana Ed25519 signatures. May add small latency.",
+  "encryptionTitle": "Encryption",
+  "webModeLabel": "Web Mode",
+  "webModeDesc": "Encrypts your connection when others open your share link in a browser.",
+  "p2pModeLabel": "P2P Mode",
+  "p2pModeDesc": "Verify received files haven't been altered. Uses Solana Ed25519 signatures. May add small latency.",
+  "webEncryptionOnTitle": "Web Mode Encryption Enabled",
+  "webEncryptionOnBody": "Your browser-mode transfers are now encrypted. When someone opens your share link, their browser may show a \"Not secure\" warning — this is expected on local networks. They just need to tap Advanced, then Proceed.",
+  "webEncryptionOffTitle": "Turn Off Web Mode Encryption?",
+  "webEncryptionOffBody": "Files shared via Web Mode will no longer be encrypted. Anyone else on the same Wi-Fi network could potentially intercept the transfer.",
+  "gotIt": "Got it",
+  "cancel": "Cancel",
+  "turnOffAnyway": "Turn Off Anyway"
 }

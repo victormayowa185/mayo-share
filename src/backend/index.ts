@@ -339,6 +339,29 @@ ipcMain.handle('set-integrity-check', async (_event, enabled: boolean) => {
   await fs.promises.writeFile(settingsPath, JSON.stringify(settings, null, 2), 'utf-8');
 });
 
+// ─── Web Mode Encryption Setting ──────────────────────────
+ipcMain.handle('get-web-encryption', async (): Promise<boolean> => {
+  try {
+    const settingsPath = getSettingsPath();
+    const raw = await fs.promises.readFile(settingsPath, 'utf-8');
+    const settings = JSON.parse(raw);
+    return settings.webEncryption !== false; // default ON
+  } catch {
+    return true; // default on
+  }
+});
+
+ipcMain.handle('set-web-encryption', async (_event, enabled: boolean) => {
+  const settingsPath = getSettingsPath();
+  let settings: any = {};
+  try {
+    const raw = await fs.promises.readFile(settingsPath, 'utf-8');
+    settings = JSON.parse(raw);
+  } catch { }
+  settings.webEncryption = enabled;
+  await fs.promises.writeFile(settingsPath, JSON.stringify(settings, null, 2), 'utf-8');
+});
+
 // ─── ICE servers (STUN + optional TURN fallback) ──────────
 // STUN alone only helps the two peers discover each other's address; if the
 // NAT mapping changes or expires mid-transfer the direct path dies with no

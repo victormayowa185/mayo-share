@@ -121,6 +121,8 @@ declare global {
 
       getIntegrityCheck: () => Promise<boolean>;
       setIntegrityCheck: (enabled: boolean) => Promise<void>;
+      getWebEncryption: () => Promise<boolean>;
+      setWebEncryption: (enabled: boolean) => Promise<void>;
       startStreamSign: () => Promise<string>;
       streamSignChunk: (signerKey: string, chunk: Uint8Array) => Promise<void>;
       finishStreamSign: (signerKey: string) => Promise<{ hash: string; signature: string; publicKey: string } | null>;
