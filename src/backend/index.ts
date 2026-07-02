@@ -562,6 +562,14 @@ ipcMain.handle(
         );
       }
 
+      let useEncryption = true;
+      try {
+        const settingsPath = getSettingsPath();
+        const raw = await fs.promises.readFile(settingsPath, "utf-8");
+        const settings = JSON.parse(raw);
+        useEncryption = settings.webEncryption !== false;
+      } catch { /* default stays true */ }
+
       const url = await fileServer.start(
         filePaths,
         relativePaths,
@@ -570,6 +578,7 @@ ipcMain.handle(
         undefined,
         getBrowserStrings(),
         currentLanguage,
+        useEncryption,
       );
       return url;
     } catch (err) {
@@ -594,7 +603,15 @@ ipcMain.handle(
         );
       }
 
-      const url = await uploadServer.start(serverIP, getBrowserStrings(), currentLanguage);
+      let useEncryption = true;
+      try {
+        const settingsPath = getSettingsPath();
+        const raw = await fs.promises.readFile(settingsPath, "utf-8");
+        const settings = JSON.parse(raw);
+        useEncryption = settings.webEncryption !== false;
+      } catch { /* default stays true */ }
+
+      const url = await uploadServer.start(serverIP, getBrowserStrings(), currentLanguage, useEncryption);
       return url;
     } catch (err) {
       throw new Error(`Could not start upload server: ${err}`);

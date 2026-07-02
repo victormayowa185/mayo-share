@@ -1,5 +1,5 @@
-﻿import { createServer, Server } from "https";
-import { IncomingMessage, ServerResponse } from "http";
+﻿import { createServer as createHttpsServer, Server as HttpsServer } from "https";
+import { createServer as createHttpServer, Server as HttpServer, IncomingMessage, ServerResponse } from "http";
 import { promises as fs, createReadStream, statSync } from "fs";
 import path from "path";
 import { EventEmitter } from "events";
@@ -14,7 +14,7 @@ interface SharedFile {
 }
 
 export class FileServer extends EventEmitter {
-  private server: Server | null = null;
+  private server: HttpServer | HttpsServer | null = null;
   private port: number = 3000;
 
 
@@ -32,6 +32,7 @@ export class FileServer extends EventEmitter {
     message?: string,
     strings?: Record<string, string>,
     lang?: string,
+    useEncryption: boolean = true,
   ): Promise<string> {
     if (this.server) throw new Error("Server already running");
     this.strings = strings || {};
@@ -64,183 +65,148 @@ export class FileServer extends EventEmitter {
         return;
       }
 
-      const { key, cert } = getServerCert(ip);
+      const requestHandler = async (req: IncomingMessage, res: ServerResponse) => {
+        const url = req.url || "/";
+        const method = req.method || "GET";
 
-      this.server = createServer(
-        { key, cert },
-        async (req: IncomingMessage, res: ServerResponse) => {
-          const url = req.url || "/";
-          const method = req.method || "GET";
+        // ✅ Global CORS — needed for mobile browsers
+        res.setHeader("Access-Control-Allow-Origin", "*");
+        res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+        res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
-          // ✅ Global CORS — needed for mobile browsers
-          res.setHeader("Access-Control-Allow-Origin", "*");
-          res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-          res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+        if (method === "OPTIONS") {
+          res.writeHead(204);
+          res.end();
+          return;
+        }
 
-          if (method === "OPTIONS") {
-            res.writeHead(204);
+        // Serve the HTML index page
+        if (url === "/" || url === "") {
+          const html = buildDownloadPage(this.files, this.strings, this.lang);
+
+
+          res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+          res.end(html);
+          return;
+        }
+
+        // Serve the MAYO logo (copied into dist/backend at build time)
+        if (url === "/mayo.png") {
+          try {
+            const data = await fs.readFile(path.join(__dirname, "mayo.png"));
+            res.writeHead(200, { "Content-Type": "image/png" });
+            res.end(data);
+          } catch {
+            res.writeHead(404);
+            res.end();
+          }
+          return;
+        }
+
+        // Serve JSZip locally (offline) – fixed path for packaged app
+        if (url === "/jszip.min.js") {
+
+          // Use __dirname to locate the file relative to this backend module
+          const filePath = path.join(__dirname, "../../node_modules/jszip/dist/jszip.min.js");
+          try {
+            const data = await fs.readFile(filePath);
+            res.writeHead(200, { "Content-Type": "application/javascript" });
+            res.end(data);
+          } catch {
+            res.writeHead(404);
+            res.end();
+          }
+          return;
+        }
+
+        // Serve individual files: /file/ followed by the relative path
+        if (url.startsWith("/file/")) {
+          const relative = decodeURIComponent(url.slice(6));
+
+          // --- SECURITY: Path traversal guard ---
+          if (relative.includes('..') || path.isAbsolute(relative)) {
+            res.writeHead(403);
+            res.end('Forbidden');
+            return;
+          }
+
+          const clientIp = req.socket.remoteAddress || "unknown";
+          let fileEntry = this.fileMap.get(relative);
+          if (!fileEntry) {
+            const byName = this.files.find(
+              (f) => f.relativePath === relative || f.fileName === relative,
+            );
+            if (!byName) {
+              res.writeHead(404);
+              res.end("File not found");
+              return;
+            }
+            fileEntry = byName;
+          }
+
+          const stats = statSync(fileEntry.filePath);
+          const fileSize = stats.size;
+          const etag = `"${fileSize}-${stats.mtimeMs}"`;
+
+          // Conditional request (caching)
+          if (req.headers["if-none-match"] === etag) {
+            res.writeHead(304);
             res.end();
             return;
           }
 
-          // Serve the HTML index page
-          if (url === "/" || url === "") {
-            const html = buildDownloadPage(this.files, this.strings, this.lang);
+          // Parse Range header for resumable downloads
+          const rangeHeader = req.headers.range;
+          let start = 0;
+          let end = fileSize - 1;
+          let isPartial = false;
 
-
-            res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-            res.end(html);
-            return;
-          }
-
-          // Serve the MAYO logo (copied into dist/backend at build time)
-          if (url === "/mayo.png") {
-            try {
-              const data = await fs.readFile(path.join(__dirname, "mayo.png"));
-              res.writeHead(200, { "Content-Type": "image/png" });
-              res.end(data);
-            } catch {
-              res.writeHead(404);
-              res.end();
-            }
-            return;
-          }
-
-          // Serve JSZip locally (offline) – fixed path for packaged app
-          if (url === "/jszip.min.js") {
-
-            // Use __dirname to locate the file relative to this backend module
-            const filePath = path.join(__dirname, "../../node_modules/jszip/dist/jszip.min.js");
-            try {
-              const data = await fs.readFile(filePath);
-              res.writeHead(200, { "Content-Type": "application/javascript" });
-              res.end(data);
-            } catch {
-              res.writeHead(404);
-              res.end();
-            }
-            return;
-          }
-
-          // Serve individual files: /file/ followed by the relative path
-          if (url.startsWith("/file/")) {
-            const relative = decodeURIComponent(url.slice(6));
-
-            // --- SECURITY: Path traversal guard ---
-            if (relative.includes('..') || path.isAbsolute(relative)) {
-              res.writeHead(403);
-              res.end('Forbidden');
-              return;
-            }
-
-            const clientIp = req.socket.remoteAddress || "unknown";
-            let fileEntry = this.fileMap.get(relative);
-            if (!fileEntry) {
-              const byName = this.files.find(
-                (f) => f.relativePath === relative || f.fileName === relative,
-              );
-              if (!byName) {
-                res.writeHead(404);
-                res.end("File not found");
-                return;
-              }
-              fileEntry = byName;
-            }
-
-            const stats = statSync(fileEntry.filePath);
-            const fileSize = stats.size;
-            const etag = `"${fileSize}-${stats.mtimeMs}"`;
-
-            // Conditional request (caching)
-            if (req.headers["if-none-match"] === etag) {
-              res.writeHead(304);
-              res.end();
-              return;
-            }
-
-            // Parse Range header for resumable downloads
-            const rangeHeader = req.headers.range;
-            let start = 0;
-            let end = fileSize - 1;
-            let isPartial = false;
-
-            if (rangeHeader) {
-              const match = rangeHeader.match(/bytes=(\d+)-(\d*)/);
-              if (match) {
-                start = parseInt(match[1], 10);
-                if (match[2]) end = parseInt(match[2], 10);
-                if (start < fileSize && end < fileSize && start <= end) {
-                  isPartial = true;
-                }
+          if (rangeHeader) {
+            const match = rangeHeader.match(/bytes=(\d+)-(\d*)/);
+            if (match) {
+              start = parseInt(match[1], 10);
+              if (match[2]) end = parseInt(match[2], 10);
+              if (start < fileSize && end < fileSize && start <= end) {
+                isPartial = true;
               }
             }
+          }
 
-            // Common headers
-            res.setHeader(
-              "Content-Disposition",
-              `attachment; filename="${encodeURIComponent(fileEntry.fileName)}"`
-            );
+          // Common headers
+          res.setHeader(
+            "Content-Disposition",
+            `attachment; filename="${encodeURIComponent(fileEntry.fileName)}"`
+          );
 
-            res.setHeader("ETag", etag);
-            res.setHeader("Cache-Control", "no-cache, max-age=0");
-            res.setHeader("Accept-Ranges", "bytes");
+          res.setHeader("ETag", etag);
+          res.setHeader("Cache-Control", "no-cache, max-age=0");
+          res.setHeader("Accept-Ranges", "bytes");
 
-            // Handle partial request (range)
-            if (isPartial) {
-              const contentLength = end - start + 1;
-              res.writeHead(206, {
-                "Content-Range": `bytes ${start}-${end}/${fileSize}`,
-                "Content-Length": contentLength,
-                "Content-Type": "application/octet-stream",
-              });
-              const stream = createReadStream(fileEntry.filePath, {
-                start,
-                end,
-                highWaterMark: 1024 * 1024,
-              });
-              const fileIndex = this.files.indexOf(fileEntry);
-              this.emit("download-started", fileIndex, fileEntry.fileName);
-              let bytesSent = 0;
-              stream.on("data", (chunk: any) => {
-                const length = Buffer.isBuffer(chunk)
-                  ? chunk.length
-                  : Buffer.byteLength(chunk);
-                bytesSent += length;
-                const totalSent = start + bytesSent;
-                const pct = Math.floor((totalSent / fileSize) * 100);
-                this.emit("download-progress", fileEntry.fileName, pct);
-              });
-              stream.pipe(res);
-              stream.on("error", (err) => {
-                if (!res.headersSent) {
-                  res.writeHead(500);
-                  res.end("File read error");
-                }
-                console.error("Stream error:", err);
-              });
-              res.on("finish", () => {
-                this.emit("download-completed", fileIndex, fileEntry.fileName, clientIp);
-              });
-              return;
-            }
-
-            res.setHeader("Content-Type", "application/octet-stream");
-            res.setHeader("Content-Length", fileSize);
-            let stream = createReadStream(fileEntry.filePath, { highWaterMark: 1024 * 1024 });
-
+          // Handle partial request (range)
+          if (isPartial) {
+            const contentLength = end - start + 1;
+            res.writeHead(206, {
+              "Content-Range": `bytes ${start}-${end}/${fileSize}`,
+              "Content-Length": contentLength,
+              "Content-Type": "application/octet-stream",
+            });
+            const stream = createReadStream(fileEntry.filePath, {
+              start,
+              end,
+              highWaterMark: 1024 * 1024,
+            });
             const fileIndex = this.files.indexOf(fileEntry);
             this.emit("download-started", fileIndex, fileEntry.fileName);
-
             let bytesSent = 0;
             stream.on("data", (chunk: any) => {
               const length = Buffer.isBuffer(chunk)
                 ? chunk.length
                 : Buffer.byteLength(chunk);
               bytesSent += length;
-              const pct = Math.floor((bytesSent / fileSize) * 100);
+              const totalSent = start + bytesSent;
+              const pct = Math.floor((totalSent / fileSize) * 100);
               this.emit("download-progress", fileEntry.fileName, pct);
             });
-
             stream.pipe(res);
             stream.on("error", (err) => {
               if (!res.headersSent) {
@@ -255,30 +221,69 @@ export class FileServer extends EventEmitter {
             return;
           }
 
-          res.writeHead(404);
-          res.end("Not found");
-        },
+          res.setHeader("Content-Type", "application/octet-stream");
+          res.setHeader("Content-Length", fileSize);
+          let stream = createReadStream(fileEntry.filePath, { highWaterMark: 1024 * 1024 });
+
+          const fileIndex = this.files.indexOf(fileEntry);
+          this.emit("download-started", fileIndex, fileEntry.fileName);
+
+          let bytesSent = 0;
+          stream.on("data", (chunk: any) => {
+            const length = Buffer.isBuffer(chunk)
+              ? chunk.length
+              : Buffer.byteLength(chunk);
+            bytesSent += length;
+            const pct = Math.floor((bytesSent / fileSize) * 100);
+            this.emit("download-progress", fileEntry.fileName, pct);
+          });
+
+          stream.pipe(res);
+          stream.on("error", (err) => {
+            if (!res.headersSent) {
+              res.writeHead(500);
+              res.end("File read error");
+            }
+            console.error("Stream error:", err);
+          });
+          res.on("finish", () => {
+            this.emit("download-completed", fileIndex, fileEntry.fileName, clientIp);
+          });
+          return;
+        }
+
+        res.writeHead(404);
+        res.end("Not found");
+      },
       );
 
-      this.server.listen(this.port, "0.0.0.0", () => {
-        const usedIP = ip || "192.168.137.1";
-        resolve(`https://${usedIP}:${this.port}`);
-      });
-
-      this.server.on("error", (err) => {
-        this.server = null;
-        reject(err);
-      });
-    });
-  }
-
-  stop(): void {
-    if (this.server) {
-      this.server.close();
-      this.server = null;
-      this.files = [];
-      this.fileMap.clear();
+    if (useEncryption) {
+      const { key, cert } = getServerCert(ip);
+      this.server = createHttpsServer({ key, cert }, requestHandler);
+    } else {
+      this.server = createHttpServer(requestHandler);
     }
+
+    this.server.listen(this.port, "0.0.0.0", () => {
+      const usedIP = ip || "192.168.137.1";
+      const protocol = useEncryption ? "https" : "http";
+      resolve(`${protocol}://${usedIP}:${this.port}`);
+    });
+
+    this.server.on("error", (err) => {
+      this.server = null;
+      reject(err);
+    });
+  });
+}
+
+stop(): void {
+  if(this.server) {
+  this.server.close();
+  this.server = null;
+  this.files = [];
+  this.fileMap.clear();
+}
   }
 }
 
