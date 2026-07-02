@@ -254,8 +254,7 @@ export class FileServer extends EventEmitter {
 
         res.writeHead(404);
         res.end("Not found");
-      },
-      );
+      };
 
     if (useEncryption) {
       const { key, cert } = getServerCert(ip);
