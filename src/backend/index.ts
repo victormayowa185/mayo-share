@@ -334,9 +334,42 @@ ipcMain.handle('set-integrity-check', async (_event, enabled: boolean) => {
   try {
     const raw = await fs.promises.readFile(settingsPath, 'utf-8');
     settings = JSON.parse(raw);
-  } catch {}
+  } catch { }
   settings.integrityCheck = enabled;
   await fs.promises.writeFile(settingsPath, JSON.stringify(settings, null, 2), 'utf-8');
+});
+
+// ─── ICE servers (STUN + optional TURN fallback) ──────────
+// STUN alone only helps the two peers discover each other's address; if the
+// NAT mapping changes or expires mid-transfer the direct path dies with no
+// fallback. A TURN server relays traffic when the direct path breaks, which is
+// the actual fix for the "connection just dropped" disconnects.
+//
+// TURN is left configurable so real credentials can be dropped into
+// mayo-settings.json without a code change. Two accepted shapes (both optional):
+//   "turn": { "urls": "turn:host:3478", "username": "u", "credential": "p" }
+//   "iceServers": [ { "urls": "...", "username": "...", "credential": "..." }, ... ]
+// With neither present we fall back to STUN-only (previous behaviour).
+ipcMain.handle('get-ice-servers', async (): Promise<any[]> => {
+  const stun = { urls: 'stun:stun.l.google.com:19302' };
+  const servers: any[] = [stun];
+  try {
+    const raw = await fs.promises.readFile(getSettingsPath(), 'utf-8');
+    const settings = JSON.parse(raw);
+    if (settings.turn && settings.turn.urls) {
+      servers.push({
+        urls: settings.turn.urls,
+        username: settings.turn.username,
+        credential: settings.turn.credential,
+      });
+    }
+    if (Array.isArray(settings.iceServers)) {
+      for (const s of settings.iceServers) {
+        if (s && s.urls) servers.push(s);
+      }
+    }
+  } catch { /* settings missing/invalid → STUN only */ }
+  return servers;
 });
 
 // ─── Streaming Signer (for sender) ────────────────────────
@@ -348,9 +381,9 @@ ipcMain.handle('start-stream-sign', async () => {
   return id;
 });
 
-ipcMain.handle('stream-sign-chunk', async (_event, id: string, base64Chunk: string) => {
+ipcMain.handle('stream-sign-chunk', async (_event, id: string, chunk: Uint8Array) => {
   const signer = signers.get(id);
-  if (signer) signer.update(Buffer.from(base64Chunk, 'base64'));
+  if (signer) signer.update(Buffer.from(chunk));
 });
 
 ipcMain.handle('finish-stream-sign', async (_event, id: string) => {
@@ -498,8 +531,14 @@ ipcMain.handle(
         typeof f === "string" ? undefined : f.relative,
       );
 
-
       const serverIP = ip || (await getBestIP());
+
+      if (!serverIP) {
+        throw new Error(
+          "Could not determine a LAN IP address to bind the server to.",
+        );
+      }
+
       const url = await fileServer.start(
         filePaths,
         relativePaths,
@@ -510,9 +549,6 @@ ipcMain.handle(
         currentLanguage,
       );
       return url;
-
-
-
     } catch (err) {
       throw new Error(`Could not start server: ${err}`);
     }
@@ -527,14 +563,16 @@ ipcMain.handle(
   "start-upload-server",
   async (_event, ip?: string): Promise<string> => {
     try {
-
-
       const serverIP = ip || (await getBestIP());
+
+      if (!serverIP) {
+        throw new Error(
+          "Could not determine a LAN IP address to bind the server to.",
+        );
+      }
+
       const url = await uploadServer.start(serverIP, getBrowserStrings(), currentLanguage);
       return url;
-
-
-
     } catch (err) {
       throw new Error(`Could not start upload server: ${err}`);
     }
@@ -762,7 +800,7 @@ ipcMain.handle(
     filePath: string,
     start: number,
     size: number,
-  ): Promise<string> => {
+  ): Promise<Buffer> => {
     return new Promise((resolve, reject) => {
       open(filePath, "r", (err, fd) => {
         if (err) return reject(err);
@@ -770,7 +808,10 @@ ipcMain.handle(
         read(fd, buf, 0, size, start, (err, bytesRead) => {
           close(fd, () => { });
           if (err) return reject(err);
-          resolve(buf.slice(0, bytesRead).toString("base64"));
+          // Return raw bytes (serialized to the renderer as a Uint8Array). No
+          // base64 — that inflated every chunk ~33% on the wire and burned CPU
+          // encoding/decoding thousands of times per file.
+          resolve(buf.subarray(0, bytesRead));
         });
       });
     });
@@ -846,8 +887,8 @@ ipcMain.handle(
 
 ipcMain.handle(
   "append-receive-chunk",
-  async (_event, filePath: string, base64Data: string): Promise<void> => {
-    const buf = Buffer.from(base64Data, "base64");
+  async (_event, filePath: string, data: Uint8Array): Promise<void> => {
+    const buf = Buffer.from(data);
     let stream = receiveStreams.get(filePath);
     if (!stream) {
       // Safety net: stream missing (renderer reload mid-transfer). Reopen append.
@@ -1504,7 +1545,7 @@ ipcMain.handle("sign-file", async (_event, filePath: string) => {
 
 // Streaming signer — the renderer calls these 3 in sequence:
 // 1. start-stream-sign  → creates a signer, returns a signerKey
-// 2. stream-sign-chunk  → feeds each base64 chunk into the hasher
+// 2. stream-sign-chunk  → feeds each raw byte chunk into the hasher
 // 3. finish-stream-sign → finalizes and returns { hash, signature, publicKey }
 // ---------- Streaming Verifier (receiver) ----------
 const verifiers = new Map<string, ReturnType<typeof createVerifier>>();
@@ -1515,9 +1556,9 @@ ipcMain.handle("start-verify-hash", async (): Promise<string> => {
   return id;
 });
 
-ipcMain.handle("update-verify-hash", async (_event, id: string, base64Chunk: string): Promise<void> => {
+ipcMain.handle("update-verify-hash", async (_event, id: string, chunk: Uint8Array): Promise<void> => {
   const verifier = verifiers.get(id);
-  if (verifier) verifier.update(Buffer.from(base64Chunk, "base64"));
+  if (verifier) verifier.update(Buffer.from(chunk));
 });
 
 ipcMain.handle("finish-verify-hash", async (_event, id: string): Promise<string | null> => {

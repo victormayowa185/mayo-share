@@ -185,7 +185,7 @@ const TopBar: React.FC<Props> = ({ onNavigate }) => {
                   return (
                     <div
                       key={item.id}
-                      ref={(el) => (itemRefs.current[idx] = el)}
+                      ref={(el) => { itemRefs.current[idx] = el; }}
                       className={styles.menuItem}
                       role="menuitem"
                       tabIndex={-1}

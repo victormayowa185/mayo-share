@@ -150,7 +150,7 @@ const LanguagePicker: React.FC<Props> = ({ options, value, onChange }) => {
             {filtered.map((opt, idx) => (
               <li
                 key={opt.code}
-                ref={(el) => (optionRefs.current[idx] = el)}
+                ref={(el) => { optionRefs.current[idx] = el; }}
                 role="option"
                 aria-selected={opt.code === value}
                 className={`${styles.option} ${opt.code === value ? styles.selected : ""} ${idx === focusedIndex ? styles.focused : ""}`}

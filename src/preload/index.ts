@@ -127,11 +127,12 @@ contextBridge.exposeInMainWorld("electronAPI", {
   decompressSDP: (compact: string) =>
     ipcRenderer.invoke("decompress-sdp", compact),
   ping: () => ipcRenderer.invoke("ping"),
-  readFileChunk: (filePath: string, start: number, size: number) =>
+  getIceServers: (): Promise<RTCIceServer[]> => ipcRenderer.invoke("get-ice-servers"),
+  readFileChunk: (filePath: string, start: number, size: number): Promise<Uint8Array> =>
     ipcRenderer.invoke("read-file-chunk", filePath, start, size),
   createReceiveFile: (filePath: string, resume?: boolean) =>
     ipcRenderer.invoke("create-receive-file", filePath, resume),
-  appendReceiveChunk: (filePath: string, data: string) =>
+  appendReceiveChunk: (filePath: string, data: Uint8Array) =>
     ipcRenderer.invoke("append-receive-chunk", filePath, data),
   finishReceiveFile: (filePath: string) =>
     ipcRenderer.invoke("finish-receive-file", filePath),
@@ -157,7 +158,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   getIntegrityCheck: () => ipcRenderer.invoke('get-integrity-check'),
   setIntegrityCheck: (enabled: boolean) => ipcRenderer.invoke('set-integrity-check', enabled),
   startStreamSign: () => ipcRenderer.invoke('start-stream-sign'),
-  streamSignChunk: (signerKey: string, base64Chunk: string) => ipcRenderer.invoke('stream-sign-chunk', signerKey, base64Chunk),
+  streamSignChunk: (signerKey: string, chunk: Uint8Array) => ipcRenderer.invoke('stream-sign-chunk', signerKey, chunk),
   finishStreamSign: (signerKey: string) => ipcRenderer.invoke('finish-stream-sign', signerKey),
 
   // ---------- Solana offline integrity ----------
@@ -170,8 +171,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
 
 
   startVerifyHash: () => ipcRenderer.invoke("start-verify-hash"),
-  updateVerifyHash: (verifierId: string, base64Chunk: string) =>
-    ipcRenderer.invoke("update-verify-hash", verifierId, base64Chunk),
+  updateVerifyHash: (verifierId: string, chunk: Uint8Array) =>
+    ipcRenderer.invoke("update-verify-hash", verifierId, chunk),
   finishVerifyHash: (verifierId: string) => ipcRenderer.invoke("finish-verify-hash", verifierId),
   verifyHash: (hash: string, signature: string, publicKey: string) =>
     ipcRenderer.invoke("verify-hash", hash, signature, publicKey),

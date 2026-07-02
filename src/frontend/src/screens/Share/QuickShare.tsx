@@ -381,8 +381,7 @@ const QuickShare: React.FC<Props> = ({ onBack, shareIP }) => {
       // Ensure we have a valid IP – fallback to local IP if shareIP is empty
       let ip = shareIP;
       if (!ip) {
-        ip = await window.electronAPI.getLocalIP();
-        if (!ip) ip = undefined;
+        ip = (await window.electronAPI.getLocalIP()) ?? undefined;
       }
       const url = await window.electronAPI.startFileServer(payload, ip);
       setShareUrl(url);
@@ -452,7 +451,7 @@ const QuickShare: React.FC<Props> = ({ onBack, shareIP }) => {
   );
 
   useEffect(() => {
-    const badges = document.querySelectorAll(`.${styles.downloadBadge}`);
+    const badges = document.querySelectorAll<HTMLElement>(`.${styles.downloadBadge}`);
     const tooltip = document.createElement("div");
     tooltip.className = styles.downloadTooltip;
     document.body.appendChild(tooltip);

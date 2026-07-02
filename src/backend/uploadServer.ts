@@ -1,8 +1,10 @@
-import { createServer, Server, IncomingMessage, ServerResponse } from "http";
+import { createServer, Server } from "https";
+import { IncomingMessage, ServerResponse } from "http";
 import { promises as fs } from "fs";
 import path from "path";
 import { EventEmitter } from "events";
 import { formidable } from "formidable";
+import { getServerCert } from "./certs";
 
 interface Session {
   id: string;
@@ -101,7 +103,15 @@ export class UploadServer extends EventEmitter {
     await new Promise((r) => setTimeout(r, 100));
 
     return new Promise((resolve, reject) => {
+      if (!ip) {
+        reject(new Error("UploadServer.start() requires a resolved LAN IP."));
+        return;
+      }
+
+      const { key, cert } = getServerCert(ip);
+
       this.server = createServer(
+        { key, cert },
         async (req: IncomingMessage, res: ServerResponse) => {
           // CORS
           res.setHeader("Access-Control-Allow-Origin", "*");
@@ -256,7 +266,7 @@ export class UploadServer extends EventEmitter {
             const parsedUrl = new URL(url!, `http://localhost:${PORT}`);
             const sessionId = parsedUrl.searchParams.get("sessionId");
             let body = "";
-            req.on("data", (chunk) => (body += chunk));
+            req.on("data", (chunk: Buffer) => (body += chunk));
             req.on("end", () => {
               try {
                 const { name, deviceType } = JSON.parse(body);
@@ -293,7 +303,7 @@ export class UploadServer extends EventEmitter {
               return;
             }
             let body = "";
-            req.on("data", (chunk) => (body += chunk));
+            req.on("data", (chunk: Buffer) => (body += chunk));
             req.on("end", async () => {
               try {
                 const { content, filename } = JSON.parse(body);
@@ -476,7 +486,7 @@ export class UploadServer extends EventEmitter {
 
       this.server.listen(PORT, "0.0.0.0", () => {
         const usedIP = ip || "192.168.137.1";
-        resolve(`http://${usedIP}:${PORT}`);
+        resolve(`https://${usedIP}:${PORT}`);
       });
       this.server.on("error", (err) => {
         this.server = null;

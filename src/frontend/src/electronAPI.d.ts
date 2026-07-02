@@ -19,7 +19,10 @@ declare global {
           fileName: string;
           timestamp: string;
         }) => void,
-      ) => void;
+      ) => () => void;
+      onDownloadProgress: (
+        callback: (data: { fileName: string; percent: number }) => void,
+      ) => () => void;
       readTextFile: (filePath: string) => Promise<string>;
       writeTextFile: (filePath: string, content: string) => Promise<void>;
       startHotspot: () => Promise<string>;
@@ -39,8 +42,8 @@ declare global {
         appVersion: string;
       }) => Promise<{ success: boolean; error?: string }>;
       clearActivity: () => Promise<void>;
-      onActivityCleared: (callback: () => void) => void;
-      onDeviceNameChanged: (callback: (name: string) => void) => void;
+      onActivityCleared: (callback: () => void) => () => void;
+      onDeviceNameChanged: (callback: (name: string) => void) => () => void;
       setDeviceName: (name: string) => Promise<void>;
       getTranslations: (lang: string) => Promise<Record<string, string>>;
       getLanguage: () => Promise<string>;
@@ -65,11 +68,11 @@ declare global {
       getFileSize: (filePath: string) => Promise<number>;
 
       // Upload server (Receive from Browser)
-      startUploadServer: () => Promise<string>;
+      startUploadServer: (ip?: string) => Promise<string>;
       stopUploadServer: () => Promise<void>;
       onUploadUpdate: (
         callback: (data: { event: string; fileName: string }) => void,
-      ) => void;
+      ) => () => void;
 
       approveSender: (sessionId: string) => Promise<void>;
       declineSender: (sessionId: string) => Promise<void>;
@@ -79,7 +82,7 @@ declare global {
           senderName: string;
           deviceType: string;
         }) => void,
-      ) => void;
+      ) => () => void;
 
       // ---------- 4-Digit Code P2P ----------
       generateCode: (sdpOffer: string) => Promise<string>;
@@ -91,13 +94,16 @@ declare global {
       compressSDP: (sdp: string) => Promise<string>;
       decompressSDP: (compact: string) => Promise<string>;
       ping: () => Promise<string>;
+      getIceServers: () => Promise<RTCIceServer[]>;
       readFileChunk: (
         filePath: string,
         start: number,
         size: number,
-      ) => Promise<string>;
+        // Backed by a plain ArrayBuffer (not ArrayBufferLike) so it satisfies
+        // RTCDataChannel.send()'s ArrayBufferView<ArrayBuffer> overload directly.
+      ) => Promise<Uint8Array<ArrayBuffer>>;
       createReceiveFile: (filePath: string, resume?: boolean) => Promise<void>;
-      appendReceiveChunk: (filePath: string, data: string) => Promise<void>;
+      appendReceiveChunk: (filePath: string, data: Uint8Array) => Promise<void>;
       finishReceiveFile: (filePath: string) => Promise<void>;
       saveResumeState: (
         transferId: string,
@@ -116,12 +122,17 @@ declare global {
       getIntegrityCheck: () => Promise<boolean>;
       setIntegrityCheck: (enabled: boolean) => Promise<void>;
       startStreamSign: () => Promise<string>;
-      streamSignChunk: (signerKey: string, base64Chunk: string) => Promise<void>;
+      streamSignChunk: (signerKey: string, chunk: Uint8Array) => Promise<void>;
       finishStreamSign: (signerKey: string) => Promise<{ hash: string; signature: string; publicKey: string } | null>;
 
 
       saveTempFile: (fileName: string, base64Data: string) => Promise<string>;
       getHostname: () => Promise<string>;
+
+      // ---------- P2P activity & file-system helpers ----------
+      logP2pActivity: (type: "sent" | "received", fileName: string) => Promise<void>;
+      isDirectory: (filePath: string) => Promise<boolean>;
+      walkDirectory: (dirPath: string) => Promise<FolderFile[]>;
 
       // ---------- Solana offline integrity ----------
       getPathForFile: (file: File) => string;
@@ -135,7 +146,7 @@ declare global {
 
 
       startVerifyHash: () => Promise<string>;
-      updateVerifyHash: (verifierId: string, base64Chunk: string) => Promise<void>;
+      updateVerifyHash: (verifierId: string, chunk: Uint8Array) => Promise<void>;
       finishVerifyHash: (verifierId: string) => Promise<string | null>;
       verifyHash: (hash: string, signature: string, publicKey: string) => Promise<{ valid: boolean; reason?: string }>;
 

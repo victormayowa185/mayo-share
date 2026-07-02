@@ -59,13 +59,18 @@ const formatBytes = (b: number) => {
 
 const shortName = (name: string) => name.split("/").pop() || name;
 
-// Exact decoded byte length of a base64 string WITHOUT decoding it.
-// (atob() on a 256KB chunk, ~8000 times for a 2GB file, was choking the receiver.)
-const base64ByteLength = (b64: string): number => {
-  const len = b64.length;
-  if (len === 0) return 0;
-  const padding = b64.endsWith("==") ? 2 : b64.endsWith("=") ? 1 : 0;
-  return Math.floor((len * 3) / 4) - padding;
+// STUN-only fallback used if the main process can't hand us an ICE config.
+const STUN_ONLY: RTCIceServer[] = [{ urls: "stun:stun.l.google.com:19302" }];
+
+// Pull the ICE server list (STUN + any configured TURN fallback) from the main
+// process right before building a peer connection, so a TURN server added to
+// settings takes effect on the next connection without an app restart.
+const fetchIceServers = async (): Promise<RTCIceServer[]> => {
+  try {
+    const servers = await window.electronAPI.getIceServers();
+    if (Array.isArray(servers) && servers.length > 0) return servers;
+  } catch { /* fall through to STUN-only */ }
+  return STUN_ONLY;
 };
 
 const blobToBase64 = (blob: Blob): Promise<string> =>
@@ -202,7 +207,14 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
   // to state (which re-renders the progress bar) when the whole-number percent
   // actually changes.
   const receiveProgressRef = useRef<Record<string, { received: number; size: number; lastPct: number }>>({});
-  const messageQueueRef = useRef<string[]>([]);
+  // The data channel now carries BOTH JSON control messages (strings) and raw
+  // file bytes (ArrayBuffers), so the queue holds either.
+  const messageQueueRef = useRef<(string | ArrayBuffer)[]>([]);
+  // File chunks are sent as bare binary frames with no id/offset header. Because
+  // sendAll transfers strictly one file at a time over a single ordered channel
+  // (file-start → all chunks → file-end, then the next file), the receiver can
+  // route each binary frame to whichever file its last file-start named.
+  const activeReceiveIdRef = useRef<string | null>(null);
   const processingRef = useRef(false);
   const rejectedRef = useRef<Set<string>>(new Set());
   const stopSendRef = useRef<Set<string>>(new Set());
@@ -799,16 +811,18 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
             });
           }
 
-          const base64 = await window.electronAPI.readFileChunk(file.path!, currentOffset, CHUNK_SIZE);
+          // Raw bytes (Uint8Array) — no base64, no JSON envelope. The receiver
+          // knows which file these belong to from the preceding file-start.
+          const chunk = await window.electronAPI.readFileChunk(file.path!, currentOffset, CHUNK_SIZE);
 
           // Feed chunk into hasher only if integrity is on
           if (signerKey) {
             try {
-              await window.electronAPI.streamSignChunk(signerKey, base64);
+              await window.electronAPI.streamSignChunk(signerKey, chunk);
             } catch { /* non-fatal */ }
           }
 
-          dc.send(JSON.stringify({ type: "file-chunk", id: file.id, data: base64, offset: currentOffset }));
+          dc.send(chunk);
 
           currentOffset += CHUNK_SIZE;
           const progress = Math.min(100, Math.round((currentOffset / file.size) * 100));
@@ -863,7 +877,67 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
   };
 
   // ─── handleDCMessage with conditional integrity ──────────────────────────
-  const handleDCMessage = useCallback(async (raw: string) => {
+  const handleDCMessage = useCallback(async (raw: string | ArrayBuffer) => {
+    // ─── Binary frame = a file chunk for the file currently being received ──
+    if (typeof raw !== "string") {
+      const id = activeReceiveIdRef.current;
+      if (!id || rejectedRef.current.has(id)) return;
+      const path = receivePathsRef.current[id];
+      if (!path) return;
+
+      const bytes = new Uint8Array(raw);
+      try {
+        await window.electronAPI.appendReceiveChunk(path, bytes);
+      } catch (err) {
+        // Disk/IPC write failed. Abandon THIS file (it would be corrupt anyway)
+        // but keep the session alive so later files still transfer.
+        console.error("appendReceiveChunk failed; abandoning file:", id, err);
+        rejectedRef.current.add(id);
+        delete receivePathsRef.current[id];
+        delete receiveProgressRef.current[id];
+        try { await window.electronAPI.finishReceiveFile(path); } catch { /* ignore */ }
+        const vid = verifierMap.current[id];
+        if (vid) {
+          try { await window.electronAPI.finishVerifyHash(vid); } catch { /* ignore */ }
+          delete verifierMap.current[id];
+        }
+        setReceiveMap(prev => { const n = { ...prev }; delete n[id]; return n; });
+        return;
+      }
+
+      const verifierId = verifierMap.current[id];
+      if (verifierId) {
+        try {
+          await window.electronAPI.updateVerifyHash(verifierId, bytes);
+        } catch { /* non-fatal */ }
+      }
+
+      // byteLength is the exact chunk size now (no base64 to measure). Only
+      // re-render when the whole-number percent changes, not on every chunk.
+      const chunkLen = raw.byteLength;
+      const prog = receiveProgressRef.current[id];
+      if (prog) {
+        prog.received += chunkLen;
+        const pct = prog.size > 0 ? Math.floor((prog.received / prog.size) * 100) : 0;
+        if (pct !== prog.lastPct) {
+          prog.lastPct = pct;
+          const received = prog.received;
+          setReceiveMap(prev => {
+            const entry = prev[id];
+            if (!entry) return prev;
+            return { ...prev, [id]: { ...entry, received } };
+          });
+        }
+      } else {
+        setReceiveMap(prev => {
+          const entry = prev[id];
+          if (!entry) return prev;
+          return { ...prev, [id]: { ...entry, received: entry.received + chunkLen } };
+        });
+      }
+      return;
+    }
+
     let msg: any; try { msg = JSON.parse(raw); } catch { return; }
 
     if (msg.type === "handshake-offer") {
@@ -1062,6 +1136,9 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
       const isResuming = msg.offset && msg.offset > 0;
       await window.electronAPI.createReceiveFile(savePath, isResuming);
       receivePathsRef.current[msg.id] = savePath;
+      // Bare binary chunks that follow belong to this file until the next
+      // file-start (or file-end) arrives.
+      activeReceiveIdRef.current = msg.id;
 
       // Start verifier only if integrity is enabled
       let verifierId: string | null = null;
@@ -1074,65 +1151,6 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
 
       receiveProgressRef.current[msg.id] = { received: msg.offset || 0, size: msg.size, lastPct: -1 };
       setReceiveMap(prev => ({ ...prev, [msg.id]: { name: msg.name, size: msg.size, path: savePath, received: msg.offset || 0 } }));
-      return;
-    }
-
-    if (msg.type === "file-chunk") {
-      if (rejectedRef.current.has(msg.id)) return;
-      const path = receivePathsRef.current[msg.id];
-      if (!path) return;
-
-      try {
-        await window.electronAPI.appendReceiveChunk(path, msg.data);
-      } catch (err) {
-        // Disk/IPC write failed. Abandon THIS file (it would be corrupt anyway)
-        // but keep the session alive so later files still transfer. Marking it
-        // rejected makes file-end skip finalizing it as a good received file.
-        console.error("appendReceiveChunk failed; abandoning file:", msg.id, err);
-        rejectedRef.current.add(msg.id);
-        delete receivePathsRef.current[msg.id];
-        delete receiveProgressRef.current[msg.id];
-        try { await window.electronAPI.finishReceiveFile(path); } catch { /* ignore */ }
-        const vid = verifierMap.current[msg.id];
-        if (vid) {
-          try { await window.electronAPI.finishVerifyHash(vid); } catch { /* ignore */ }
-          delete verifierMap.current[msg.id];
-        }
-        setReceiveMap(prev => { const n = { ...prev }; delete n[msg.id]; return n; });
-        return;
-      }
-
-      const verifierId = verifierMap.current[msg.id];
-      if (verifierId) {
-        try {
-          await window.electronAPI.updateVerifyHash(verifierId, msg.data);
-        } catch { /* non-fatal */ }
-      }
-
-      // Measure the chunk without decoding it, and only re-render when the
-      // displayed percentage changes — not on every single chunk.
-      const chunkLen = base64ByteLength(msg.data);
-      const prog = receiveProgressRef.current[msg.id];
-      if (prog) {
-        prog.received += chunkLen;
-        const pct = prog.size > 0 ? Math.floor((prog.received / prog.size) * 100) : 0;
-        if (pct !== prog.lastPct) {
-          prog.lastPct = pct;
-          const received = prog.received;
-          setReceiveMap(prev => {
-            const entry = prev[msg.id];
-            if (!entry) return prev;
-            return { ...prev, [msg.id]: { ...entry, received } };
-          });
-        }
-      } else {
-        // Fallback (no progress entry): keep the old accurate-but-eager behaviour.
-        setReceiveMap(prev => {
-          const entry = prev[msg.id];
-          if (!entry) return prev;
-          return { ...prev, [msg.id]: { ...entry, received: entry.received + chunkLen } };
-        });
-      }
       return;
     }
 
@@ -1150,6 +1168,7 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
       const savedPath = receivePathsRef.current[msg.id] || entry?.path || "";
       delete receivePathsRef.current[msg.id];
       delete receiveProgressRef.current[msg.id];
+      if (activeReceiveIdRef.current === msg.id) activeReceiveIdRef.current = null;
 
       // Flush & close the write stream so all bytes are on disk before we treat
       // the file as complete (and before any integrity check reads it).
@@ -1238,14 +1257,21 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
       }
       setMyIP(ip);
 
-      const pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
+      const iceServers = await fetchIceServers();
+      const pc = new RTCPeerConnection({ iceServers });
       localPC.current = pc;
       intentionalCloseRef.current = false;
       setupConnectionMonitor(pc);
 
       const dc = pc.createDataChannel("mayo-share", { ordered: true });
+      dc.binaryType = "arraybuffer";
       localDC.current = dc;
       setupDataChannelMonitor(dc);
+
+      // The sender must also listen: this is how it receives the receiver's
+      // handshake-response (resume offsets), receiver-initiated cancels, and
+      // no-space file-reject. Without it those messages were silently dropped.
+      dc.onmessage = e => { messageQueueRef.current.push(e.data); processMessageQueue(); };
 
       dc.onopen = () => {
         showFileArea();
@@ -1304,13 +1330,16 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
       const compactOffer = await window.electronAPI.joinByCode(joinIP.trim(), code);
       const offerSDP = await window.electronAPI.decompressSDP(compactOffer);
 
-      const pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
+      const iceServers = await fetchIceServers();
+      const pc = new RTCPeerConnection({ iceServers });
       localPC.current = pc;
       intentionalCloseRef.current = false;
       setupConnectionMonitor(pc);
 
       pc.ondatachannel = event => {
         localDC.current = event.channel;
+        // Deliver incoming file frames as ArrayBuffers (default is "blob").
+        localDC.current.binaryType = "arraybuffer";
         setupDataChannelMonitor(localDC.current);
         localDC.current.onopen = () => {
           showFileArea();
@@ -1610,7 +1639,7 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
           <input className={styles.ipInput} value={joinIP} onChange={e => setJoinIP(e.target.value)} placeholder="192.168.x.x" />
           <p className={styles.label} style={{ marginTop: 20 }}>{t("enterCode")}</p>
           <div className={styles.digitRow}>
-            {joinCode.map((digit, i) => <input key={i} ref={el => (digitRefs.current[i] = el)} className={styles.digitInput} maxLength={1} value={digit} onChange={e => handleDigitChange(i, e.target.value)} onKeyDown={e => handleDigitKeyDown(i, e)} onPaste={handleDigitPaste} inputMode="numeric" />)}
+            {joinCode.map((digit, i) => <input key={i} ref={el => { digitRefs.current[i] = el; }} className={styles.digitInput} maxLength={1} value={digit} onChange={e => handleDigitChange(i, e.target.value)} onKeyDown={e => handleDigitKeyDown(i, e)} onPaste={handleDigitPaste} inputMode="numeric" />)}
           </div>
           <button className={styles.btn} onClick={connectWithCode} disabled={joining} style={{ marginTop: 20 }}>{joining ? "Connecting..." : "Connect"}</button>
         </div>

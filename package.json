@@ -45,7 +45,6 @@
       "createDesktopShortcut": true
     }
   },
-
   "devDependencies": {
     "@types/express": "^5.0.6",
     "@types/formidable": "^3.5.1",
@@ -81,6 +80,7 @@
     "react-i18next": "^17.0.8",
     "react-icons": "^5.6.0",
     "resumablejs": "^1.1.0",
+    "selfsigned": "^2.4.1",
     "sudo-prompt": "^9.2.1",
     "tweetnacl": "^1.0.3"
   }

@@ -1,7 +1,9 @@
-﻿import { createServer, Server, IncomingMessage, ServerResponse } from "http";
+﻿import { createServer, Server } from "https";
+import { IncomingMessage, ServerResponse } from "http";
 import { promises as fs, createReadStream, statSync } from "fs";
 import path from "path";
 import { EventEmitter } from "events";
+import { getServerCert } from "./certs";
 
 interface SharedFile {
   filePath: string;
@@ -16,7 +18,7 @@ export class FileServer extends EventEmitter {
   private port: number = 3000;
 
 
-    private files: SharedFile[] = [];
+  private files: SharedFile[] = [];
   private fileMap: Map<string, SharedFile> = new Map();
   private strings: Record<string, string> = {};
   private lang: string = "en";
@@ -57,7 +59,15 @@ export class FileServer extends EventEmitter {
     }
 
     return new Promise((resolve, reject) => {
+      if (!ip) {
+        reject(new Error("FileServer.start() requires a resolved LAN IP."));
+        return;
+      }
+
+      const { key, cert } = getServerCert(ip);
+
       this.server = createServer(
+        { key, cert },
         async (req: IncomingMessage, res: ServerResponse) => {
           const url = req.url || "/";
           const method = req.method || "GET";
@@ -74,7 +84,7 @@ export class FileServer extends EventEmitter {
           }
 
           // Serve the HTML index page
-               if (url === "/" || url === "") {
+          if (url === "/" || url === "") {
             const html = buildDownloadPage(this.files, this.strings, this.lang);
 
 
@@ -83,7 +93,7 @@ export class FileServer extends EventEmitter {
             return;
           }
 
-             // Serve the MAYO logo (copied into dist/backend at build time)
+          // Serve the MAYO logo (copied into dist/backend at build time)
           if (url === "/mayo.png") {
             try {
               const data = await fs.readFile(path.join(__dirname, "mayo.png"));
@@ -252,7 +262,7 @@ export class FileServer extends EventEmitter {
 
       this.server.listen(this.port, "0.0.0.0", () => {
         const usedIP = ip || "192.168.137.1";
-        resolve(`http://${usedIP}:${this.port}`);
+        resolve(`https://${usedIP}:${this.port}`);
       });
 
       this.server.on("error", (err) => {
@@ -435,7 +445,7 @@ function buildDownloadPage(
               </span>
               <span class="size">${formatBytes(f.fileSize)}</span>
               <span class="action">
-                <a href="/file/${encodeURIComponent(f.relativePath)}" download="${escapeHtml(f.fileName)}" class="download-btn">${t("browserDownload","Download")}</a>
+                <a href="/file/${encodeURIComponent(f.relativePath)}" download="${escapeHtml(f.fileName)}" class="download-btn">${t("browserDownload", "Download")}</a>
 
               </span>
             </div>
@@ -448,7 +458,7 @@ function buildDownloadPage(
     // Responsive table: use div wrapper and adjust for mobile
     fileListHtml = `<div class="table-wrapper"><table class="file-table">
       <thead>
-             <tr><th>${t("browserFileName","File name")}</th><th>${t("browserSize","Size")}</th><th></th></tr>
+             <tr><th>${t("browserFileName", "File name")}</th><th>${t("browserSize", "Size")}</th><th></th></tr>
 
       </thead>
       <tbody>
@@ -480,7 +490,7 @@ function buildDownloadPage(
         <path d="M176 262.62L256 342l80-79.38M256 330.97V170"/>
         <path d="M256 64C150 64 64 150 64 256s86 192 192 192 192-86 192-192S362 64 256 64z" fill="none" stroke="currentColor" stroke-miterlimit="10" stroke-width="32"/>
       </svg>
-           <span id="zipBtnLabel">${t("browserDownloadAllZip","Download All as ZIP")}</span>
+           <span id="zipBtnLabel">${t("browserDownloadAllZip", "Download All as ZIP")}</span>
 
       <span class="zip-total-size">(${formatBytes(totalSize)})</span>
     </button>
