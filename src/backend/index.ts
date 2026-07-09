@@ -751,8 +751,19 @@ ipcMain.handle("get-hostname", async () => {
 
 ipcMain.handle("get-local-ip", async (): Promise<string | null> => {
   const interfaces = os.networkInterfaces();
-  for (const iface of Object.values(interfaces)) {
+
+  // Adapter *names* that are virtual/tunnel/synthetic and should never be
+  // picked as "the" LAN/hotspot address, even though they carry a valid
+  // private IPv4. This is the actual fix: name-based filtering, not just
+  // address-range filtering, because virtual adapters can hand out perfectly
+  // normal-looking 192.168.x.x / 10.x.x.x addresses too.
+  const BAD_NAME = /vmware|virtualbox|vethernet|hyper-v|loopback|tailscale|zerotier|tap|tun|bluetooth|docker|wsl/i;
+
+  const candidates: { name: string; address: string }[] = [];
+
+  for (const [name, iface] of Object.entries(interfaces)) {
     if (!iface) continue;
+    if (BAD_NAME.test(name)) continue;
     for (const addr of iface) {
       if (
         addr.family === "IPv4" &&
@@ -761,11 +772,19 @@ ipcMain.handle("get-local-ip", async (): Promise<string | null> => {
         !addr.address.startsWith("192.168.2.") &&
         !addr.address.startsWith("169.254.")
       ) {
-        return addr.address;
+        candidates.push({ name, address: addr.address });
       }
     }
   }
-  return null;
+
+  if (candidates.length === 0) return null;
+
+  // Prefer an adapter whose name looks like real Wi-Fi/Ethernet.
+  const preferred = candidates.find(c => /wi-?fi|wlan|en0|ethernet/i.test(c.name));
+  if (preferred) return preferred.address;
+
+  // Otherwise fall back to the first surviving candidate.
+  return candidates[0].address;
 });
 
 ipcMain.handle("get-wifi-ssid", async (): Promise<string | null> => {

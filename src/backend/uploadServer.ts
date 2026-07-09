@@ -3,7 +3,7 @@ import { createServer as createHttpServer, Server as HttpServer, IncomingMessage
 import { promises as fs } from "fs";
 import path from "path";
 import { EventEmitter } from "events";
-import { formidable } from "formidable";
+import { createWriteStream } from "fs";
 import { getServerCert } from "./certs";
 
 interface Session {
@@ -41,7 +41,74 @@ export class UploadServer extends EventEmitter {
 
   private sseClients = new Map<string, SSEClient>();
   private adminClients = new Set<ServerResponse>();
-  private fileAssemblyLocks = new Map<string, Promise<void>>();
+
+  // Per-file upload state for the streaming (no-reassembly) chunk path.
+  // fileInitLocks: ensures the final file is created/pre-sized exactly once per
+  //   fileId before any chunk writes into it (guards parallel first-chunks).
+  // fileProgress: in-memory set of completed chunk indices per fileId (drives
+  //   resume + the admin progress bar).
+  // finalizedFiles: fileIds already finalized, so parallel last-chunks emit once.
+  private fileInitLocks = new Map<string, Promise<void>>();
+  private fileProgress = new Map<string, Set<number>>();
+  private finalizedFiles = new Set<string>();
+  private lastAdminBroadcast = 0;
+
+  // Sidecar file that records resume progress on disk (survives a page reload).
+  private progressPath(fileId: string): string {
+    return path.join(RECEIVE_DIR, "chunks", `${fileId}.progress.json`);
+  }
+
+  private async writeProgress(
+    fileId: string,
+    filename: string,
+    totalChunks: number,
+    completed: Set<number>,
+  ): Promise<void> {
+    try {
+      await fs.mkdir(path.join(RECEIVE_DIR, "chunks"), { recursive: true });
+      await fs.writeFile(
+        this.progressPath(fileId),
+        JSON.stringify({ filename, totalChunks, completed: Array.from(completed) }),
+      );
+    } catch { /* progress is best-effort */ }
+  }
+
+  private async clearProgress(fileId: string): Promise<void> {
+    try { await fs.unlink(this.progressPath(fileId)); } catch { /* already gone */ }
+  }
+
+  // Create the final file once per fileId, pre-sized to fileSize so positional
+  // writes never race on creation. Concurrent callers await the same promise.
+  private ensureFileInit(
+    fileId: string,
+    saveDir: string,
+    finalPath: string,
+    fileSize: number,
+  ): Promise<void> {
+    const existing = this.fileInitLocks.get(fileId);
+    if (existing) return existing;
+    const p = (async () => {
+      await fs.mkdir(saveDir, { recursive: true });
+      const fh = await fs.open(finalPath, "w");
+      try {
+        if (fileSize > 0) await fh.truncate(fileSize);
+      } finally {
+        await fh.close();
+      }
+      if (!this.fileProgress.has(fileId)) this.fileProgress.set(fileId, new Set());
+    })();
+    this.fileInitLocks.set(fileId, p);
+    return p;
+  }
+
+  // Coalesce mid-transfer admin updates to ~2/sec (the final update is sent directly).
+  private throttledAdminUpdate(): void {
+    const now = Date.now();
+    if (now - this.lastAdminBroadcast >= 500) {
+      this.lastAdminBroadcast = now;
+      this.broadcastAdminUpdate();
+    }
+  }
 
   approveSender(sessionId: string) {
     const session = this.sessions.get(sessionId);
@@ -178,19 +245,21 @@ export class UploadServer extends EventEmitter {
             res.end("Not approved");
             return;
           }
-          const chunkDir = path.join(RECEIVE_DIR, "chunks", fileId || "none");
-          try {
-            const files = await fs.readdir(chunkDir);
-            const uploadedIndices = files
-              .filter(f => f.startsWith("chunk-"))
-              .map(f => parseInt(f.split("-")[1], 10))
-              .filter(n => !isNaN(n));
-            res.writeHead(200, { "Content-Type": "application/json" });
-            res.end(JSON.stringify({ uploadedChunks: uploadedIndices }));
-          } catch {
-            res.writeHead(200, { "Content-Type": "application/json" });
-            res.end(JSON.stringify({ uploadedChunks: [] }));
+          // Prefer live in-memory progress; fall back to the on-disk sidecar.
+          let uploadedIndices: number[] = [];
+          const mem = this.fileProgress.get(fileId || "");
+          if (mem) {
+            uploadedIndices = Array.from(mem);
+          } else {
+            try {
+              const raw = await fs.readFile(this.progressPath(fileId || "none"), "utf-8");
+              uploadedIndices = JSON.parse(raw).completed || [];
+            } catch {
+              uploadedIndices = [];
+            }
           }
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ uploadedChunks: uploadedIndices }));
           return;
         }
 
@@ -325,7 +394,9 @@ export class UploadServer extends EventEmitter {
           return;
         }
 
-        // ✅ FIXED: Chunk upload endpoint using formidable
+        // Chunk upload: stream the raw body straight to its byte offset in the
+        // final file. One disk write per chunk — no multipart temp file, no
+        // chunk-staging folder, no post-transfer reassembly pass.
         if (method === "POST" && url?.startsWith("/upload-chunk")) {
           try {
             const parsedUrl = new URL(url!, `http://localhost:${PORT}`);
@@ -333,6 +404,8 @@ export class UploadServer extends EventEmitter {
             const fileId = parsedUrl.searchParams.get("fileId") || "";
             const chunkIndex = parseInt(parsedUrl.searchParams.get("chunkIndex") || "0", 10);
             const totalChunks = parseInt(parsedUrl.searchParams.get("totalChunks") || "0", 10);
+            const offset = parseInt(parsedUrl.searchParams.get("offset") || "0", 10);
+            const fileSize = parseInt(parsedUrl.searchParams.get("fileSize") || "0", 10);
             const filename = parsedUrl.searchParams.get("filename") || "file";
 
             const session = this.sessions.get(sessionId);
@@ -342,103 +415,61 @@ export class UploadServer extends EventEmitter {
               return;
             }
 
-            // Parse multipart form data
-            const form = formidable({ multiples: false });
-            const [fields, files] = await form.parse(req);
-            const chunkFile = files.chunk?.[0];
-            if (!chunkFile) {
+            // Path-traversal guard: never let a chunk escape the save dir.
+            if (filename.includes("..") || path.isAbsolute(filename)) {
               res.writeHead(400);
-              res.end("Missing chunk file");
+              res.end("Invalid filename");
               return;
             }
 
-            // Read the actual binary chunk data
-            const chunkData = await fs.readFile(chunkFile.filepath);
-            // Clean up temp file
-            await fs.unlink(chunkFile.filepath).catch(() => { });
+            const finalPath = path.join(session.saveDir, filename);
 
-            // Update session tracking
-            if (chunkIndex === 0) {
-              session.currentUpload = {
-                fileId,
-                filename,
-                totalChunks,
-                uploadedChunks: new Set()
-              };
-            }
-            if (session.currentUpload && session.currentUpload.fileId === fileId) {
-              session.currentUpload.uploadedChunks.add(chunkIndex);
-            }
+            // Create + pre-size the final file exactly once before any write.
+            await this.ensureFileInit(fileId, session.saveDir, finalPath, fileSize);
 
-            const chunkDir = path.join(RECEIVE_DIR, "chunks", fileId);
-            await fs.mkdir(chunkDir, { recursive: true });
-            const chunkPath = path.join(chunkDir, `chunk-${chunkIndex}`);
-            await fs.writeFile(chunkPath, chunkData);
-            console.log(`[Server] Chunk ${chunkIndex}/${totalChunks} saved for ${filename}`);
+            // Pipe this chunk's raw body to its position. Parallel chunks each
+            // get their own stream/fd at their own start offset — independent.
+            await new Promise<void>((resolve, reject) => {
+              const ws = createWriteStream(finalPath, { flags: "r+", start: offset });
+              const onErr = (e: Error) => { ws.destroy(); reject(e); };
+              req.on("error", onErr);
+              ws.on("error", onErr);
+              ws.on("finish", () => resolve());
+              req.pipe(ws);
+            });
 
-            // Check completeness
-            const chunks = await fs.readdir(chunkDir);
-            if (chunks.length === totalChunks) {
-              if (this.fileAssemblyLocks.has(fileId)) {
-                await this.fileAssemblyLocks.get(fileId);
-                res.writeHead(200, { "Content-Type": "application/json" });
-                res.end(JSON.stringify({ ok: true, complete: true }));
-                return;
-              }
+            // Mark this chunk done (in-memory + on-disk sidecar for resume).
+            const completed = this.fileProgress.get(fileId) || new Set<number>();
+            completed.add(chunkIndex);
+            this.fileProgress.set(fileId, completed);
+            await this.writeProgress(fileId, filename, totalChunks, completed);
 
-              const assemblyPromise = (async () => {
-                try {
-                  await fs.mkdir(session.saveDir, { recursive: true });
-                  const finalPath = path.join(session.saveDir, filename);
-                  const { createWriteStream } = await import("fs");
-                  const writeStream = createWriteStream(finalPath);
-
-                  // Assemble chunks in correct order
-                  for (let i = 0; i < totalChunks; i++) {
-                    const data = await fs.readFile(path.join(chunkDir, `chunk-${i}`));
-                    await new Promise<void>((resolve, reject) => {
-                      writeStream.write(data, (err) => err ? reject(err) : resolve());
-                    });
-                  }
-                  writeStream.end();
-                  await new Promise<void>((resolve, reject) => {
-                    writeStream.on("finish", resolve);
-                    writeStream.on("error", reject);
-                  });
-
-                  console.log(`[Server] File complete: ${filename}`);
-                  this.emit("file-received", filename);
-                  if (session.currentUpload && session.currentUpload.fileId === fileId) {
-                    session.currentUpload = undefined;
-                  }
-                  this.broadcastAdminUpdate();
-
-                  // Clean up chunks in background
-                  (async () => {
-                    try {
-                      for (let i = 0; i < totalChunks; i++) {
-                        await fs.unlink(path.join(chunkDir, `chunk-${i}`));
-                      }
-                      await fs.rmdir(chunkDir);
-                    } catch (err) {
-                      console.error("Cleanup error:", err);
-                    }
-                  })();
-                } finally {
-                  this.fileAssemblyLocks.delete(fileId);
-                }
-              })();
-
-              this.fileAssemblyLocks.set(fileId, assemblyPromise);
-              await assemblyPromise;
-
-              res.writeHead(200, { "Content-Type": "application/json" });
-              res.end(JSON.stringify({ ok: true, complete: true }));
+            // Keep the admin dashboard progress bar in sync with this set.
+            if (!session.currentUpload || session.currentUpload.fileId !== fileId) {
+              session.currentUpload = { fileId, filename, totalChunks, uploadedChunks: completed };
             } else {
-              this.broadcastAdminUpdate();
-              res.writeHead(200, { "Content-Type": "application/json" });
-              res.end(JSON.stringify({ ok: true, complete: false }));
+              session.currentUpload.uploadedChunks = completed;
             }
+
+            const complete = totalChunks > 0 && completed.size >= totalChunks;
+            if (complete && !this.finalizedFiles.has(fileId)) {
+              // Claim finalize synchronously so parallel last-chunks emit once.
+              this.finalizedFiles.add(fileId);
+              await this.clearProgress(fileId);
+              this.fileProgress.delete(fileId);
+              this.fileInitLocks.delete(fileId);
+              if (session.currentUpload && session.currentUpload.fileId === fileId) {
+                session.currentUpload = undefined;
+              }
+              console.log(`[Server] File complete: ${filename}`);
+              this.emit("file-received", filename);
+              this.broadcastAdminUpdate();
+            } else {
+              this.throttledAdminUpdate();
+            }
+
+            res.writeHead(200, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ ok: true, complete }));
           } catch (err) {
             console.error("Chunk upload error:", err);
             res.writeHead(500);
@@ -479,26 +510,26 @@ export class UploadServer extends EventEmitter {
         res.end("Not found");
       };
 
-    if (useEncryption) {
-      const { key, cert } = getServerCert(ip);
-      this.server = createHttpsServer({ key, cert }, requestHandler);
-    } else {
-      this.server = createHttpServer(requestHandler);
-    }
+      if (useEncryption) {
+        const { key, cert } = getServerCert(ip);
+        this.server = createHttpsServer({ key, cert }, requestHandler);
+      } else {
+        this.server = createHttpServer(requestHandler);
+      }
 
-    this.server.listen(PORT, "0.0.0.0", () => {
-      const usedIP = ip || "192.168.137.1";
-      const protocol = useEncryption ? "https" : "http";
-      resolve(`${protocol}://${usedIP}:${PORT}`);
+      this.server.listen(PORT, "0.0.0.0", () => {
+        const usedIP = ip || "192.168.137.1";
+        const protocol = useEncryption ? "https" : "http";
+        resolve(`${protocol}://${usedIP}:${PORT}`);
+      });
     });
-  });
-}
+  }
 
-stop(): void {
-  if(this.server) {
-  this.server.close();
-  this.server = null;
-}
+  stop(): void {
+    if (this.server) {
+      this.server.close();
+      this.server = null;
+    }
   }
 }
 
@@ -868,7 +899,7 @@ function getUploadHTML(): string {
   const dropZone = document.getElementById('dropZone');
 
   const sessionId = new URLSearchParams(location.search).get('sessionId');
-  const CHUNK_SIZE = 5 * 1024 * 1024;
+  const CHUNK_SIZE = 16 * 1024 * 1024;
   const PARALLEL_CHUNKS = 4;
   const MAX_RETRIES = 3;
 
@@ -1060,11 +1091,13 @@ function getUploadHTML(): string {
     const start = chunkIndex * CHUNK_SIZE;
     const end = Math.min(start + CHUNK_SIZE, file.size);
     const chunk = file.slice(start, end);
-    const formData = new FormData();
-    formData.append('chunk', chunk);
-    const url = \`/upload-chunk?sessionId=\${sessionId}&fileId=\${fileId}&chunkIndex=\${chunkIndex}&totalChunks=\${totalChunks}&filename=\${encodeURIComponent(file.name)}\`;
+    const url = \`/upload-chunk?sessionId=\${sessionId}&fileId=\${fileId}&chunkIndex=\${chunkIndex}&totalChunks=\${totalChunks}&offset=\${start}&fileSize=\${file.size}&filename=\${encodeURIComponent(file.name)}\`;
     try {
-      const response = await fetch(url, { method: 'POST', body: formData });
+      const response = await fetch(url, {
+        method: 'POST',
+        body: chunk,
+        headers: { 'Content-Type': 'application/octet-stream' }
+      });
       if (!response.ok) throw new Error(\`HTTP \${response.status}\`);
       const data = await response.json();
       return { success: true, complete: data.complete };
@@ -1105,7 +1138,6 @@ function getUploadHTML(): string {
           const result = await uploadChunk(file, fileId, chunkIdx, totalChunks);
           if (result.complete) {
             complete = true;
-            statusDiv.innerHTML = \`<div class="assembling-notice"><div class="assembling-spinner"></div>Assembling file...</div>\`;
           }
           uploaded.add(chunkIdx);
           completedChunks = uploaded.size;
