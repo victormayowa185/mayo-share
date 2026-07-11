@@ -140,23 +140,49 @@ const HOTSPOT_SCRIPT = `
   exit 0
   `;
 
-async function getBestIP(): Promise<string> {
+// Adapter *names* that are virtual/tunnel/synthetic and must never be picked as
+// "the" LAN address, even though they carry a valid-looking private IPv4.
+const VIRTUAL_ADAPTER = /vmware|virtualbox|vethernet|hyper-v|loopback|tailscale|zerotier|tap|tun|bluetooth|docker|wsl/i;
+
+// Pick the IPv4 address that OTHER devices should use to reach this PC. Returns
+// null when there's no usable adapter.
+//
+// IMPORTANT: we deliberately do NOT blanket-exclude private ranges like
+// 192.168.2.x or 192.168.137.x. A phone hotspot legitimately hands this PC an
+// address in one of those ranges, and excluding them was the bug that made the
+// app discard the real hotspot IP and fall back to the unreachable
+// 192.168.137.1 gateway (the phone, on a different subnet, could never load it).
+//
+// Instead we drop virtual adapters by NAME, skip 169.254.x (APIPA = no real
+// link), and merely *de-prioritise* the Windows hosted-hotspot range so a real
+// Wi-Fi/Ethernet uplink wins when present — while the hosted-hotspot adapter is
+// still returned as a last resort (e.g. the app's own Mobile Hotspot).
+function pickLanIP(): string | null {
   const interfaces = os.networkInterfaces();
-  for (const iface of Object.values(interfaces)) {
+  const candidates: { address: string; score: number }[] = [];
+
+  for (const [name, iface] of Object.entries(interfaces)) {
     if (!iface) continue;
+    if (VIRTUAL_ADAPTER.test(name)) continue;
     for (const addr of iface) {
-      if (
-        addr.family === "IPv4" &&
-        !addr.internal &&
-        !addr.address.startsWith("192.168.137.") &&
-        !addr.address.startsWith("192.168.2.") &&
-        !addr.address.startsWith("169.254.")
-      ) {
-        return addr.address;
-      }
+      if (addr.family !== "IPv4" || addr.internal) continue;
+      if (addr.address.startsWith("169.254.")) continue; // APIPA = no real link
+      let score = 0;
+      if (/wi-?fi|wlan|en0|ethernet|eth\d/i.test(name)) score += 100;
+      if (addr.address.startsWith("192.168.137.")) score -= 50; // hosted-hotspot adapter
+      candidates.push({ address: addr.address, score });
     }
   }
-  return currentHotspotIP;
+
+  if (candidates.length === 0) return null;
+  candidates.sort((a, b) => b.score - a.score);
+  return candidates[0].address;
+}
+
+async function getBestIP(): Promise<string> {
+  // Real adapter first; only fall back to the hosted-hotspot gateway as a true
+  // last resort (e.g. the app's own Windows Mobile Hotspot with no other link).
+  return pickLanIP() ?? currentHotspotIP;
 }
 
 // Default to the OS Downloads folder (writable without admin) instead of the
@@ -750,41 +776,10 @@ ipcMain.handle("get-hostname", async () => {
 });
 
 ipcMain.handle("get-local-ip", async (): Promise<string | null> => {
-  const interfaces = os.networkInterfaces();
-
-  // Adapter *names* that are virtual/tunnel/synthetic and should never be
-  // picked as "the" LAN/hotspot address, even though they carry a valid
-  // private IPv4. This is the actual fix: name-based filtering, not just
-  // address-range filtering, because virtual adapters can hand out perfectly
-  // normal-looking 192.168.x.x / 10.x.x.x addresses too.
-  const BAD_NAME = /vmware|virtualbox|vethernet|hyper-v|loopback|tailscale|zerotier|tap|tun|bluetooth|docker|wsl/i;
-
-  const candidates: { name: string; address: string }[] = [];
-
-  for (const [name, iface] of Object.entries(interfaces)) {
-    if (!iface) continue;
-    if (BAD_NAME.test(name)) continue;
-    for (const addr of iface) {
-      if (
-        addr.family === "IPv4" &&
-        !addr.internal &&
-        !addr.address.startsWith("192.168.137.") &&
-        !addr.address.startsWith("192.168.2.") &&
-        !addr.address.startsWith("169.254.")
-      ) {
-        candidates.push({ name, address: addr.address });
-      }
-    }
-  }
-
-  if (candidates.length === 0) return null;
-
-  // Prefer an adapter whose name looks like real Wi-Fi/Ethernet.
-  const preferred = candidates.find(c => /wi-?fi|wlan|en0|ethernet/i.test(c.name));
-  if (preferred) return preferred.address;
-
-  // Otherwise fall back to the first surviving candidate.
-  return candidates[0].address;
+  // Same robust selection the server binding uses: virtual adapters filtered by
+  // name, no blanket private-range exclusions (so a phone-hotspot IP like
+  // 192.168.2.x / 192.168.137.x is returned instead of being discarded).
+  return pickLanIP();
 });
 
 ipcMain.handle("get-wifi-ssid", async (): Promise<string | null> => {
