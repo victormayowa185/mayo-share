@@ -3,6 +3,7 @@ import { createServer as createHttpServer, Server as HttpServer, IncomingMessage
 import { promises as fs, createReadStream, statSync } from "fs";
 import path from "path";
 import { EventEmitter } from "events";
+import { ZipArchive } from "archiver";
 import { getServerCert } from "./certs";
 
 interface SharedFile {
@@ -66,6 +67,9 @@ export class FileServer extends EventEmitter {
       }
 
       const requestHandler = async (req: IncomingMessage, res: ServerResponse) => {
+        // Disable Nagle: we send large streamed bodies, and Nagle's coalescing
+        // adds latency without benefit here.
+        req.socket.setNoDelay(true);
         const url = req.url || "/";
         const method = req.method || "GET";
 
@@ -116,6 +120,39 @@ export class FileServer extends EventEmitter {
             res.writeHead(404);
             res.end();
           }
+          return;
+        }
+
+        // Stream ALL shared files as one ZIP, built on the fly. This replaces
+        // the old in-browser JSZip path that fetched every file into the phone's
+        // memory and zipped it there (slow + crashes on large sets). Here the
+        // phone just saves a stream; nothing is buffered whole on either side.
+        if (url === "/download-all" || url === "/download-all.zip") {
+          req.socket.setNoDelay(true);
+          const clientIp = req.socket.remoteAddress || "unknown";
+          res.writeHead(200, {
+            "Content-Type": "application/zip",
+            "Content-Disposition": `attachment; filename="mayo-share.zip"`,
+            "Cache-Control": "no-cache",
+          });
+          // level 0 = store (no compression): most shared files (media, archives,
+          // installers) don't compress, so compressing just burns CPU and slows
+          // the transfer. Storing streams at full link speed.
+          const archive = new ZipArchive({ zlib: { level: 0 } });
+          archive.on("error", (err: Error) => {
+            console.error("Zip stream error:", err);
+            res.destroy();
+          });
+          archive.on("warning", (err: Error) => console.warn("Zip warning:", err));
+          archive.pipe(res);
+          for (const f of this.files) {
+            archive.file(f.filePath, { name: f.relativePath });
+          }
+          this.emit("download-started", -1, "All files (ZIP)");
+          res.on("finish", () =>
+            this.emit("download-completed", -1, "All files (ZIP)", clientIp),
+          );
+          archive.finalize();
           return;
         }
 
@@ -193,11 +230,12 @@ export class FileServer extends EventEmitter {
             const stream = createReadStream(fileEntry.filePath, {
               start,
               end,
-              highWaterMark: 1024 * 1024,
+              highWaterMark: 4 * 1024 * 1024,
             });
             const fileIndex = this.files.indexOf(fileEntry);
             this.emit("download-started", fileIndex, fileEntry.fileName);
             let bytesSent = 0;
+            let lastPct = -1;
             stream.on("data", (chunk: any) => {
               const length = Buffer.isBuffer(chunk)
                 ? chunk.length
@@ -205,7 +243,13 @@ export class FileServer extends EventEmitter {
               bytesSent += length;
               const totalSent = start + bytesSent;
               const pct = Math.floor((totalSent / fileSize) * 100);
-              this.emit("download-progress", fileEntry.fileName, pct);
+              // Only emit on whole-percent changes — otherwise a fast link fires
+              // thousands of IPC messages/sec, starving the same thread that's
+              // pumping the socket and capping throughput.
+              if (pct !== lastPct) {
+                lastPct = pct;
+                this.emit("download-progress", fileEntry.fileName, pct);
+              }
             });
             stream.pipe(res);
             stream.on("error", (err) => {
@@ -223,19 +267,24 @@ export class FileServer extends EventEmitter {
 
           res.setHeader("Content-Type", "application/octet-stream");
           res.setHeader("Content-Length", fileSize);
-          let stream = createReadStream(fileEntry.filePath, { highWaterMark: 1024 * 1024 });
+          let stream = createReadStream(fileEntry.filePath, { highWaterMark: 4 * 1024 * 1024 });
 
           const fileIndex = this.files.indexOf(fileEntry);
           this.emit("download-started", fileIndex, fileEntry.fileName);
 
           let bytesSent = 0;
+          let lastPct = -1;
           stream.on("data", (chunk: any) => {
             const length = Buffer.isBuffer(chunk)
               ? chunk.length
               : Buffer.byteLength(chunk);
             bytesSent += length;
             const pct = Math.floor((bytesSent / fileSize) * 100);
-            this.emit("download-progress", fileEntry.fileName, pct);
+            // Throttle to whole-percent changes (see note in the range branch).
+            if (pct !== lastPct) {
+              lastPct = pct;
+              this.emit("download-progress", fileEntry.fileName, pct);
+            }
           });
 
           stream.pipe(res);
@@ -262,6 +311,12 @@ export class FileServer extends EventEmitter {
     } else {
       this.server = createHttpServer(requestHandler);
     }
+
+    // Reuse connections across many range requests (fewer TLS handshakes) and
+    // never time out a long multi-GB transfer.
+    this.server.keepAliveTimeout = 65000;
+    this.server.headersTimeout = 66000;
+    this.server.requestTimeout = 0;
 
     this.server.listen(this.port, "0.0.0.0", () => {
       const usedIP = ip || "192.168.137.1";
@@ -930,29 +985,15 @@ function buildDownloadPage(
     const files = ${JSON.stringify(files.map((f) => ({ r: f.relativePath, n: f.fileName })))};
 
     async function downloadAllAsZip() {
-      const btn = document.getElementById('downloadAllBtn');
-      const label = document.getElementById('zipBtnLabel');
-      if (!btn || !label) return;
-         btn.disabled = true;
-      label.textContent = T('browserBuildingZip','Building ZIP…');
-
-      const zip = new JSZip();
-      for (const file of files) {
-        const resp = await fetch('/file/' + encodeURIComponent(file.r));
-        const blob = await resp.blob();
-        zip.file(file.r, blob);
-      }
-      const content = await zip.generateAsync({ type: 'blob' });
-      const url = URL.createObjectURL(content);
+      // The server now builds the ZIP as a stream, so the phone just triggers a
+      // normal download instead of fetching every file into memory and zipping
+      // it here. This is far faster and doesn't blow up on large file sets.
       const a = document.createElement('a');
-      a.href = url;
+      a.href = '/download-all.zip';
       a.download = 'mayo-share.zip';
       document.body.appendChild(a);
       a.click();
       a.remove();
-      URL.revokeObjectURL(url);
-      btn.disabled = false;
-      label.textContent = T('browserDownloadAllZip','Download All as ZIP');
     }
 
     const zipBtn = document.getElementById('downloadAllBtn');

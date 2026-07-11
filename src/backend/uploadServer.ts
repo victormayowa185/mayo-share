@@ -176,6 +176,8 @@ export class UploadServer extends EventEmitter {
       }
 
       const requestHandler = async (req: IncomingMessage, res: ServerResponse) => {
+        // Disable Nagle so streamed chunk writes aren't delayed by coalescing.
+        req.socket.setNoDelay(true);
         // CORS
         res.setHeader("Access-Control-Allow-Origin", "*");
         res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
@@ -516,6 +518,12 @@ export class UploadServer extends EventEmitter {
       } else {
         this.server = createHttpServer(requestHandler);
       }
+
+      // Reuse connections across parallel chunk uploads (fewer TLS handshakes)
+      // and never time out a long transfer.
+      this.server.keepAliveTimeout = 65000;
+      this.server.headersTimeout = 66000;
+      this.server.requestTimeout = 0;
 
       this.server.listen(PORT, "0.0.0.0", () => {
         const usedIP = ip || "192.168.137.1";
