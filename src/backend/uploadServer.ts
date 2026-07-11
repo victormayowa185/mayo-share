@@ -988,13 +988,22 @@ function getUploadHTML(): string {
     input.value = '';
   }
 
-  addFilesBtn.addEventListener('click', () => {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.multiple = true;
-    input.addEventListener('change', () => addFilesFromInput(input));
-    input.click();
+addFilesBtn.addEventListener('click', () => {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.multiple = true;
+  input.accept = 'image/*,video/*';   // allows photos and videos from camera
+  input.setAttribute('capture', 'environment'); // suggests rear camera (optional)
+  // Append to DOM – required on some mobile browsers (e.g. iOS Safari)
+  document.body.appendChild(input);
+  input.addEventListener('change', () => {
+    addFilesFromInput(input);
+    // Clean up after selection
+    document.body.removeChild(input);
   });
+  input.click();
+});
+
   addFolderBtn.addEventListener('click', () => {
     const input = document.createElement('input');
     input.type = 'file';
