@@ -29,6 +29,8 @@ import { HOTSPOT_IP } from "./hotspot-mac";
 import sudo from "sudo-prompt";
 import { statSync } from "fs";
 
+// ─── NEW: P2P Manager import ───────────────────────────────────────────────
+import { P2PManager } from "./p2pTransfer";
 
 import fs from "fs";
 import os from "os";
@@ -241,6 +243,8 @@ function addActivity(entry: {
 const fileServer = new FileServer();
 const uploadServer = new UploadServer();
 const discoveryManager = new DiscoveryManager();
+// ─── NEW: P2PManager instantiation ───────────────────────────────────────
+const p2pManager = new P2PManager();
 
 function stopWindowsHotspot() {
   const tempScriptPath = path.join(
@@ -998,6 +1002,113 @@ fileServer.on("download-completed", (_index: number, fileName: string, clientIp:
   });
 });
 
+// ═══════════════════════════════════════════════════════════════════════════
+// NEW: P2PManager event wiring (replaces old WebRTC data channel events)
+// ═══════════════════════════════════════════════════════════════════════════
+
+p2pManager.on("connected", () => {
+  mainWindow?.webContents.send("p2p-connected");
+});
+p2pManager.on("disconnected", () => {
+  mainWindow?.webContents.send("p2p-disconnected");
+});
+p2pManager.on("control", (msg) => {
+  mainWindow?.webContents.send("p2p-control", msg);
+});
+
+// Throttle receive progress to whole-percent-ish chunks so we don't flood IPC.
+// (Same technique fileServer.ts already uses for download-progress.)
+let lastReceiveEmit: Record<string, number> = {};
+p2pManager.on("receive-progress", ({ id, chunkLength }) => {
+  const totals = (lastReceiveEmit[id] || 0) + chunkLength;
+  lastReceiveEmit[id] = totals;
+  mainWindow?.webContents.send("p2p-receive-progress", { id, chunkLength });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// NEW: P2P IPC handlers (replace old WebRTC signaling handlers)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Cancellation flag for mid-file send abort (1d from integration guide)
+let sendCancelledFlag = false;
+
+ipcMain.handle("p2p-host-start", async (): Promise<{ code: string; ip: string; port: number }> => {
+  const ip = await getBestIP();
+  if (!ip) {
+    throw new Error("Could not determine a LAN IP address.");
+  }
+  return p2pManager.hostStart(ip);
+});
+
+ipcMain.handle("p2p-host-stop", async (): Promise<void> => {
+  p2pManager.hostStop();
+});
+
+ipcMain.handle("p2p-join", async (_event, ip: string, code: string): Promise<void> => {
+  await p2pManager.join(ip, code);
+});
+
+ipcMain.handle("p2p-disconnect", async (): Promise<void> => {
+  p2pManager.disconnect();
+});
+
+ipcMain.handle("p2p-send-control", async (_event, msg: any): Promise<void> => {
+  p2pManager.sendControl(msg);
+});
+
+ipcMain.handle("p2p-cancel-send", async (): Promise<void> => {
+  sendCancelledFlag = true;
+  p2pManager.cancelCurrentSend();
+});
+
+// Sends one file start-to-finish. Resolves when done; progress + integrity
+// hashing happen in-process, never crossing back into the renderer per chunk.
+ipcMain.handle(
+  "p2p-send-file",
+  async (
+    _event,
+    filePath: string,
+    offset: number,
+    size: number,
+    signerId: string | null,
+  ): Promise<void> => {
+    sendCancelledFlag = false; // reset at start of new send
+    await p2pManager.sendFile({
+      filePath,
+      offset,
+      size,
+      onChunk: signerId ? (chunk) => signers.get(signerId)?.update(chunk) : undefined,
+      onProgress: (sentTotal) => {
+        mainWindow?.webContents.send("p2p-send-progress", { filePath, sentTotal, size });
+      },
+      isCancelled: () => sendCancelledFlag,
+    });
+  },
+);
+
+// Begin/end receiving a file — same semantics as the old create/finish
+// handlers, but now p2pTransfer writes the incoming chunk frames directly
+// (append-receive-chunk is no longer called from the renderer at all).
+ipcMain.handle(
+  "p2p-begin-receive",
+  async (_event, id: string, savePath: string, resume: boolean, verifierId: string | null): Promise<void> => {
+    await p2pManager.beginReceive(
+      id,
+      savePath,
+      resume,
+      verifierId ? (chunk) => verifiers.get(verifierId)?.update(chunk) : undefined,
+    );
+  },
+);
+
+ipcMain.handle("p2p-end-receive", async (): Promise<void> => {
+  await p2pManager.endReceive();
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// END NEW P2P handlers
+// ═══════════════════════════════════════════════════════════════════════════
+
 ipcMain.handle(
   "get-clipboard-files",
   async (): Promise<{ paths: string[]; type: "files" | "none" }> => {
@@ -1273,17 +1384,6 @@ ipcMain.handle("clear-activity", async (): Promise<void> => {
   }
 });
 
-ipcMain.handle("compress-sdp", async (_event, sdp: string): Promise<string> => {
-  return Buffer.from(sdp, "utf-8").toString("base64");
-});
-
-ipcMain.handle(
-  "decompress-sdp",
-  async (_event, compact: string): Promise<string> => {
-    return Buffer.from(compact, "base64").toString("utf-8");
-  },
-);
-
 // ==================== NEW ADDITIONS FOR P2P ACTIVITY & FOLDER PASTE ====================
 ipcMain.handle("log-p2p-activity", async (_event, type: "sent" | "received", fileName: string) => {
   addActivity({ type, fileName, timestamp: new Date().toISOString() });
@@ -1318,161 +1418,13 @@ ipcMain.handle("walk-directory", async (_event, dirPath: string): Promise<{ abso
 });
 // ==================== END NEW ADDITIONS ====================
 
-// ---------- 4-Digit Code Signaling ----------
-let signalingServer: http.Server | null = null;
-let storedOfferSDP = "";
-let activeCode = "";
-
-function generateCode(): string {
-  const arr = new Uint32Array(1);
-  require("crypto").randomFillSync(arr);
-  return String(1000 + (arr[0] % 9000));
-}
-
-ipcMain.handle("generate-code", async (_event, sdpOffer: string): Promise<string> => {
-  storedOfferSDP = sdpOffer;
-  activeCode = generateCode();
-
-  const PORT = 3004;
-  if (signalingServer) {
-    signalingServer.close();
-    signalingServer = null;
-  }
-
-  signalingServer = http.createServer(
-    (req: http.IncomingMessage, res: http.ServerResponse) => {
-      res.setHeader("Access-Control-Allow-Origin", "*");
-      res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-      res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-
-      if (req.method === "OPTIONS") {
-        res.writeHead(204);
-        res.end();
-        return;
-      }
-
-      if (req.method === "GET" && req.url?.startsWith("/sdp")) {
-        const url = new URL(req.url, `http://localhost:${PORT}`);
-        const code = url.searchParams.get("code");
-        if (code !== activeCode) {
-          res.writeHead(403, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: "wrong_code" }));
-          return;
-        }
-        res.writeHead(200, { "Content-Type": "text/plain" });
-        res.end(storedOfferSDP);
-        return;
-      }
-
-      if (req.method === "POST" && req.url?.startsWith("/answer")) {
-        const url = new URL(req.url, `http://localhost:${PORT}`);
-        const code = url.searchParams.get("code");
-        if (code !== activeCode) {
-          res.writeHead(403, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: "wrong_code" }));
-          return;
-        }
-        let body = "";
-        req.on("data", (chunk: string) => (body += chunk));
-        req.on("end", () => {
-          mainWindow?.webContents.send("answer-received", body);
-          res.writeHead(200);
-          res.end("OK");
-        });
-        return;
-      }
-
-      res.writeHead(404);
-      res.end();
-    },
-  );
-
-  await new Promise<void>((resolve, reject) => {
-    signalingServer!.on("error", reject);
-    signalingServer!.listen(PORT, "0.0.0.0", resolve);
-  });
-
-  return activeCode;
-});
-
-ipcMain.handle(
-  "join-by-code",
-  async (_event, senderIP: string, code: string): Promise<string> => {
-    const PORT = 3004;
-    const sdp = await new Promise<string>((resolve, reject) => {
-      const req = require("http").get(
-        `http://${senderIP}:${PORT}/sdp?code=${code}`,
-        (res: http.IncomingMessage) => {
-          if (res.statusCode === 403) {
-            reject(new Error("wrong_code"));
-            return;
-          }
-          if (res.statusCode !== 200) {
-            reject(new Error(`HTTP ${res.statusCode}`));
-            return;
-          }
-          let data = "";
-          res.on("data", (chunk: string) => (data += chunk));
-          res.on("end", () => resolve(data));
-        },
-      );
-      req.on("error", reject);
-      req.setTimeout(8000, () => {
-        req.destroy();
-        reject(new Error("timeout"));
-      });
-    });
-    return sdp;
-  },
-);
-
-ipcMain.handle(
-  "submit-answer",
-  async (_event, senderIP: string, code: string, answerSDP: string): Promise<void> => {
-    const PORT = 3004;
-    await new Promise<void>((resolve, reject) => {
-      const body = Buffer.from(answerSDP, "utf8");
-      const options = {
-        hostname: senderIP,
-        port: PORT,
-        path: `/answer?code=${code}`,
-        method: "POST",
-        headers: {
-          "Content-Type": "text/plain",
-          "Content-Length": body.length,
-        },
-      };
-      const req = require("http").request(options, (res: http.IncomingMessage) => {
-        if (res.statusCode === 403) {
-          reject(new Error("wrong_code"));
-          return;
-        }
-        res.resume();
-        res.on("end", resolve);
-      });
-      req.on("error", reject);
-      req.setTimeout(8000, () => {
-        req.destroy();
-        reject(new Error("timeout"));
-      });
-      req.write(body);
-      req.end();
-    });
-  },
-);
-
-ipcMain.handle("stop-signaling", async (): Promise<void> => {
-  if (signalingServer) {
-    signalingServer.close();
-    signalingServer = null;
-  }
-  activeCode = "";
-  storedOfferSDP = "";
-});
-
-discoveryManager.on("answer-received", (answerSDP: string) => {
-  mainWindow?.webContents.send("answer-received", answerSDP);
-});
+// DELETED: Old 4-Digit Code Signaling (WebRTC) — replaced by P2PManager
+// The following were removed per integration guide section 1e:
+// - generate-code, join-by-code, submit-answer, stop-signaling handlers
+// - get-ice-servers handler
+// - compress-sdp / decompress-sdp handlers
+// - signalingServer / activeCode / storedOfferSDP state
+// - discoveryManager.on("answer-received") wiring
 
 async function loadSettings() {
   try {
@@ -1660,16 +1612,15 @@ app.whenReady().then(async () => {
 
 
 app.on("before-quit", () => {
-  if (signalingServer) {
-    signalingServer.close();
-    signalingServer = null;
-  }
+  // DELETED: signalingServer cleanup (no longer exists)
   if (powerSaveBlockerId !== null) {
     powerSaveBlocker.stop(powerSaveBlockerId);
     powerSaveBlockerId = null;
   }
   uploadServer.stop();
   fileServer.stop();
+  // NEW: Stop P2P manager on quit
+  p2pManager.disconnect();
   if (process.platform === "win32") {
     stopWindowsHotspot();
   } else if (process.platform === "darwin") {
