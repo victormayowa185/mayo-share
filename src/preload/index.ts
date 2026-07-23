@@ -75,20 +75,46 @@ contextBridge.exposeInMainWorld("electronAPI", {
 
   getLocalIP: (): Promise<string | null> => ipcRenderer.invoke("get-local-ip"),
 
-  // ---------- 4-Digit Code P2P ----------
-  generateCode: (sdpOffer: string): Promise<string> =>
-    ipcRenderer.invoke("generate-code", sdpOffer),
-  joinByCode: (senderIP: string, code: string): Promise<string> =>
-    ipcRenderer.invoke("join-by-code", senderIP, code),
-  submitAnswer: (senderIP: string, code: string, answerSDP: string): Promise<void> =>
-    ipcRenderer.invoke("submit-answer", senderIP, code, answerSDP),
-  stopSignaling: (): Promise<void> =>
-    ipcRenderer.invoke("stop-signaling"),
+  // ═══════════════════════════════════════════════════════════════════════
+  // NEW: P2P Manager API (replaces old WebRTC 4-digit code signaling)
+  // ═══════════════════════════════════════════════════════════════════════
+  p2pHostStart: (): Promise<{ code: string; ip: string; port: number }> =>
+    ipcRenderer.invoke("p2p-host-start"),
+  p2pHostStop: (): Promise<void> => ipcRenderer.invoke("p2p-host-stop"),
+  p2pJoin: (ip: string, code: string): Promise<void> => ipcRenderer.invoke("p2p-join", ip, code),
+  p2pDisconnect: (): Promise<void> => ipcRenderer.invoke("p2p-disconnect"),
+  p2pSendControl: (msg: any): Promise<void> => ipcRenderer.invoke("p2p-send-control", msg),
+  p2pCancelSend: (): Promise<void> => ipcRenderer.invoke("p2p-cancel-send"),
+  p2pSendFile: (filePath: string, offset: number, size: number, signerId: string | null): Promise<void> =>
+    ipcRenderer.invoke("p2p-send-file", filePath, offset, size, signerId),
+  p2pBeginReceive: (id: string, savePath: string, resume: boolean, verifierId: string | null): Promise<void> =>
+    ipcRenderer.invoke("p2p-begin-receive", id, savePath, resume, verifierId),
+  p2pEndReceive: (): Promise<void> => ipcRenderer.invoke("p2p-end-receive"),
 
-  onAnswerReceived: (callback: (answerSDP: string) => void): (() => void) => {
-    const handler = (_event: Electron.IpcRendererEvent, answerSDP: string) => callback(answerSDP);
-    ipcRenderer.on("answer-received", handler);
-    return () => ipcRenderer.removeListener("answer-received", handler);
+  onP2PConnected: (cb: () => void): (() => void) => {
+    const handler = () => cb();
+    ipcRenderer.on("p2p-connected", handler);
+    return () => ipcRenderer.removeListener("p2p-connected", handler);
+  },
+  onP2PDisconnected: (cb: () => void): (() => void) => {
+    const handler = () => cb();
+    ipcRenderer.on("p2p-disconnected", handler);
+    return () => ipcRenderer.removeListener("p2p-disconnected", handler);
+  },
+  onP2PControl: (cb: (msg: any) => void): (() => void) => {
+    const handler = (_e: any, msg: any) => cb(msg);
+    ipcRenderer.on("p2p-control", handler);
+    return () => ipcRenderer.removeListener("p2p-control", handler);
+  },
+  onP2PSendProgress: (cb: (p: { filePath: string; sentTotal: number; size: number }) => void): (() => void) => {
+    const handler = (_e: any, p: any) => cb(p);
+    ipcRenderer.on("p2p-send-progress", handler);
+    return () => ipcRenderer.removeListener("p2p-send-progress", handler);
+  },
+  onP2PReceiveProgress: (cb: (p: { id: string; chunkLength: number }) => void): (() => void) => {
+    const handler = (_e: any, p: any) => cb(p);
+    ipcRenderer.on("p2p-receive-progress", handler);
+    return () => ipcRenderer.removeListener("p2p-receive-progress", handler);
   },
 
   approveSender: (sessionId: string) =>
@@ -123,17 +149,18 @@ contextBridge.exposeInMainWorld("electronAPI", {
     return () => ipcRenderer.removeListener("upload-update", handler);
   },
 
-  compressSDP: (sdp: string) => ipcRenderer.invoke("compress-sdp", sdp),
-  decompressSDP: (compact: string) =>
-    ipcRenderer.invoke("decompress-sdp", compact),
   ping: () => ipcRenderer.invoke("ping"),
-  getIceServers: (): Promise<RTCIceServer[]> => ipcRenderer.invoke("get-ice-servers"),
-  readFileChunk: (filePath: string, start: number, size: number): Promise<Uint8Array> =>
-    ipcRenderer.invoke("read-file-chunk", filePath, start, size),
+
+  // DELETED: Old WebRTC signaling APIs (replaced by P2PManager)
+  // - generateCode, joinByCode, submitAnswer, stopSignaling
+  // - onAnswerReceived
+  // - compressSDP, decompressSDP
+  // - getIceServers
+  // - readFileChunk, appendReceiveChunk (no longer called from renderer)
+  // createReceiveFile and finishReceiveFile kept for now (can fold into p2pBeginReceive/p2pEndReceive later)
+
   createReceiveFile: (filePath: string, resume?: boolean) =>
     ipcRenderer.invoke("create-receive-file", filePath, resume),
-  appendReceiveChunk: (filePath: string, data: Uint8Array) =>
-    ipcRenderer.invoke("append-receive-chunk", filePath, data),
   finishReceiveFile: (filePath: string) =>
     ipcRenderer.invoke("finish-receive-file", filePath),
   saveResumeState: (transferId: string, offset: number, filePath: string) =>
@@ -169,8 +196,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
   verifyFile: (filePath: string, signature: string, senderPublicKey: string) =>
     ipcRenderer.invoke("verify-file", filePath, signature, senderPublicKey),
   safetyNumber: (pubA: string, pubB: string) => ipcRenderer.invoke("safety-number", pubA, pubB),
-
-
 
   startVerifyHash: () => ipcRenderer.invoke("start-verify-hash"),
   updateVerifyHash: (verifierId: string, chunk: Uint8Array) =>
