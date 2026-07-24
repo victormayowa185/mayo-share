@@ -59,27 +59,8 @@ const formatBytes = (b: number) => {
 
 const shortName = (name: string) => name.split("/").pop() || name;
 
-// STUN-only fallback used if the main process can't hand us an ICE config.
-const STUN_ONLY: RTCIceServer[] = [{ urls: "stun:stun.l.google.com:19302" }];
-
-// Pull the ICE server list (STUN + any configured TURN fallback) from the main
-// process right before building a peer connection, so a TURN server added to
-// settings takes effect on the next connection without an app restart.
-const fetchIceServers = async (): Promise<RTCIceServer[]> => {
-  try {
-    const servers = await window.electronAPI.getIceServers();
-    if (Array.isArray(servers) && servers.length > 0) return servers;
-  } catch { /* fall through to STUN-only */ }
-  return STUN_ONLY;
-};
-
-const blobToBase64 = (blob: Blob): Promise<string> =>
-  new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve((reader.result as string).split(",")[1]);
-    reader.onerror = reject;
-    reader.readAsDataURL(blob);
-  });
+// DELETED: STUN_ONLY, fetchIceServers, waitForICE, blobToBase64
+// (no longer needed with P2PManager transport)
 
 interface FileGroup {
   folderName: string;
@@ -197,8 +178,7 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
     offsets: Record<string, number>;
   } | null>(null);
 
-  const localPC = useRef<RTCPeerConnection | null>(null);
-  const localDC = useRef<RTCDataChannel | null>(null);
+  // DELETED: localPC ref, localDC ref (no more RTCPeerConnection)
   const digitRefs = useRef<(HTMLInputElement | null)[]>([]);
   const receivePathsRef = useRef<Record<string, string>>({});
   const receiveMapRef = useRef<Record<string, ReceiveEntry>>({});
@@ -207,14 +187,10 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
   // to state (which re-renders the progress bar) when the whole-number percent
   // actually changes.
   const receiveProgressRef = useRef<Record<string, { received: number; size: number; lastPct: number }>>({});
-  // The data channel now carries BOTH JSON control messages (strings) and raw
-  // file bytes (ArrayBuffers), so the queue holds either.
-  const messageQueueRef = useRef<(string | ArrayBuffer)[]>([]);
-  // File chunks are sent as bare binary frames with no id/offset header. Because
-  // sendAll transfers strictly one file at a time over a single ordered channel
-  // (file-start → all chunks → file-end, then the next file), the receiver can
-  // route each binary frame to whichever file its last file-start named.
-  const activeReceiveIdRef = useRef<string | null>(null);
+  // The message queue now holds only parsed control-message objects (no more
+  // raw ArrayBuffers — those are handled entirely in the main process now).
+  const messageQueueRef = useRef<any[]>([]);
+  // DELETED: activeReceiveIdRef (main process tracks current receive file now)
   const processingRef = useRef(false);
   const rejectedRef = useRef<Set<string>>(new Set());
   const stopSendRef = useRef<Set<string>>(new Set());
@@ -327,61 +303,14 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
     }
   }, [mode]);
 
-  // ─── WebRTC connection state monitoring ─────────────────────────────────────
-  const setupConnectionMonitor = useCallback((pc: RTCPeerConnection) => {
-    pc.onconnectionstatechange = () => {
-      const state = pc.connectionState;
-      if (state === "failed" || state === "disconnected") {
-        if (intentionalCloseRef.current) return;
-        setConnectionState("disconnected");
-        setConnected(false);
-        setSessionStatus("");
-      } else if (state === "connecting") {
-        setConnectionState("reconnecting");
-      } else if (state === "connected") {
-        intentionalCloseRef.current = false;
-        setConnectionState("connected");
-        setConnected(true);
-        setSessionStatus("");
-      }
-    };
-  }, []);
-
-  // ─── Data-channel death detection ───────────────────────────────────────────
-  // The peer connection can stay "connected" while the SCTP data channel quietly
-  // closes (e.g. buffer overflow mid multi-GB transfer). Without these handlers
-  // the sender keeps "sending" into a dead channel and marks files done.
-  const setupDataChannelMonitor = useCallback((dc: RTCDataChannel) => {
-    dc.onclose = () => {
-      if (intentionalCloseRef.current) return;
-      sendingRef.current = false;
-      abortBatchRef.current = true;
-      setIsSending(false);
-      setConnectionState("disconnected");
-      setConnected(false);
-      setSessionStatus("");
-    };
-    dc.onerror = () => {
-      if (intentionalCloseRef.current) return;
-      sendingRef.current = false;
-      abortBatchRef.current = true;
-      setIsSending(false);
-      setConnectionState("disconnected");
-      setConnected(false);
-    };
-  }, []);
+  // DELETED: setupConnectionMonitor, setupDataChannelMonitor
+  // (connection state now comes from onP2PConnected / onP2PDisconnected)
 
   // ─── Cleanup ──────────────────────────────────────────────────────────────────
-  const cleanupWebRTC = useCallback(() => {
+  const cleanupConnection = useCallback(() => {
     intentionalCloseRef.current = true;
-    if (localDC.current) {
-      localDC.current.close();
-      localDC.current = null;
-    }
-    if (localPC.current) {
-      localPC.current.close();
-      localPC.current = null;
-    }
+    // NEW: use p2pDisconnect instead of closing WebRTC manually
+    window.electronAPI.p2pDisconnect();
     setWaitingForJoiner(false);
     setJoining(false);
     setIsSending(false);
@@ -585,7 +514,7 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
         continue;
       }
 
-      const name = f.name || filePath.split(/[\\/]/).pop() || filePath;
+      const name = f.name || filePath.split(/[\\\/]/).pop() || filePath;
       if (isInvalidFile(name)) continue;
       let size = f.size;
       try { size = await window.electronAPI.getFileSize(filePath); } catch { }
@@ -621,9 +550,8 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
         ? { ...f, status: "cancelled" }
         : f
     ));
-    if (localDC.current && localDC.current.readyState === "open") {
-      localDC.current.send(JSON.stringify({ type: "cancel-file", id }));
-    }
+    // NEW: use p2pSendControl instead of dc.send
+    window.electronAPI.p2pSendControl({ type: "cancel-file", id });
     fadeOutRow(id, () =>
       setFileQueue(prev => prev.filter(f => f.id !== id))
     );
@@ -640,9 +568,8 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
     setFileQueue(prev => prev.map(f =>
       ids.includes(f.id) ? { ...f, status: "cancelled" as const } : f
     ));
-    if (localDC.current && localDC.current.readyState === "open") {
-      localDC.current.send(JSON.stringify({ type: "cancel-folder", folderName }));
-    }
+    // NEW: use p2pSendControl instead of dc.send
+    window.electronAPI.p2pSendControl({ type: "cancel-folder", folderName });
     fadeOutFolder(folderName, () =>
       setFileQueue(prev => prev.filter(f => !ids.includes(f.id)))
     );
@@ -667,13 +594,12 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
     fadeOutRow(id, () =>
       setReceiveMap(prev => { const n = { ...prev }; delete n[id]; return n; })
     );
-    if (localDC.current && localDC.current.readyState === "open") {
-      localDC.current.send(JSON.stringify({
-        type: "receiver-cancel-file",
-        id,
-        name: entry?.name || "",
-      }));
-    }
+    // NEW: use p2pSendControl instead of dc.send
+    window.electronAPI.p2pSendControl({
+      type: "receiver-cancel-file",
+      id,
+      name: entry?.name || "",
+    });
   };
 
   const cancelIncomingFolder = (folderName: string) => {
@@ -700,12 +626,11 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
         setReceiveMap(prev => { const n = { ...prev }; delete n[id]; return n; })
       )
     );
-    if (localDC.current && localDC.current.readyState === "open") {
-      localDC.current.send(JSON.stringify({
-        type: "receiver-cancel-folder",
-        folderName,
-      }));
-    }
+    // NEW: use p2pSendControl instead of dc.send
+    window.electronAPI.p2pSendControl({
+      type: "receiver-cancel-folder",
+      folderName,
+    });
   };
 
   const toggleFolder = (folderName: string) => {
@@ -741,8 +666,7 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
 
   // ─── sendAll with conditional integrity ────────────────────────────────────
   const sendAll = async (startOffsets: Record<string, number> = {}) => {
-    const dc = localDC.current;
-    if (!dc || dc.readyState !== "open") return;
+    // DELETED: dc check (no more data channel)
     if (sendingRef.current) return;
 
     sendingRef.current = true;
@@ -777,62 +701,24 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
           }
         }
 
-        dc.send(JSON.stringify({
+        // NEW: use p2pSendControl instead of dc.send
+        window.electronAPI.p2pSendControl({
           type: "file-start",
           id: file.id,
           name: file.name,
           size: file.size,
           offset,
-        }));
+        });
 
-        const CHUNK_SIZE = 256 * 1024;
-        let currentOffset = offset;
+        // NEW: replaced entire CHUNK_SIZE / readFileChunk / dc.send / bufferedAmount loop
+        // with a single p2pSendFile call. Progress comes from onP2PSendProgress.
         let cancelled = false;
-
-        while (currentOffset < file.size) {
-          if (abortBatchRef.current || stopSendRef.current.has(file.id)) {
-            cancelled = true;
-            break;
-          }
-          // Bail out if the channel died mid-transfer instead of "sending" into
-          // the void and then marking the file done.
-          if (dc.readyState !== "open") {
-            cancelled = true;
-            abortBatchRef.current = true;
-            break;
-          }
-          if (dc.bufferedAmount > 1024 * 1024) {
-            await new Promise(resolve => {
-              const check = () => {
-                if (dc.bufferedAmount < 512 * 1024) resolve(null);
-                else setTimeout(check, 50);
-              };
-              check();
-            });
-          }
-
-          // Raw bytes (Uint8Array) — no base64, no JSON envelope. The receiver
-          // knows which file these belong to from the preceding file-start.
-          const chunk = await window.electronAPI.readFileChunk(file.path!, currentOffset, CHUNK_SIZE);
-
-          // Feed chunk into hasher only if integrity is on
-          if (signerKey) {
-            try {
-              await window.electronAPI.streamSignChunk(signerKey, chunk);
-            } catch { /* non-fatal */ }
-          }
-
-          dc.send(chunk);
-
-          currentOffset += CHUNK_SIZE;
-          const progress = Math.min(100, Math.round((currentOffset / file.size) * 100));
-          if (progress % 5 === 0) {
-            setFileQueue(prev => prev.map(f =>
-              f.id === file.id ? { ...f, status: "transferring", progress } : f
-            ));
-            persistSession();
-          }
+        try {
+          await window.electronAPI.p2pSendFile(file.path!, offset, file.size, signerKey);
+        } catch {
+          cancelled = true;
         }
+        if (stopSendRef.current.has(file.id) || abortBatchRef.current) cancelled = true;
 
         if (cancelled) {
           if (signerKey) {
@@ -850,7 +736,8 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
           }
         }
 
-        dc.send(JSON.stringify({
+        // NEW: use p2pSendControl instead of dc.send
+        window.electronAPI.p2pSendControl({
           type: "file-end",
           id: file.id,
           name: file.name,
@@ -858,7 +745,7 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
           hash: proof?.hash,
           signature: proof?.signature,
           publicKey: proof?.publicKey,
-        }));
+        });
 
         setFileQueue(prev => prev.map(f =>
           f.id === file.id ? { ...f, status: "done", progress: 100 } : f
@@ -877,68 +764,9 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
   };
 
   // ─── handleDCMessage with conditional integrity ──────────────────────────
-  const handleDCMessage = useCallback(async (raw: string | ArrayBuffer) => {
-    // ─── Binary frame = a file chunk for the file currently being received ──
-    if (typeof raw !== "string") {
-      const id = activeReceiveIdRef.current;
-      if (!id || rejectedRef.current.has(id)) return;
-      const path = receivePathsRef.current[id];
-      if (!path) return;
-
-      const bytes = new Uint8Array(raw);
-      try {
-        await window.electronAPI.appendReceiveChunk(path, bytes);
-      } catch (err) {
-        // Disk/IPC write failed. Abandon THIS file (it would be corrupt anyway)
-        // but keep the session alive so later files still transfer.
-        console.error("appendReceiveChunk failed; abandoning file:", id, err);
-        rejectedRef.current.add(id);
-        delete receivePathsRef.current[id];
-        delete receiveProgressRef.current[id];
-        try { await window.electronAPI.finishReceiveFile(path); } catch { /* ignore */ }
-        const vid = verifierMap.current[id];
-        if (vid) {
-          try { await window.electronAPI.finishVerifyHash(vid); } catch { /* ignore */ }
-          delete verifierMap.current[id];
-        }
-        setReceiveMap(prev => { const n = { ...prev }; delete n[id]; return n; });
-        return;
-      }
-
-      const verifierId = verifierMap.current[id];
-      if (verifierId) {
-        try {
-          await window.electronAPI.updateVerifyHash(verifierId, bytes);
-        } catch { /* non-fatal */ }
-      }
-
-      // byteLength is the exact chunk size now (no base64 to measure). Only
-      // re-render when the whole-number percent changes, not on every chunk.
-      const chunkLen = raw.byteLength;
-      const prog = receiveProgressRef.current[id];
-      if (prog) {
-        prog.received += chunkLen;
-        const pct = prog.size > 0 ? Math.floor((prog.received / prog.size) * 100) : 0;
-        if (pct !== prog.lastPct) {
-          prog.lastPct = pct;
-          const received = prog.received;
-          setReceiveMap(prev => {
-            const entry = prev[id];
-            if (!entry) return prev;
-            return { ...prev, [id]: { ...entry, received } };
-          });
-        }
-      } else {
-        setReceiveMap(prev => {
-          const entry = prev[id];
-          if (!entry) return prev;
-          return { ...prev, [id]: { ...entry, received: entry.received + chunkLen } };
-        });
-      }
-      return;
-    }
-
-    let msg: any; try { msg = JSON.parse(raw); } catch { return; }
+  const handleDCMessage = useCallback(async (msg: any) => {
+    // DELETED: entire binary-chunk branch (typeof raw !== "string")
+    // Main process now handles writing bytes to disk and hashing directly.
 
     if (msg.type === "handshake-offer") {
       const saveDir = await window.electronAPI.getSavePath();
@@ -965,13 +793,12 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
         updateSafetyCode();
       }
 
-      if (localDC.current && localDC.current.readyState === "open") {
-        localDC.current.send(JSON.stringify({
-          type: "handshake-response",
-          offsets,
-          receiverPublicKey: integrityEnabledRef.current ? myPubKeyRef.current : "",
-        }));
-      }
+      // NEW: use p2pSendControl instead of dc.send
+      window.electronAPI.p2pSendControl({
+        type: "handshake-response",
+        offsets,
+        receiverPublicKey: integrityEnabledRef.current ? myPubKeyRef.current : "",
+      });
 
       if (Object.keys(offsets).length > 0) {
         setResumeOffer({ offsets });
@@ -1105,15 +932,13 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
         const { free } = await window.electronAPI.getDiskSpace();
         if (free > 0 && msg.size > free) {
           rejectedRef.current.add(msg.id);
-          const dc = localDC.current;
-          if (dc && dc.readyState === "open") {
-            dc.send(JSON.stringify({
-              type: "file-reject",
-              id: msg.id,
-              reason: "no-space",
-              name: msg.name,
-            }));
-          }
+          // NEW: use p2pSendControl instead of dc.send
+          window.electronAPI.p2pSendControl({
+            type: "file-reject",
+            id: msg.id,
+            reason: "no-space",
+            name: msg.name,
+          });
           setSessionStatus(
             t("notEnoughSpace", {
               name: shortName(msg.name),
@@ -1134,20 +959,15 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
       const savePath = mayoShareDir + sep + safeName;
 
       const isResuming = msg.offset && msg.offset > 0;
-      await window.electronAPI.createReceiveFile(savePath, isResuming);
-      receivePathsRef.current[msg.id] = savePath;
-      // Bare binary chunks that follow belong to this file until the next
-      // file-start (or file-end) arrives.
-      activeReceiveIdRef.current = msg.id;
-
-      // Start verifier only if integrity is enabled
+      // NEW: replaced createReceiveFile with p2pBeginReceive
       let verifierId: string | null = null;
       if (integrityEnabledRef.current) {
-        try {
-          verifierId = await window.electronAPI.startVerifyHash();
-        } catch { /* ignore */ }
+        try { verifierId = await window.electronAPI.startVerifyHash(); } catch { /* ignore */ }
       }
       verifierMap.current[msg.id] = verifierId || "";
+      await window.electronAPI.p2pBeginReceive(msg.id, savePath, isResuming, verifierId);
+      receivePathsRef.current[msg.id] = savePath;
+      // DELETED: activeReceiveIdRef assignment (main process tracks this now)
 
       receiveProgressRef.current[msg.id] = { received: msg.offset || 0, size: msg.size, lastPct: -1 };
       setReceiveMap(prev => ({ ...prev, [msg.id]: { name: msg.name, size: msg.size, path: savePath, received: msg.offset || 0 } }));
@@ -1168,13 +988,10 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
       const savedPath = receivePathsRef.current[msg.id] || entry?.path || "";
       delete receivePathsRef.current[msg.id];
       delete receiveProgressRef.current[msg.id];
-      if (activeReceiveIdRef.current === msg.id) activeReceiveIdRef.current = null;
+      // DELETED: activeReceiveIdRef cleanup (main process tracks this now)
 
-      // Flush & close the write stream so all bytes are on disk before we treat
-      // the file as complete (and before any integrity check reads it).
-      if (savedPath) {
-        try { await window.electronAPI.finishReceiveFile(savedPath); } catch { /* ignore */ }
-      }
+      // NEW: replaced finishReceiveFile with p2pEndReceive
+      await window.electronAPI.p2pEndReceive();
 
       let fileHash: string | null = null;
       const vid = verifierMap.current[msg.id];
@@ -1247,127 +1064,43 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
   }, [handleDCMessage]);
 
   // ─── startSendMode ──────────────────────────────────────────────────────────
+  // NEW: completely rewritten — no more RTCPeerConnection / createDataChannel
   const startSendMode = async () => {
-    cleanupWebRTC();
+    intentionalCloseRef.current = false;
     try {
-      const ip = await window.electronAPI.getLocalIP();
-      if (!ip) {
-        setSessionStatus(t("noNetworkDetected"));
-        return;
-      }
+      const { code, ip } = await window.electronAPI.p2pHostStart();
       setMyIP(ip);
-
-      const iceServers = await fetchIceServers();
-      const pc = new RTCPeerConnection({ iceServers });
-      localPC.current = pc;
-      intentionalCloseRef.current = false;
-      setupConnectionMonitor(pc);
-
-      const dc = pc.createDataChannel("mayo-share", { ordered: true });
-      dc.binaryType = "arraybuffer";
-      localDC.current = dc;
-      setupDataChannelMonitor(dc);
-
-      // The sender must also listen: this is how it receives the receiver's
-      // handshake-response (resume offsets), receiver-initiated cancels, and
-      // no-space file-reject. Without it those messages were silently dropped.
-      dc.onmessage = e => { messageQueueRef.current.push(e.data); processMessageQueue(); };
-
-      dc.onopen = () => {
-        showFileArea();
-        const queue = fileQueueRef.current;
-        dc.send(JSON.stringify({
-          type: "handshake-offer",
-          files: queue,
-          senderPublicKey: integrityEnabledRef.current ? myPubKeyRef.current : "",
-        }));
-      };
-
-      const offer = await pc.createOffer();
-      await pc.setLocalDescription(offer);
-      await new Promise(r => setTimeout(r, 1500));
-
-      const compact = await window.electronAPI.compressSDP(pc.localDescription!.sdp);
-      try {
-        const code = await window.electronAPI.generateCode(compact);
-        setMyCode(code);
-        setWaitingForJoiner(true);
-      } catch (err: any) {
-        console.error("generateCode error:", err);
-        setSessionStatus("Server busy. Re-trying in 2s...");
-        setTimeout(() => {
-          if (!myCode && !waitingForJoiner) {
-            startSendMode();
-          }
-        }, 2000);
-      }
+      setMyCode(code);
+      setWaitingForJoiner(true);
     } catch (err: any) {
       setSessionStatus("Connection Error: " + err.message);
     }
   };
 
-  const waitForICE = (pc: RTCPeerConnection) =>
-    Promise.race([
-      new Promise<void>(resolve => {
-        if (pc.iceGatheringState === "complete") resolve();
-        else pc.addEventListener("icegatheringstatechange", () => {
-          if (pc.iceGatheringState === "complete") resolve();
-        });
-      }),
-      new Promise<void>(resolve => setTimeout(resolve, 1500)),
-    ]);
+  // DELETED: waitForICE helper (no longer needed)
 
   // ─── connectWithCode ────────────────────────────────────────────────────────
+  // NEW: completely rewritten — no more RTCPeerConnection / offer / answer
   const connectWithCode = async () => {
     const code = joinCode.join("");
     if (code.length !== 4) return;
 
-    cleanupWebRTC();
     setJoining(true);
     setSessionStatus("");
+    intentionalCloseRef.current = false;
 
     try {
-      const compactOffer = await window.electronAPI.joinByCode(joinIP.trim(), code);
-      const offerSDP = await window.electronAPI.decompressSDP(compactOffer);
-
-      const iceServers = await fetchIceServers();
-      const pc = new RTCPeerConnection({ iceServers });
-      localPC.current = pc;
-      intentionalCloseRef.current = false;
-      setupConnectionMonitor(pc);
-
-      pc.ondatachannel = event => {
-        localDC.current = event.channel;
-        // Deliver incoming file frames as ArrayBuffers (default is "blob").
-        localDC.current.binaryType = "arraybuffer";
-        setupDataChannelMonitor(localDC.current);
-        localDC.current.onopen = () => {
-          showFileArea();
-        };
-        localDC.current.onmessage = e => { messageQueueRef.current.push(e.data); processMessageQueue(); };
-      };
-
-      await pc.setRemoteDescription(new RTCSessionDescription({ type: "offer", sdp: offerSDP }));
-      const answer = await pc.createAnswer();
-      await pc.setLocalDescription(answer);
-      await waitForICE(pc);
-
-      const compactAnswer = await window.electronAPI.compressSDP(pc.localDescription!.sdp);
-      await window.electronAPI.submitAnswer(joinIP.trim(), code, compactAnswer);
-
+      await window.electronAPI.p2pJoin(joinIP.trim(), code);
       setJoining(false);
+      // onP2PConnected fires showFileArea()
     } catch (err: any) {
       setJoining(false);
-      if (err.message && err.message.toLowerCase().includes("wrong_code")) {
+      if (err.message?.toLowerCase().includes("wrong_code")) {
         setSessionStatus("❌ Invalid Code. Please check and try again.");
-      } else if (err.message && err.message.toLowerCase().includes("timeout")) {
+      } else if (err.message?.toLowerCase().includes("timeout")) {
         setSessionStatus("❌ Connection timed out. Is the sender ready?");
       } else {
         setSessionStatus("❌ Failed to connect. Is the sender ready?");
-      }
-      if (localPC.current) {
-        localPC.current.close();
-        localPC.current = null;
       }
     }
   };
@@ -1413,14 +1146,62 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
     }
   };
 
+  // DELETED: onAnswerReceived useEffect (no more signaling server)
+
+  // NEW: Connection + control-message wiring (replaces old dc.onmessage + answer-received useEffect)
   useEffect(() => {
-    const cleanup = window.electronAPI.onAnswerReceived(async (answerSDP: string) => {
-      if (!localPC.current) return;
-      const sdp = await window.electronAPI.decompressSDP(answerSDP);
-      await localPC.current.setRemoteDescription(new RTCSessionDescription({ type: "answer", sdp }));
-      setWaitingForJoiner(false);
+    const offConnected = window.electronAPI.onP2PConnected(() => {
+      showFileArea();
+      if (mode === "send") {
+        window.electronAPI.p2pSendControl({
+          type: "handshake-offer",
+          files: fileQueueRef.current,
+          senderPublicKey: integrityEnabledRef.current ? myPubKeyRef.current : "",
+        });
+      }
     });
-    return () => { cleanup(); window.electronAPI.stopSignaling?.(); };
+    const offDisconnected = window.electronAPI.onP2PDisconnected(() => {
+      if (intentionalCloseRef.current) return;
+      setConnectionState("disconnected");
+      setConnected(false);
+      setSessionStatus("");
+    });
+    const offControl = window.electronAPI.onP2PControl((msg) => {
+      // handleDCMessage already expects a parsed object — just call it directly,
+      // no JSON.parse needed anymore.
+      messageQueueRef.current.push(msg);
+      processMessageQueue();
+    });
+    return () => { offConnected(); offDisconnected(); offControl(); };
+  }, [mode, showFileArea, processMessageQueue]);
+
+  // NEW: Send progress subscription (set up once, not per file)
+  useEffect(() => {
+    return window.electronAPI.onP2PSendProgress(({ filePath, sentTotal, size }) => {
+      setFileQueue(prev => prev.map(f => {
+        if (f.path !== filePath) return f;
+        const progress = Math.min(100, Math.round((sentTotal / size) * 100));
+        return { ...f, status: "transferring", progress };
+      }));
+    });
+  }, []);
+
+  // NEW: Receive progress subscription
+  useEffect(() => {
+    return window.electronAPI.onP2PReceiveProgress(({ id, chunkLength }) => {
+      const prog = receiveProgressRef.current[id];
+      if (!prog) return;
+      prog.received += chunkLength;
+      const pct = prog.size > 0 ? Math.floor((prog.received / prog.size) * 100) : 0;
+      if (pct !== prog.lastPct) {
+        prog.lastPct = pct;
+        setReceiveMap(prev => {
+          const entry = prev[id];
+          if (!entry) return prev;
+          return { ...prev, [id]: { ...entry, received: prog.received } };
+        });
+      }
+    });
   }, []);
 
   // ─── Render helpers ─────────────────────────────────────────────────────────
@@ -1478,9 +1259,8 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
   // ─── Resume controls ────────────────────────────────────────────────────────
   const beginSend = (offsets: Record<string, number>) => {
     setResumeOffer(null);
-    if (localDC.current && localDC.current.readyState === "open") {
-      localDC.current.send(JSON.stringify({ type: "resume-dismiss" }));
-    }
+    // NEW: use p2pSendControl instead of dc.send
+    window.electronAPI.p2pSendControl({ type: "resume-dismiss" });
     sendAll(offsets);
   };
 
@@ -1489,23 +1269,23 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
       beginSend(resumeOffer?.offsets || {});
     } else {
       setResumeOffer(null);
-      localDC.current?.send(JSON.stringify({ type: "request-send", fresh: false }));
+      // NEW: use p2pSendControl instead of dc.send
+      window.electronAPI.p2pSendControl({ type: "request-send", fresh: false });
     }
   };
 
   const handleCancelResume = () => {
     clearSessionFromDisk();
     setResumeOffer(null);
-    if (localDC.current && localDC.current.readyState === "open") {
-      localDC.current.send(JSON.stringify({ type: "resume-dismiss" }));
-    }
+    // NEW: use p2pSendControl instead of dc.send
+    window.electronAPI.p2pSendControl({ type: "resume-dismiss" });
   };
 
   // ─── Connection-lost screen ────────────────────────────────────────────────
   if (connectionState === "disconnected") {
     return (
       <div className={styles.container}>
-        <BackButton onClick={() => { cleanupWebRTC(); onBack(); }} />
+        <BackButton onClick={() => { cleanupConnection(); onBack(); }} />
         <h2 className={styles.title}>{t("deviceConnect")}</h2>
         <div
           style={{
@@ -1536,7 +1316,7 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
           </p>
           <button
             className={styles.btn}
-            onClick={() => { cleanupWebRTC(); onBack(); }}
+            onClick={() => { cleanupConnection(); onBack(); }}
           >
             Go Back &amp; Reconnect
           </button>
@@ -1592,7 +1372,7 @@ const P2PSession: React.FC<Props> = ({ onBack, initialMode }) => {
         </div>
       )}
 
-      <BackButton onClick={() => { cleanupWebRTC(); onBack(); }} />
+      <BackButton onClick={() => { cleanupConnection(); onBack(); }} />
       <h2 className={styles.title}>{t("deviceConnect")}</h2>
 
       {!connected && mode === "send" && (

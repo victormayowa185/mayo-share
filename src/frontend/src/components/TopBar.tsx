@@ -7,7 +7,6 @@ import { useGSAP } from "@gsap/react";
 import styles from "../styles/components/TopBar.module.css";
 import logo from "../assets/mayo.png";
 
-
 gsap.registerPlugin(useGSAP);
 
 interface Props {
@@ -64,8 +63,6 @@ const TopBar: React.FC<Props> = ({ onNavigate }) => {
   }, []);
 
   // ─── Apple-style enter / exit ───────────────────────────────────────────────
-  // dropdownOpen = user intent; isRendered = actually in the DOM, so we can play
-  // an exit animation BEFORE the menu unmounts.
   useEffect(() => {
     if (dropdownOpen) {
       setIsRendered(true);
@@ -114,7 +111,6 @@ const TopBar: React.FC<Props> = ({ onNavigate }) => {
     };
   }, [dropdownOpen]);
 
-
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (!dropdownOpen) return;
 
@@ -142,66 +138,69 @@ const TopBar: React.FC<Props> = ({ onNavigate }) => {
 
   return (
     <header className={styles.topbar} ref={headerRef}>
-      <div className={styles.logo}>
-        <img src={logo} alt="MAYO Share" className={styles.logoImg} />
-      </div>
+      {/* ─── Pill Container ─── */}
+      <div className={styles.pill}>
+        {/* Logo */}
+        <div className={styles.logo}>
+          <img src={logo} alt="MAYO Share" className={styles.logoImg} />
+        </div>
 
+        {/* Actions (right side) */}
+        <div className={styles.actions}>
+          <div className={styles.dropdownWrapper}>
+            <button
+              ref={buttonRef}
+              className={styles.iconBtn}
+              aria-label={t("profile")}
+              aria-haspopup="menu"
+              aria-expanded={dropdownOpen}
+              onClick={() => setDropdownOpen((o) => !o)}
+            >
+              <CgProfile size={20} aria-hidden="true" />
+            </button>
 
-      <div className={styles.actions}>
-        <div className={styles.dropdownWrapper}>
-          <button
-            ref={buttonRef}
-            className={styles.iconBtn}
-            aria-label={t("profile")}
-            aria-haspopup="menu"
-            aria-expanded={dropdownOpen}
-            onClick={() => setDropdownOpen((o) => !o)}
-          >
-            <CgProfile size={20} aria-hidden="true" />
-          </button>
-
-             {isRendered && (
-            <>
-              <div
-                className={styles.backdrop}
-                onClick={() => setDropdownOpen(false)}
-              />
-              <div
-                ref={menuRef}
-                className={styles.menu}
-                role="menu"
-                id="profile-menu"
-                onKeyDown={handleKeyDown}
-                style={{ opacity: 0 }}
-              >
-
-                <div className={styles.menuItemMuted} role="presentation">
-                  <CgProfile size={18} aria-hidden="true" />
-                  <span>{hostname}</span>
+            {isRendered && (
+              <>
+                <div
+                  className={styles.backdrop}
+                  onClick={() => setDropdownOpen(false)}
+                />
+                <div
+                  ref={menuRef}
+                  className={styles.menu}
+                  role="menu"
+                  id="profile-menu"
+                  onKeyDown={handleKeyDown}
+                  style={{ opacity: 0 }}
+                >
+                  <div className={styles.menuItemMuted} role="presentation">
+                    <CgProfile size={18} aria-hidden="true" />
+                    <span>{hostname}</span>
+                  </div>
+                  <div className={styles.divider} role="separator" />
+                  {menuItems.map((item, idx) => {
+                    const Icon = item.icon;
+                    return (
+                      <div
+                        key={item.id}
+                        ref={(el) => { itemRefs.current[idx] = el; }}
+                        className={styles.menuItem}
+                        role="menuitem"
+                        tabIndex={-1}
+                        onClick={() => {
+                          onNavigate?.(item.id);
+                          setDropdownOpen(false);
+                        }}
+                      >
+                        <Icon size={16} aria-hidden="true" />
+                        <span>{item.label}</span>
+                      </div>
+                    );
+                  })}
                 </div>
-                <div className={styles.divider} role="separator" />
-                {menuItems.map((item, idx) => {
-                  const Icon = item.icon;
-                  return (
-                    <div
-                      key={item.id}
-                      ref={(el) => { itemRefs.current[idx] = el; }}
-                      className={styles.menuItem}
-                      role="menuitem"
-                      tabIndex={-1}
-                      onClick={() => {
-                        onNavigate?.(item.id);
-                        setDropdownOpen(false);
-                      }}
-                    >
-                      <Icon size={16} aria-hidden="true" />
-                      <span>{item.label}</span>
-                    </div>
-                  );
-                })}
-              </div>
-            </>
-          )}
+              </>
+            )}
+          </div>
         </div>
       </div>
     </header>

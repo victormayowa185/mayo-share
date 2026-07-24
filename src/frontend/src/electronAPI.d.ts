@@ -84,27 +84,18 @@ declare global {
         }) => void,
       ) => () => void;
 
-      // ---------- 4-Digit Code P2P ----------
-      generateCode: (sdpOffer: string) => Promise<string>;
-      joinByCode: (senderIP: string, code: string) => Promise<string>;
-      submitAnswer: (senderIP: string, code: string, answerSDP: string) => Promise<void>;
-      stopSignaling: () => Promise<void>;
-      onAnswerReceived: (callback: (answerSDP: string) => void) => (() => void);
+      // DELETED: Old WebRTC signaling APIs (replaced by P2PManager)
+      // generateCode, joinByCode, submitAnswer, stopSignaling, onAnswerReceived,
+      // compressSDP, decompressSDP, getIceServers removed
+
       checkHotspotStatus: () => Promise<{ active: boolean; ip: string }>;
-      compressSDP: (sdp: string) => Promise<string>;
-      decompressSDP: (compact: string) => Promise<string>;
       ping: () => Promise<string>;
-      getIceServers: () => Promise<RTCIceServer[]>;
-      readFileChunk: (
-        filePath: string,
-        start: number,
-        size: number,
-        // Backed by a plain ArrayBuffer (not ArrayBufferLike) so it satisfies
-        // RTCDataChannel.send()'s ArrayBufferView<ArrayBuffer> overload directly.
-      ) => Promise<Uint8Array<ArrayBuffer>>;
+
+      // DELETED: readFileChunk, appendReceiveChunk (now handled in main process by p2pTransfer.ts)
+      // createReceiveFile and finishReceiveFile kept for now (guide says "leave in place")
       createReceiveFile: (filePath: string, resume?: boolean) => Promise<void>;
-      appendReceiveChunk: (filePath: string, data: Uint8Array) => Promise<void>;
       finishReceiveFile: (filePath: string) => Promise<void>;
+
       saveResumeState: (
         transferId: string,
         offset: number,
@@ -127,7 +118,6 @@ declare global {
       streamSignChunk: (signerKey: string, chunk: Uint8Array) => Promise<void>;
       finishStreamSign: (signerKey: string) => Promise<{ hash: string; signature: string; publicKey: string } | null>;
 
-
       saveTempFile: (fileName: string, base64Data: string) => Promise<string>;
       getHostname: () => Promise<string>;
 
@@ -139,21 +129,32 @@ declare global {
       // ---------- Solana offline integrity ----------
       getPathForFile: (file: File) => string;
 
-
       getPublicKey: () => Promise<string>;
       signFile: (filePath: string) => Promise<{ hash: string; signature: string; publicKey: string }>;
       verifyFile: (filePath: string, signature: string, senderPublicKey: string) => Promise<{ valid: boolean; hash: string; reason?: string }>;
       safetyNumber: (pubA: string, pubB: string) => Promise<string>;
-
-
 
       startVerifyHash: () => Promise<string>;
       updateVerifyHash: (verifierId: string, chunk: Uint8Array) => Promise<void>;
       finishVerifyHash: (verifierId: string) => Promise<string | null>;
       verifyHash: (hash: string, signature: string, publicKey: string) => Promise<{ valid: boolean; reason?: string }>;
 
+      // ========== NEW: P2PManager APIs (replaces WebRTC data channel) ==========
+      p2pHostStart: () => Promise<{ code: string; ip: string; port: number }>;
+      p2pHostStop: () => Promise<void>;
+      p2pJoin: (ip: string, code: string) => Promise<void>;
+      p2pDisconnect: () => Promise<void>;
+      p2pSendControl: (msg: any) => Promise<void>;
+      p2pCancelSend: () => Promise<void>;
+      p2pSendFile: (filePath: string, offset: number, size: number, signerId: string | null) => Promise<void>;
+      p2pBeginReceive: (id: string, savePath: string, resume: boolean, verifierId: string | null) => Promise<void>;
+      p2pEndReceive: () => Promise<void>;
 
-
+      onP2PConnected: (cb: () => void) => () => void;
+      onP2PDisconnected: (cb: () => void) => () => void;
+      onP2PControl: (cb: (msg: any) => void) => () => void;
+      onP2PSendProgress: (cb: (p: { filePath: string; sentTotal: number; size: number }) => void) => () => void;
+      onP2PReceiveProgress: (cb: (p: { id: string; chunkLength: number }) => void) => () => void;
     };
   }
 }

@@ -11,9 +11,10 @@
   cursor: pointer;
   font-size: 0.9rem;
   margin-bottom: 32px;
+  margin-left: calc(20% - 24px);  /* ← aligns with 70% navbar left edge */
   transition: all 0.2s ease;
+  margin-top: 20px;
 }
-
 .backBtn:hover {
   background: var(--back-btn-hover-bg);
   border-color: var(--border-hover-light);

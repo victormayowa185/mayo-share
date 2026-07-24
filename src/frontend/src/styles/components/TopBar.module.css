@@ -1,79 +1,56 @@
-/* ========== TopBar Component Styles ========== */
+/* ============================================================
+   TopBar Component – Pill Shape with Glow (Theme‑aware)
+   ============================================================ */
 
+/* ---------- Outer Container ---------- */
 .topbar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  background: var(--bg-topbar);
-  backdrop-filter: blur(10px);
-  padding: 0 24px;
-  height: 60px;
-  position: sticky;
+  position: fixed;
   top: 0;
-  /* Increased z-index to ensure it stays above page content */
-  z-index: 1000; 
-  /* REMOVED overflow: hidden; to allow dropdowns to show */
-}
-
-/* The Subtle Glowing Line */
-.topbar::after {
-  content: '';
-  position: absolute;
-  bottom: 0;
   left: 0;
-  /* width: 100% is fine here without overflow:hidden 
-     as long as we don't scale the line */
   width: 100%;
-  height: 1px; 
-  background: linear-gradient(
-    90deg,
-    transparent,
-    var(--accent),
-    #ffffff,
-    var(--accent),
-    transparent
-  );
-  background-size: 200% 100%;
-  animation: barGlow 6s linear infinite;
-  opacity: 0.4;
-  /* Ensures the line stays behind the dropdown menu */
-  z-index: -1; 
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 1rem 2rem;
+  z-index: 1000;
+  pointer-events: none;
+  background: transparent;
 }
 
-@keyframes barGlow {
-  0% { background-position: 100% 0; }
-  100% { background-position: -100% 0; }
+
+/* ---------- The Pill Container ---------- */
+.pill {
+  pointer-events: auto;
+  background: var(--bg-topbar, rgba(255, 255, 255, 0.85));
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-radius: 9999px;
+  padding: 0.5rem 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.08);
+  width: 70%;
+  max-width: 1400px;
+  transition: all 0.3s ease;
+  border: 1px solid var(--border-light, rgba(0, 0, 0, 0.1));
 }
 
-/* Ensure the dropdown menu has a higher z-index than the bar's pseudo-element */
-.menu {
-  position: absolute;
-  right: 0;
-  top: 50px; /* Adjusted slightly for the 60px height */
-  background: var(--bg-dropdown);
-  border: 1px solid var(--border-light);
-  border-radius: 12px;
-  min-width: 200px;
-  z-index: 1001; /* Higher than the topbar line */
-  overflow: hidden;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
-}
-
-/* ... keep the rest of your TopBar.module.css ... */
-
+/* ---------- Logo ---------- */
 .logo {
   display: flex;
   align-items: center;
   gap: 10px;
+  flex-shrink: 0;
 }
 
 .logoImg {
-  height: 38px;     /* topbar is 60px tall — tweak this if it looks big/small */
+  height: 38px;
   width: auto;
   display: block;
   object-fit: contain;
 }
-
 
 .logoIcon {
   color: var(--text-inverse);
@@ -87,32 +64,58 @@
 }
 
 .logoText {
-  color: var(--accent);
+  color: var(--accent, #7C3EFF);
   font-weight: bold;
   font-size: 1.2rem;
   letter-spacing: 0.5px;
 }
 
 .logoShare {
-  color: var(--topbar-share-color);   /* white in dark, black in light */
+  color: var(--text-primary, #1a1e24);
   font-weight: bold;
   font-size: 1.2rem;
   letter-spacing: 0.5px;
 }
 
-/* ---------- Custom Tooltip ---------- */
-.iconBtn {
-  position: relative;
+/* ---------- Actions (right side) ---------- */
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  flex-shrink: 0;
 }
 
+/* ---------- Icon Button (Profile) ---------- */
+.iconBtn {
+  position: relative;
+  background: transparent;
+  border: none;
+  color: var(--text-primary, #1a1e24);
+  font-size: 1.1rem;
+  cursor: pointer;
+  padding: 8px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, color 0.15s;
+}
+
+.iconBtn:hover {
+  background: var(--accent, #7C3EFF);
+  color: var(--text-inverse, #fff);
+}
+
+/* ---------- Custom Tooltip ---------- */
 .iconBtn::after {
   content: attr(data-tooltip);
   position: absolute;
   bottom: -30px;
   left: 50%;
   transform: translateX(-50%);
-  background: var(--bg-tooltip);
-  color: #eee;                     /* tooltip text is always light */
+  background: var(--bg-tooltip, #1a1e24);
+  color: #eee;
   padding: 4px 10px;
   border-radius: 6px;
   font-size: 0.7rem;
@@ -128,48 +131,30 @@
   transform: translateX(-50%) translateY(-4px);
 }
 
-.actions {
-  display: flex;
-  gap: 8px;
-  align-items: center;
+.iconBtn:focus-visible {
+  outline: 2px solid var(--accent, #7C3EFF);
+  outline-offset: 2px;
 }
 
-.iconBtn {
-  background: transparent;
-  border: none;
-  color: var(--topbar-icon-color);
-  font-size: 1.1rem;
-  cursor: pointer;
-  padding: 8px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: background 0.15s;
-}
-
-.iconBtn:hover {
-  background: var(--accent);
-  color: var(--topbar-icon-hover-color);
-}
-
-/* --- dropdown styles --- */
+/* ---------- Dropdown Wrapper ---------- */
 .dropdownWrapper {
   position: relative;
 }
 
+/* ---------- Backdrop (click outside to close) ---------- */
 .backdrop {
   position: fixed;
   inset: 0;
   z-index: 99;
 }
 
+/* ---------- Dropdown Menu ---------- */
 .menu {
   position: absolute;
   right: 0;
   top: 44px;
-  background: var(--bg-dropdown);
-  border: 1px solid var(--border-light);
+  background: var(--bg-dropdown, white);
+  border: 1px solid var(--border-light, rgba(0,0,0,0.1));
   border-radius: 12px;
   min-width: 200px;
   z-index: 100;
@@ -182,24 +167,29 @@
   align-items: center;
   gap: 10px;
   padding: 12px 16px;
-  color: var(--text-secondary);
+  color: var(--text-secondary, #5b6876);
   cursor: pointer;
   font-size: 0.9rem;
   transition: background 0.15s, color 0.15s;
 }
 
 .menuItem:hover {
-  background: var(--menu-hover-bg);
-  color: var(--text-primary);
+  background: var(--menu-hover-bg, rgba(124, 62, 255, 0.08));
+  color: var(--text-primary, #1a1e24);
 }
 
+.menuItem:focus-visible {
+  outline: none;
+  background: var(--menu-hover-bg, rgba(124, 62, 255, 0.08));
+  color: var(--text-primary, #1a1e24);
+}
 
 .menuItemMuted {
   display: flex;
   align-items: center;
   gap: 10px;
   padding: 12px 16px;
-  color: var(--text-muted);
+  color: var(--text-muted, #95a5a6);
   cursor: default;
   font-size: 0.9rem;
 }
@@ -210,17 +200,78 @@
 
 .divider {
   height: 1px;
-  background: var(--border-light);
+  background: var(--border-light, rgba(0,0,0,0.1));
 }
 
+/* ============================================================
+   RESPONSIVE – matches navbar breakpoints
+   ============================================================ */
 
-.iconBtn:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
+/* Tablets & smaller laptops */
+@media (max-width: 1024px) {
+  .pill {
+    width: 80%;
+    padding: 0.5rem 1.2rem;
+  }
 }
 
-.menuItem:focus-visible {
-  outline: none;
-  background: var(--menu-hover-bg);
-  color: var(--text-primary);
+/* Mobile (≤ 768px) */
+@media (max-width: 768px) {
+  .topbar {
+    padding: 0.8rem 1rem;
+  }
+
+  .pill {
+    border-radius: 40px;
+    padding: 0.4rem 1rem;
+    width: 100%;
+    max-width: 100%;
+    gap: 0.5rem;
+  }
+
+  .logoImg {
+    height: 30px;
+  }
+
+  .iconBtn {
+    font-size: 1.1rem;
+    padding: 6px;
+  }
+
+  .menu {
+    top: 40px;
+    min-width: 180px;
+  }
+}
+
+/* Small phones (≤ 480px) */
+@media (max-width: 480px) {
+  .topbar {
+    padding: 0.5rem 0.8rem;
+  }
+
+  .pill {
+    border-radius: 30px;
+    padding: 0.3rem 0.8rem;
+  }
+
+  .logoImg {
+    height: 24px;
+  }
+
+  .iconBtn {
+    font-size: 1rem;
+    padding: 4px;
+  }
+
+  .menu {
+    top: 36px;
+    min-width: 160px;
+  }
+
+  .menuItem,
+  .menuItemMuted {
+    font-size: 0.8rem;
+    padding: 10px 12px;
+  }
 }

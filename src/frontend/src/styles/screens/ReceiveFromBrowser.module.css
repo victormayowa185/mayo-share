@@ -3,7 +3,7 @@
   flex-direction: column;
   align-items: center;
   width: 100%;
-  padding: 10px 24px 20px 24px;
+   padding: 80px 24px 20px 24px; 
   min-height: 60vh;
   background: var(--bg-primary);
   color: var(--text-primary);
