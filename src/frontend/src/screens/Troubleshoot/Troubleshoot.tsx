@@ -134,7 +134,7 @@ const TroubleshootScreen: React.FC<Props> = ({ onBack }) => {
             onClick={handleFixFirewall}
             disabled={firewallStatus === 'working'}
           >
-             {firewallStatus === 'working' ? <Dots /> : t('fixFirewall')}
+            {firewallStatus === 'working' ? <Dots /> : t('fixFirewall')}
 
           </button>
           {firewallStatus === 'success' && (
@@ -166,17 +166,13 @@ const TroubleshootScreen: React.FC<Props> = ({ onBack }) => {
             onClick={handleDiagnoseNetwork}
             disabled={diagnosisWorking}
           >
-                      {diagnosisWorking ? <Dots /> : t('runDiagnostics')}
+            {diagnosisWorking ? <Dots /> : t('runDiagnostics')}
 
           </button>
           {diagnosisResult && (
             <div className={styles.diagnosisResult}>
               <p><strong>{t('wifiSSID')}:</strong> {diagnosisResult.ssid || t('notConnected')}</p>
               <p><strong>{t('networkCategory')}:</strong> {diagnosisResult.profileCategory || t('unknown')}</p>
-              <p>
-                <strong>{t('loopbackAdapter')}:</strong>{' '}
-                {renderStatus(diagnosisResult.loopbackAdapterPresent, 'present', 'notFound')}
-              </p>
               <p>
                 <strong>{t('port3001')}:</strong>{' '}
                 {renderStatus(diagnosisResult.port3001Listening, 'listening', 'notListening')}

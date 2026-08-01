@@ -16,6 +16,7 @@ interface Props {
   onBack: () => void;
   onSenderApproved?: () => void;
   onStopReceiving?: () => void;
+  onNavigateTo?: (screen: string) => void;
 }
 
 const getDeviceIcon = (deviceType: string) => {
@@ -44,6 +45,7 @@ const ReceiveFromBrowser: React.FC<Props> = ({
   onBack,
   onSenderApproved,
   onStopReceiving,
+  onNavigateTo,
 }) => {
   const { t } = useTranslation();
   const [shareUrl, setShareUrl] = useState("");
@@ -283,6 +285,24 @@ const ReceiveFromBrowser: React.FC<Props> = ({
               </button>
             </div>
             <p className={styles.hint}>{t("tellReceiverToConnect")}</p>
+            <p className={styles.hint} style={{ marginTop: 8 }}>
+              {t("linkNotLoadingHint") || "Link not loading on their device?"}{" "}
+              <button
+                type="button"
+                onClick={() => onNavigateTo?.("troubleshoot")}
+                style={{
+                  background: "none",
+                  border: "none",
+                  color: "#7C3EFF",
+                  textDecoration: "underline",
+                  cursor: "pointer",
+                  padding: 0,
+                  font: "inherit",
+                }}
+              >
+                {t("fixFirewall")}
+              </button>
+            </p>
             <button className={styles.stopBtn} onClick={stopReceiving}>{t("stopReceiving")}</button>
           </div>
         </div>

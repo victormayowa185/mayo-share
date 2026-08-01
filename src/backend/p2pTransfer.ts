@@ -279,20 +279,23 @@ export class P2PManager extends EventEmitter {
       };
       this.currentSendCancel = cleanup;
 
-      stream.on("data", async (chunk: Buffer) => {
-        if (opts.isCancelled()) { cleanup(); resolve(); return; }
-        stream.pause();
-        try {
-          opts.onChunk?.(chunk);
-          const ok = writeFrame(socket, FRAME_CHUNK, chunk);
-          sent += chunk.length;
-          opts.onProgress(sent);
-          if (!ok) await waitForDrain(socket);
-          if (!cleanedUp) stream.resume();
-        } catch (err) {
-          cleanup();
-          reject(err as Error);
-        }
+      stream.on("data", (chunk: Buffer | string) => {
+        const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+        void (async () => {
+          if (opts.isCancelled()) { cleanup(); resolve(); return; }
+          stream.pause();
+          try {
+            opts.onChunk?.(buffer);
+            const ok = writeFrame(socket, FRAME_CHUNK, buffer);
+            sent += buffer.length;
+            opts.onProgress(sent);
+            if (!ok) await waitForDrain(socket);
+            if (!cleanedUp) stream.resume();
+          } catch (err) {
+            cleanup();
+            reject(err as Error);
+          }
+        })();
       });
 
       stream.on("end", () => { cleanup(); resolve(); });
