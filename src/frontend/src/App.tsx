@@ -390,7 +390,7 @@ const App: React.FC = () => {
               onStopReceiving={() => setConnectedDevicesCount(0)}
               onNavigateTo={navigateTo}
             />
-          </div>
+          </div> 
         )}
 
 
