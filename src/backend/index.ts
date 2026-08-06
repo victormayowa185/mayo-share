@@ -402,38 +402,7 @@ ipcMain.handle('set-web-encryption', async (_event, enabled: boolean) => {
   await fs.promises.writeFile(settingsPath, JSON.stringify(settings, null, 2), 'utf-8');
 });
 
-// ─── ICE servers (STUN + optional TURN fallback) ──────────
-// STUN alone only helps the two peers discover each other's address; if the
-// NAT mapping changes or expires mid-transfer the direct path dies with no
-// fallback. A TURN server relays traffic when the direct path breaks, which is
-// the actual fix for the "connection just dropped" disconnects.
-//
-// TURN is left configurable so real credentials can be dropped into
-// mayo-settings.json without a code change. Two accepted shapes (both optional):
-//   "turn": { "urls": "turn:host:3478", "username": "u", "credential": "p" }
-//   "iceServers": [ { "urls": "...", "username": "...", "credential": "..." }, ... ]
-// With neither present we fall back to STUN-only (previous behaviour).
-ipcMain.handle('get-ice-servers', async (): Promise<any[]> => {
-  const stun = { urls: 'stun:stun.l.google.com:19302' };
-  const servers: any[] = [stun];
-  try {
-    const raw = await fs.promises.readFile(getSettingsPath(), 'utf-8');
-    const settings = JSON.parse(raw);
-    if (settings.turn && settings.turn.urls) {
-      servers.push({
-        urls: settings.turn.urls,
-        username: settings.turn.username,
-        credential: settings.turn.credential,
-      });
-    }
-    if (Array.isArray(settings.iceServers)) {
-      for (const s of settings.iceServers) {
-        if (s && s.urls) servers.push(s);
-      }
-    }
-  } catch { /* settings missing/invalid → STUN only */ }
-  return servers;
-});
+
 
 // ─── Streaming Signer (for sender) ────────────────────────
 const signers = new Map<string, ReturnType<typeof createStreamingSigner>>();

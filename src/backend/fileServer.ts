@@ -1,10 +1,13 @@
 ﻿import { createServer as createHttpsServer, Server as HttpsServer } from "https";
 import { createServer as createHttpServer, Server as HttpServer, IncomingMessage, ServerResponse } from "http";
-import { promises as fs, createReadStream, statSync } from "fs";
+import { promises as fs, createReadStream, createWriteStream, statSync } from "fs";
 import path from "path";
 import { EventEmitter } from "events";
 import { ZipArchive } from "archiver";
 import { getServerCert } from "./certs";
+import { pipeline } from "stream/promises";
+import cluster from "cluster";
+import os from "os";
 
 interface SharedFile {
   filePath: string;
@@ -12,18 +15,18 @@ interface SharedFile {
   fileSize: number;
   relativePath: string;
   downloadProgress?: number;
+  etag: string;      // cached at startup — no sync I/O on downloads
+  mtimeMs: number;   // cached at startup
 }
 
 export class FileServer extends EventEmitter {
   private server: HttpServer | HttpsServer | null = null;
   private port: number = 3000;
-
-
   private files: SharedFile[] = [];
   private fileMap: Map<string, SharedFile> = new Map();
   private strings: Record<string, string> = {};
   private lang: string = "en";
-
+  private zipPath: string | null = null; // pre-built at startup
 
   async start(
     filePaths: string[],
@@ -40,8 +43,6 @@ export class FileServer extends EventEmitter {
     this.lang = lang || "en";
     if (port) this.port = port;
 
-
-    // Build file list, verify all exist
     this.files = [];
     this.fileMap.clear();
 
@@ -55,9 +56,32 @@ export class FileServer extends EventEmitter {
         fileName: path.basename(fp),
         fileSize: stat.size,
         relativePath: relative,
+        etag: `"${stat.size}-${stat.mtimeMs}"`,
+        mtimeMs: stat.mtimeMs,
       };
       this.files.push(file);
       this.fileMap.set(relative, file);
+    }
+
+    // ─── PRE-BUILD ZIP AT STARTUP ───
+    // Moves ZIP CPU cost to boot time. The actual download becomes pure
+    // streaming I/O with zero on-the-fly formatting overhead.
+    if (this.files.length > 0) {
+      const tmpDir = path.join(__dirname, "..", "tmp");
+      await fs.mkdir(tmpDir, { recursive: true });
+      this.zipPath = path.join(tmpDir, `mayo-share-${Date.now()}.zip`);
+      await new Promise<void>((resolve, reject) => {
+    const output = createWriteStream(this.zipPath!, { highWaterMark: 16 * 1024 * 1024 });
+        const archive = new ZipArchive({ zlib: { level: 0 } });
+        archive.on("error", reject);
+        archive.on("warning", (err: Error) => console.warn("Zip warning:", err));
+        output.on("close", () => resolve());
+        archive.pipe(output);
+        for (const f of this.files) {
+          archive.file(f.filePath, { name: f.relativePath });
+        }
+        archive.finalize();
+      });
     }
 
     return new Promise((resolve, reject) => {
@@ -66,278 +90,295 @@ export class FileServer extends EventEmitter {
         return;
       }
 
+      // ─── CLUSTER MODE FOR HTTPS ───
+      // TLS encryption is CPU-bound. One Node core will choke before the
+      // network does. Fork one worker per core and let the OS load-balance.
+      if (useEncryption && cluster.isPrimary) {
+        const numCPUs = os.cpus().length;
+        for (let i = 0; i < numCPUs; i++) {
+          cluster.fork();
+        }
+        // Primary does not create a server; workers do.
+        // NOTE: Your app must call start() in both primary and worker processes.
+        resolve(`https://${ip || "192.168.137.1"}:${this.port}`);
+        return;
+      }
+
       const requestHandler = async (req: IncomingMessage, res: ServerResponse) => {
-        // Disable Nagle: we send large streamed bodies, and Nagle's coalescing
-        // adds latency without benefit here.
-        req.socket.setNoDelay(true);
-        const url = req.url || "/";
-        const method = req.method || "GET";
-
-        // ✅ Global CORS — needed for mobile browsers
-        res.setHeader("Access-Control-Allow-Origin", "*");
-        res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-        res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-
-        if (method === "OPTIONS") {
-          res.writeHead(204);
-          res.end();
-          return;
-        }
-
-        // Serve the HTML index page
-        if (url === "/" || url === "") {
-          const html = buildDownloadPage(this.files, this.strings, this.lang);
-
-
-          res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-          res.end(html);
-          return;
-        }
-
-        // Serve the MAYO logo (copied into dist/backend at build time)
-        if (url === "/mayo.png") {
-          try {
-            const data = await fs.readFile(path.join(__dirname, "mayo.png"));
-            res.writeHead(200, { "Content-Type": "image/png" });
-            res.end(data);
-          } catch {
-            res.writeHead(404);
-            res.end();
-          }
-          return;
-        }
-
-        // Serve JSZip locally (offline) – fixed path for packaged app
-        if (url === "/jszip.min.js") {
-
-          // Use __dirname to locate the file relative to this backend module
-          const filePath = path.join(__dirname, "../../node_modules/jszip/dist/jszip.min.js");
-          try {
-            const data = await fs.readFile(filePath);
-            res.writeHead(200, { "Content-Type": "application/javascript" });
-            res.end(data);
-          } catch {
-            res.writeHead(404);
-            res.end();
-          }
-          return;
-        }
-
-        // Stream ALL shared files as one ZIP, built on the fly. This replaces
-        // the old in-browser JSZip path that fetched every file into the phone's
-        // memory and zipped it there (slow + crashes on large sets). Here the
-        // phone just saves a stream; nothing is buffered whole on either side.
-        if (url === "/download-all" || url === "/download-all.zip") {
+        try {
+          // Disable Nagle + enable keep-alive for long multi-GB transfers
           req.socket.setNoDelay(true);
-          const clientIp = req.socket.remoteAddress || "unknown";
-          res.writeHead(200, {
-            "Content-Type": "application/zip",
-            "Content-Disposition": `attachment; filename="mayo-share.zip"`,
-            "Cache-Control": "no-cache",
-          });
-          // level 0 = store (no compression): most shared files (media, archives,
-          // installers) don't compress, so compressing just burns CPU and slows
-          // the transfer. Storing streams at full link speed.
-          const archive = new ZipArchive({ zlib: { level: 0 } });
-          archive.on("error", (err: Error) => {
-            console.error("Zip stream error:", err);
-            res.destroy();
-          });
-          archive.on("warning", (err: Error) => console.warn("Zip warning:", err));
-          archive.pipe(res);
-          for (const f of this.files) {
-            archive.file(f.filePath, { name: f.relativePath });
-          }
-          this.emit("download-started", -1, "All files (ZIP)");
-          res.on("finish", () =>
-            this.emit("download-completed", -1, "All files (ZIP)", clientIp),
-          );
-          archive.finalize();
-          return;
-        }
+          req.socket.setKeepAlive(true, 60000);
 
-        // Serve individual files: /file/ followed by the relative path
-        if (url.startsWith("/file/")) {
-          const relative = decodeURIComponent(url.slice(6));
+          const url = req.url || "/";
+          const method = req.method || "GET";
 
-          // --- SECURITY: Path traversal guard ---
-          if (relative.includes('..') || path.isAbsolute(relative)) {
-            res.writeHead(403);
-            res.end('Forbidden');
+          // ✅ Global CORS
+          res.setHeader("Access-Control-Allow-Origin", "*");
+          res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+          res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+
+          if (method === "OPTIONS") {
+            res.writeHead(204);
+            res.end();
             return;
           }
 
-          const clientIp = req.socket.remoteAddress || "unknown";
-          let fileEntry = this.fileMap.get(relative);
-          if (!fileEntry) {
-            const byName = this.files.find(
-              (f) => f.relativePath === relative || f.fileName === relative,
-            );
-            if (!byName) {
+          // Serve the HTML index page
+          if (url === "/" || url === "") {
+            const html = buildDownloadPage(this.files, this.strings, this.lang);
+            res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+            res.end(html);
+            return;
+          }
+
+          // Serve the MAYO logo
+          if (url === "/mayo.png") {
+            try {
+              const data = await fs.readFile(path.join(__dirname, "mayo.png"));
+              res.writeHead(200, { "Content-Type": "image/png" });
+              res.end(data);
+            } catch {
               res.writeHead(404);
-              res.end("File not found");
+              res.end();
+            }
+            return;
+          }
+
+          // Serve JSZip locally (offline)
+          if (url === "/jszip.min.js") {
+            const filePath = path.join(__dirname, "../../node_modules/jszip/dist/jszip.min.js");
+            try {
+              const data = await fs.readFile(filePath);
+              res.writeHead(200, { "Content-Type": "application/javascript" });
+              res.end(data);
+            } catch {
+              res.writeHead(404);
+              res.end();
+            }
+            return;
+          }
+
+          // ─── PRE-BUILT ZIP DOWNLOAD ───
+          if (url === "/download-all" || url === "/download-all.zip") {
+            req.socket.setNoDelay(true);
+            const clientIp = req.socket.remoteAddress || "unknown";
+            if (this.zipPath) {
+              const zipStat = await fs.stat(this.zipPath);
+              res.writeHead(200, {
+                "Content-Type": "application/zip",
+                "Content-Disposition": `attachment; filename="mayo-share.zip"`,
+                "Cache-Control": "no-cache",
+                "Content-Length": String(zipStat.size),
+              });
+              const stream = createReadStream(this.zipPath, { highWaterMark: 16 * 1024 * 1024 });
+              this.emit("download-started", -1, "All files (ZIP)");
+              try {
+                await pipeline(stream, res);
+                this.emit("download-completed", -1, "All files (ZIP)", clientIp);
+              } catch (err) {
+                console.error("ZIP pipeline error:", err);
+              }
               return;
             }
-            fileEntry = byName;
-          }
-
-          const stats = statSync(fileEntry.filePath);
-          const fileSize = stats.size;
-          const etag = `"${fileSize}-${stats.mtimeMs}"`;
-
-          // Conditional request (caching)
-          if (req.headers["if-none-match"] === etag) {
-            res.writeHead(304);
-            res.end();
+            res.writeHead(503);
+            res.end("ZIP not ready");
             return;
           }
 
-          // Parse Range header for resumable downloads
-          const rangeHeader = req.headers.range;
-          let start = 0;
-          let end = fileSize - 1;
-          let isPartial = false;
+          // ─── INDIVIDUAL FILE STREAMING ───
+          if (url.startsWith("/file/")) {
+            const relative = decodeURIComponent(url.slice(6));
 
-          if (rangeHeader) {
-            const match = rangeHeader.match(/bytes=(\d+)-(\d*)/);
-            if (match) {
-              start = parseInt(match[1], 10);
-              if (match[2]) end = parseInt(match[2], 10);
-              if (start < fileSize && end < fileSize && start <= end) {
-                isPartial = true;
+            // --- SECURITY: Path traversal guard ---
+            if (relative.includes('..') || path.isAbsolute(relative)) {
+              res.writeHead(403);
+              res.end('Forbidden');
+              return;
+            }
+
+            const clientIp = req.socket.remoteAddress || "unknown";
+            let fileEntry = this.fileMap.get(relative);
+            if (!fileEntry) {
+              const byName = this.files.find(
+                (f) => f.relativePath === relative || f.fileName === relative,
+              );
+              if (!byName) {
+                res.writeHead(404);
+                res.end("File not found");
+                return;
+              }
+              fileEntry = byName;
+            }
+
+            // Use cached metadata — NO sync stat() on the hot path
+            const fileSize = fileEntry.fileSize;
+            const etag = fileEntry.etag;
+
+            // Conditional request (caching)
+            if (req.headers["if-none-match"] === etag) {
+              res.writeHead(304);
+              res.end();
+              return;
+            }
+
+            // Parse Range header for resumable downloads
+            const rangeHeader = req.headers.range;
+            let start = 0;
+            let end = fileSize - 1;
+            let isPartial = false;
+
+            if (rangeHeader) {
+              const match = rangeHeader.match(/bytes=(\d+)-(\d*)/);
+              if (match) {
+                start = parseInt(match[1], 10);
+                if (match[2]) end = parseInt(match[2], 10);
+                if (start < fileSize && end < fileSize && start <= end) {
+                  isPartial = true;
+                }
               }
             }
-          }
 
-          // Common headers
-          res.setHeader(
-            "Content-Disposition",
-            `attachment; filename="${encodeURIComponent(fileEntry.fileName)}"`
-          );
+            // Common headers
+            res.setHeader(
+              "Content-Disposition",
+              `attachment; filename="${encodeURIComponent(fileEntry.fileName)}"`
+            );
+            res.setHeader("ETag", etag);
+            res.setHeader("Cache-Control", "no-cache, max-age=0");
+            res.setHeader("Accept-Ranges", "bytes");
 
-          res.setHeader("ETag", etag);
-          res.setHeader("Cache-Control", "no-cache, max-age=0");
-          res.setHeader("Accept-Ranges", "bytes");
-
-          // Handle partial request (range)
-          if (isPartial) {
-            const contentLength = end - start + 1;
-            res.writeHead(206, {
-              "Content-Range": `bytes ${start}-${end}/${fileSize}`,
-              "Content-Length": contentLength,
-              "Content-Type": "application/octet-stream",
-            });
-            const stream = createReadStream(fileEntry.filePath, {
-              start,
-              end,
-              highWaterMark: 4 * 1024 * 1024,
-            });
             const fileIndex = this.files.indexOf(fileEntry);
+
+            // ─── RANGE REQUEST (partial) ───
+            if (isPartial) {
+              const contentLength = end - start + 1;
+              res.writeHead(206, {
+                "Content-Range": `bytes ${start}-${end}/${fileSize}`,
+                "Content-Length": contentLength,
+                "Content-Type": "application/octet-stream",
+              });
+              const stream = createReadStream(fileEntry.filePath, {
+                start,
+                end,
+                highWaterMark: 16 * 1024 * 1024, // 16 MB — fewer syscalls
+              });
+              this.emit("download-started", fileIndex, fileEntry.fileName);
+              let bytesSent = 0;
+              let lastPct = -1;
+              stream.on("data", (chunk: any) => {
+                const length = Buffer.isBuffer(chunk) ? chunk.length : Buffer.byteLength(chunk);
+                bytesSent += length;
+                const totalSent = start + bytesSent;
+                const pct = Math.floor((totalSent / fileSize) * 100);
+                if (pct !== lastPct) {
+                  lastPct = pct;
+                  this.emit("download-progress", fileEntry.fileName, pct);
+                }
+              });
+              res.on("finish", () => {
+                this.emit("download-completed", fileIndex, fileEntry.fileName, clientIp);
+              });
+              try {
+                await pipeline(stream, res);
+              } catch (err) {
+                console.error("Range stream error:", err);
+                if (!res.headersSent) {
+                  res.writeHead(500);
+                  res.end("File read error");
+                }
+              }
+              return;
+            }
+
+            // ─── FULL FILE STREAM ───
+            res.setHeader("Content-Type", "application/octet-stream");
+            res.setHeader("Content-Length", fileSize);
+            const stream = createReadStream(fileEntry.filePath, { highWaterMark: 16 * 1024 * 1024 });
             this.emit("download-started", fileIndex, fileEntry.fileName);
             let bytesSent = 0;
             let lastPct = -1;
             stream.on("data", (chunk: any) => {
-              const length = Buffer.isBuffer(chunk)
-                ? chunk.length
-                : Buffer.byteLength(chunk);
+              const length = Buffer.isBuffer(chunk) ? chunk.length : Buffer.byteLength(chunk);
               bytesSent += length;
-              const totalSent = start + bytesSent;
-              const pct = Math.floor((totalSent / fileSize) * 100);
-              // Only emit on whole-percent changes — otherwise a fast link fires
-              // thousands of IPC messages/sec, starving the same thread that's
-              // pumping the socket and capping throughput.
+              const pct = Math.floor((bytesSent / fileSize) * 100);
               if (pct !== lastPct) {
                 lastPct = pct;
                 this.emit("download-progress", fileEntry.fileName, pct);
               }
             });
-            stream.pipe(res);
-            stream.on("error", (err) => {
+            res.on("finish", () => {
+              this.emit("download-completed", fileIndex, fileEntry.fileName, clientIp);
+            });
+            try {
+              await pipeline(stream, res);
+            } catch (err) {
+              console.error("Stream error:", err);
               if (!res.headersSent) {
                 res.writeHead(500);
                 res.end("File read error");
               }
-              console.error("Stream error:", err);
-            });
-            res.on("finish", () => {
-              this.emit("download-completed", fileIndex, fileEntry.fileName, clientIp);
-            });
+            }
             return;
           }
 
-          res.setHeader("Content-Type", "application/octet-stream");
-          res.setHeader("Content-Length", fileSize);
-          let stream = createReadStream(fileEntry.filePath, { highWaterMark: 4 * 1024 * 1024 });
-
-          const fileIndex = this.files.indexOf(fileEntry);
-          this.emit("download-started", fileIndex, fileEntry.fileName);
-
-          let bytesSent = 0;
-          let lastPct = -1;
-          stream.on("data", (chunk: any) => {
-            const length = Buffer.isBuffer(chunk)
-              ? chunk.length
-              : Buffer.byteLength(chunk);
-            bytesSent += length;
-            const pct = Math.floor((bytesSent / fileSize) * 100);
-            // Throttle to whole-percent changes (see note in the range branch).
-            if (pct !== lastPct) {
-              lastPct = pct;
-              this.emit("download-progress", fileEntry.fileName, pct);
-            }
-          });
-
-          stream.pipe(res);
-          stream.on("error", (err) => {
-            if (!res.headersSent) {
-              res.writeHead(500);
-              res.end("File read error");
-            }
-            console.error("Stream error:", err);
-          });
-          res.on("finish", () => {
-            this.emit("download-completed", fileIndex, fileEntry.fileName, clientIp);
-          });
-          return;
+          res.writeHead(404);
+          res.end("Not found");
+        } catch (err) {
+          console.error("Unhandled request error:", err);
+          if (!res.headersSent) {
+            res.writeHead(500);
+            res.end("Internal error");
+          }
         }
-
-        res.writeHead(404);
-        res.end("Not found");
       };
 
-    if (useEncryption) {
-      const { key, cert } = getServerCert(ip);
-      this.server = createHttpsServer({ key, cert }, requestHandler);
-    } else {
-      this.server = createHttpServer(requestHandler);
-    }
+      if (useEncryption) {
+        const { key, cert } = getServerCert(ip);
+        this.server = createHttpsServer({
+          key,
+          cert,
+          minVersion: "TLSv1.3",
+          maxVersion: "TLSv1.3",
+          sessionTimeout: 7200,
+        } as any, requestHandler);
+      } else {
+        this.server = createHttpServer(requestHandler);
+      }
 
-    // Reuse connections across many range requests (fewer TLS handshakes) and
-    // never time out a long multi-GB transfer.
-    this.server.keepAliveTimeout = 65000;
-    this.server.headersTimeout = 66000;
-    this.server.requestTimeout = 0;
+      this.server.keepAliveTimeout = 65000;
+      this.server.headersTimeout = 66000;
+      this.server.requestTimeout = 0;
 
-    this.server.listen(this.port, "0.0.0.0", () => {
-      const usedIP = ip || "192.168.137.1";
-      const protocol = useEncryption ? "https" : "http";
-      resolve(`${protocol}://${usedIP}:${this.port}`);
+      this.server.listen(this.port, "0.0.0.0", () => {
+        const usedIP = ip || "192.168.137.1";
+        const protocol = useEncryption ? "https" : "http";
+        resolve(`${protocol}://${usedIP}:${this.port}`);
+      });
+
+      this.server.on("error", (err) => {
+        this.server = null;
+        reject(err);
+      });
     });
+  }
 
-    this.server.on("error", (err) => {
+  stop(): void {
+    if (this.server) {
+      this.server.close();
       this.server = null;
-      reject(err);
-    });
-  });
-}
-
-stop(): void {
-  if(this.server) {
-  this.server.close();
-  this.server = null;
-  this.files = [];
-  this.fileMap.clear();
-}
+    }
+    if (cluster.isPrimary) {
+      for (const id in cluster.workers) {
+        cluster.workers[id]?.kill();
+      }
+    }
+    this.files = [];
+    this.fileMap.clear();
+    if (this.zipPath) {
+      fs.unlink(this.zipPath).catch(() => {});
+      this.zipPath = null;
+    }
   }
 }
 
@@ -414,7 +455,7 @@ function renderTree(node: TreeNode, depth: number = 0): string {
     const childrenHtml = node.children
       .map((child) => renderTree(child, depth + 1))
       .join("");
-    if (depth === 0) return childrenHtml; // root
+    if (depth === 0) return childrenHtml;
     return `
       <li class="tree-dir">
         <span class="folder-name">📁 ${escapeHtml(node.name)}</span>
@@ -444,14 +485,12 @@ function hasSubfolders(files: SharedFile[]): boolean {
   return files.some((f) => f.relativePath.includes("/"));
 }
 
-// ─── Download Page with dark/light mode toggle, responsive design, and collapsible folders ───
+// ─── Download Page (unchanged) ───
 function buildDownloadPage(
   files: SharedFile[],
   strings: Record<string, string> = {},
   lang: string = "en",
 ): string {
-  // Browser-page translator: use the app's translation if present, else the
-  // inline English fallback. {{vars}} are interpolated.
   const t = (key: string, fallback: string, vars?: Record<string, string | number>) => {
     let s = strings[key] ?? fallback;
     if (vars) for (const k in vars) s = s.replace(new RegExp(`{{\\s*${k}\\s*}}`, "g"), String(vars[k]));
@@ -462,9 +501,7 @@ function buildDownloadPage(
   const fileCount = files.length;
   const useTree = hasSubfolders(files);
   let fileListHtml = "";
-
   const totalSize = files.reduce((sum, f) => sum + f.fileSize, 0);
-
 
   if (useTree) {
     const tree = buildTree(files);
@@ -505,7 +542,6 @@ function buildDownloadPage(
               <span class="size">${formatBytes(f.fileSize)}</span>
               <span class="action">
                 <a href="/file/${encodeURIComponent(f.relativePath)}" download="${escapeHtml(f.fileName)}" class="download-btn">${t("browserDownload", "Download")}</a>
-
               </span>
             </div>
           </li>`;
@@ -514,11 +550,9 @@ function buildDownloadPage(
     }
     fileListHtml = `<ul class="file-tree">${renderInteractiveTree(tree)}</ul>`;
   } else {
-    // Responsive table: use div wrapper and adjust for mobile
     fileListHtml = `<div class="table-wrapper"><table class="file-table">
       <thead>
-             <tr><th>${t("browserFileName", "File name")}</th><th>${t("browserSize", "Size")}</th><th></th></tr>
-
+        <tr><th>${t("browserFileName", "File name")}</th><th>${t("browserSize", "Size")}</th><th></th></tr>
       </thead>
       <tbody>
       ${files
@@ -549,8 +583,7 @@ function buildDownloadPage(
         <path d="M176 262.62L256 342l80-79.38M256 330.97V170"/>
         <path d="M256 64C150 64 64 150 64 256s86 192 192 192 192-86 192-192S362 64 256 64z" fill="none" stroke="currentColor" stroke-miterlimit="10" stroke-width="32"/>
       </svg>
-           <span id="zipBtnLabel">${t("browserDownloadAllZip", "Download All as ZIP")}</span>
-
+      <span id="zipBtnLabel">${t("browserDownloadAllZip", "Download All as ZIP")}</span>
       <span class="zip-total-size">(${formatBytes(totalSize)})</span>
     </button>
   `;
@@ -561,11 +594,8 @@ function buildDownloadPage(
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>MAYO Share</title>
-
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    
-    /* Theme variables - dark (default) */
     :root {
       --bg-body: #0A0A0A;
       --text-color: #fff;
@@ -589,8 +619,6 @@ function buildDownloadPage(
       --folder-header-hover-border: #7C3EFF;
       --table-header-bg: #1a1a1a;
     }
-
-    /* Light theme */
     [data-theme="light"] {
       --bg-body: #f5f5f5;
       --text-color: #222;
@@ -614,7 +642,6 @@ function buildDownloadPage(
       --folder-header-hover-border: #7C3EFF;
       --table-header-bg: #e8e8e8;
     }
-
     body {
       background: var(--bg-body);
       color: var(--text-color);
@@ -688,8 +715,6 @@ function buildDownloadPage(
     }
     .download-btn:hover { background: var(--download-hover); }
     .footer { text-align: center; margin-top: 32px; color: var(--footer-color); font-size: 0.8rem; }
-
-    /* Tree styles */
     .file-tree { list-style: none; padding: 0; margin: 0; }
     .file-tree ul { list-style: none; padding-left: 24px; margin: 0; }
     .tree-dir { margin: 8px 0; }
@@ -740,8 +765,6 @@ function buildDownloadPage(
     }
     .tree-file-row .size { white-space: nowrap; }
     .tree-file-row .action { white-space: nowrap; }
-
-    /* ZIP button */
     .zip-btn {
       display: flex;
       align-items: center;
@@ -765,13 +788,6 @@ function buildDownloadPage(
       fill: none;
     }
     .zip-total-size { font-size: 0.8rem; opacity: 0.8; }
-
-
-
-
-
-
-    /* Top navbar: logo left, theme switch right */
     .navbar {
       display: flex;
       align-items: center;
@@ -780,8 +796,6 @@ function buildDownloadPage(
       margin: 0 auto 24px auto;
     }
     .nav-logo { height: 32px; width: auto; display: block; }
-
-    /* Apple-style theme switch */
     .theme-toggle {
       position: relative;
       width: 56px;
@@ -810,27 +824,16 @@ function buildDownloadPage(
     .theme-toggle svg { width: 14px; height: 14px; stroke: #333; stroke-width: 2; fill: none; }
     [data-theme="light"] .theme-toggle { background: #7C3EFF; }
     [data-theme="light"] .toggle-thumb { transform: translateX(26px); }
-
-
-
-
-
-
-
-    /* Responsive design for mobile */
     @media (max-width: 600px) {
       body { padding: 20px 12px; }
       .logo { font-size: 1.6rem; }
       .subtitle { font-size: 0.9rem; }
       .card { border-radius: 12px; }
-      
-      /* Table becomes block layout */
       .file-table,
       .file-table tbody,
       .file-table tr,
       .file-table td,
       .file-table th { display: block; }
-      
       .file-table thead { display: none; }
       .file-table tr {
         margin-bottom: 16px;
@@ -852,8 +855,6 @@ function buildDownloadPage(
       }
       .file-table td.size::before { content: "Size: "; font-weight: normal; color: var(--size-color); }
       .file-table td.action { justify-content: flex-end; }
-      
-      /* Tree view adjustments */
       .tree-file-row {
         flex-direction: column;
         align-items: flex-start;
@@ -863,14 +864,11 @@ function buildDownloadPage(
       .tree-file-row .action { align-self: flex-end; }
       .folder-header { padding: 6px 12px; }
       .file-tree ul { padding-left: 16px; }
-      
       .zip-btn { width: 100%; padding: 10px; font-size: 0.9rem; }
     }
   </style>
   <script src="/jszip.min.js"></script>
 </head>
-
-
 <body>
   <div class="navbar">
     <img class="nav-logo" src="/mayo.png" alt="MAYO Share" />
@@ -887,10 +885,6 @@ function buildDownloadPage(
     </button>
   </div>
   <div class="header">
-
-
-
-
     <div class="logo">
       <span class="logo-mayo">MAYO</span>
       <span class="logo-share">Share</span>
@@ -898,35 +892,25 @@ function buildDownloadPage(
     <div class="subtitle">${fileCount === 1
       ? t("browserFilesShared_one", "{{count}} file shared with you", { count: fileCount })
       : t("browserFilesShared_other", "{{count}} files shared with you", { count: fileCount })}</div>
-
   </div>
   <div class="card">
     ${useTree ? "" : ""}
     ${fileListHtml}
     ${useTree ? "" : ""}
-   ${useTree ? zipButtonHtml : ""}
+    ${useTree ? zipButtonHtml : ""}
   </div>
   <div class="footer">${t("browserSharedVia", "Shared via MAYO Share • Offline P2P File Transfer")}</div>
-
-
   <script>
-    // --- Browser-page translations injected from the app ---
     const __T = ${JSON.stringify(strings)};
     function T(key, fallback, vars){
       var s = (__T && __T[key] != null) ? __T[key] : fallback;
       if (vars) Object.keys(vars).forEach(function(k){ s = s.split('{{'+k+'}}').join(vars[k]); });
       return s;
     }
-
-    // --- Theme management with dual icons ---
     const themeToggle = document.getElementById('themeToggle');
-
     const sunIcon = document.getElementById('sunIcon');
     const moonIcon = document.getElementById('moonIcon');
-
-    function getStoredTheme() {
-      return localStorage.getItem('mayo-download-theme');
-    }
+    function getStoredTheme() { return localStorage.getItem('mayo-download-theme'); }
     function setTheme(theme) {
       if (theme === 'light') {
         document.documentElement.setAttribute('data-theme', 'light');
@@ -957,8 +941,6 @@ function buildDownloadPage(
       const isLight = document.documentElement.getAttribute('data-theme') === 'light';
       setTheme(isLight ? 'dark' : 'light');
     });
-
-    // --- Collapsible folders ---
     function initCollapsibleFolders() {
       const folders = document.querySelectorAll('.tree-dir');
       folders.forEach(folder => {
@@ -980,14 +962,8 @@ function buildDownloadPage(
     } else {
       initCollapsibleFolders();
     }
-
-    // --- Download all as ZIP (preserved) ---
     const files = ${JSON.stringify(files.map((f) => ({ r: f.relativePath, n: f.fileName })))};
-
     async function downloadAllAsZip() {
-      // The server now builds the ZIP as a stream, so the phone just triggers a
-      // normal download instead of fetching every file into memory and zipping
-      // it here. This is far faster and doesn't blow up on large file sets.
       const a = document.createElement('a');
       a.href = '/download-all.zip';
       a.download = 'mayo-share.zip';
@@ -995,7 +971,6 @@ function buildDownloadPage(
       a.click();
       a.remove();
     }
-
     const zipBtn = document.getElementById('downloadAllBtn');
     if (zipBtn) zipBtn.addEventListener('click', downloadAllAsZip);
   </script>
