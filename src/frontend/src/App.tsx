@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
 import HomeScreen from "./screens/Home/HomeScreen";
-import SetupStepper from "./screens/Onboarding/SetupStepper";
 import LanguageSelectScreen from "./screens/LanguageSelect/LanguageSelectScreen";
 import SaveFolderScreen from "./screens/Onboarding/SaveFolderScreen";
 
@@ -51,8 +50,6 @@ const App: React.FC = () => {
   const [languageSet, setLanguageSet] = useState<boolean | null>(null);
   const [saveFolderSet, setSaveFolderSet] = useState<boolean | null>(null);
 
-  const [hotspotActive, setHotspotActive] = useState(false);
-  const [hotspotIP, setHotspotIP] = useState("");
   const [connectedDevicesCount, setConnectedDevicesCount] = useState(0);
   const [connectionLabel, setConnectionLabel] = useState<string | null>(null);
   const [storageLabel, setStorageLabel] = useState<string | null>(null);
@@ -124,12 +121,8 @@ const App: React.FC = () => {
       const plat = await window.electronAPI.getPlatform();
       setPlatform(plat);
 
-      if (plat === "darwin") {
-        localStorage.setItem("mayo-setup-complete", "true");
-        setSetupComplete(true);
-      } else {
-        setSetupComplete(done === "true");
-      }
+      localStorage.setItem("mayo-setup-complete", "true");
+      setSetupComplete(true);
       setLanguageSet(langExplicitlySet); // only true after user clicked Continue
       setSaveFolderSet(saveFolderDone === "true");
 
@@ -156,36 +149,19 @@ const App: React.FC = () => {
   // Poll hotspot status every 5 seconds
   useEffect(() => {
     if (setupComplete !== true) return;
-
     const updateStatus = async () => {
       try {
-        const hotspotStatus = await window.electronAPI.checkHotspotStatus();
-        setHotspotActive(hotspotStatus.active);
-        if (hotspotStatus.active && hotspotStatus.ip) {
-          setHotspotIP(hotspotStatus.ip);
-          setConnectionLabel(
-            (prev) => prev || `Hotspot active · ${hotspotStatus.ip}`,
-          );
-        } else {
-          setHotspotIP("");
-        }
-
         const localIP = await window.electronAPI.getLocalIP();
         if (localIP) {
           const ssid = await window.electronAPI.getWifiSSID();
-          const label = `Connected to ${ssid || "Wi-Fi"}`;
-          if (!hotspotStatus.active) {
-            setConnectionLabel(label);
-          }
-        } else if (!hotspotStatus.active) {
+          setConnectionLabel(`Connected to ${ssid || "Wi-Fi"}`);
+        } else {
           setConnectionLabel("No network");
         }
       } catch {
-        setHotspotActive(false);
-        setHotspotIP("");
         setConnectionLabel("No network");
       }
-    };
+    };;
 
     updateStatus();
     const interval = setInterval(updateStatus, 5000);
@@ -247,11 +223,6 @@ const App: React.FC = () => {
     } catch { }
   };
 
-  const onHotspotStarted = (ip: string) => {
-    setHotspotActive(true);
-    setHotspotIP(ip);
-  };
-
   // A transfer screen stays mounted (so its WebRTC connection, generated code,
   // and selected files survive) while it's the current screen OR still in the
   // back-history — e.g. when you pop over to Settings/Activity via the TopBar.
@@ -288,7 +259,6 @@ const App: React.FC = () => {
   }
 
 
-
   if (!saveFolderSet) {
     return (
       <SaveFolderScreen
@@ -298,10 +268,6 @@ const App: React.FC = () => {
         }}
       />
     );
-  }
-
-  if (!setupComplete) {
-    return <SetupStepper onComplete={completeSetup} />;
   }
 
 
@@ -339,7 +305,6 @@ const App: React.FC = () => {
               navigateBack();
               setConnectionLabel(null);
             }}
-            onHotspotStarted={onHotspotStarted}
             onConnectionChange={(label: string) => setConnectionLabel(label)}
           />
         )}
@@ -355,7 +320,6 @@ const App: React.FC = () => {
           <div style={{ display: screen === "share-quick" ? "block" : "none" }}>
             <QuickShare
               onBack={navigateBack}
-              shareIP={hotspotIP}
             />
           </div>
         )}
@@ -390,7 +354,7 @@ const App: React.FC = () => {
               onStopReceiving={() => setConnectedDevicesCount(0)}
               onNavigateTo={navigateTo}
             />
-          </div> 
+          </div>
         )}
 
 
@@ -426,9 +390,7 @@ const App: React.FC = () => {
         {screen === "rate" && <RateUsScreen onBack={navigateBack} />}
       </div>
 
-      <StatusBar
-        hotspotActive={hotspotActive}
-        hotspotIP={hotspotIP}
+    <StatusBar
         transferLabel={null}
         transferProgress={null}
         appVersion="1.0.0"

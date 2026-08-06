@@ -25,7 +25,6 @@ declare global {
       ) => () => void;
       readTextFile: (filePath: string) => Promise<string>;
       writeTextFile: (filePath: string, content: string) => Promise<void>;
-      startHotspot: () => Promise<string>;
       selectFile: () => Promise<string[] | null>;
       selectFolder: () => Promise<FolderFile[] | null>;
       fixFirewall: () => Promise<{
@@ -35,7 +34,6 @@ declare global {
       }>;
       onDownloadUpdate: (callback: (data: { event: string; fileName: string; clientIp?: string }) => void) => () => void;
       getPlatform: () => Promise<string>;
-      launchHardwareWizard: () => Promise<{ success: boolean; error?: string }>;
       submitRating: (data: {
         rating: number;
         timestamp: string;

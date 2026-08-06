@@ -4,6 +4,7 @@ import {
   ipcMain,
   dialog,
   powerSaveBlocker,
+  Menu,
 } from "electron";
 import path from "path";
 import { execFile } from "child_process";
@@ -218,6 +219,48 @@ function getDeviceName(): string {
   return os.hostname();
 }
 
+function createWindow(): void {
+  mainWindow = new BrowserWindow({
+    width: 800,
+    height: 600,
+    icon: path.join(__dirname, "mayo.ico"),
+    webPreferences: {
+      preload: path.join(__dirname, "..", "preload", "index.js"),
+      contextIsolation: true,
+      nodeIntegration: false,
+      devTools: false,          // ✅ Disables F12 / Ctrl+Shift+I
+    },
+  });
+
+  mainWindow.webContents.on('before-input-event', (event, input) => {
+    if (input.key === 'F12' || (input.control && input.shift && input.key === 'I')) {
+      event.preventDefault();
+    }
+  });
+
+  Menu.setApplicationMenu(null); // ✅ Removes the top menu bar
+
+  // ✅ Prevent right‑click context menu (no "Inspect")
+  mainWindow.webContents.on('context-menu', (event) => {
+    event.preventDefault();
+  });
+
+  const devUrl = process.env.VITE_DEV_SERVER_URL;
+  if (devUrl) {
+    mainWindow.loadURL(devUrl);
+    // mainWindow.webContents.openDevTools(); // ✅ commented out
+  } else {
+    mainWindow.loadFile(
+      path.join(__dirname, "..", "..", "dist", "renderer", "index.html"),
+    );
+  }
+
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    require("electron").shell.openExternal(url);
+    return { action: "deny" };
+  });
+}
+
 function addActivity(entry: {
   type: "sent" | "received";
   fileName: string;
@@ -269,39 +312,6 @@ function stopWindowsHotspot() {
   );
 }
 
-function createWindow(): void {
-  mainWindow = new BrowserWindow({
-    width: 800,
-    height: 600,
-    icon: path.join(__dirname, "mayo.ico"),
-    webPreferences: {
-      preload: path.join(__dirname, "..", "preload", "index.js"),
-      contextIsolation: true,
-      nodeIntegration: false,
-    },
-  });
-
-
-
-
-  // In dev we point at the Vite server (instant hot-reload). In production we
-  // load the built file. VITE_DEV_SERVER_URL is only set by the `npm run dev` script.
-  const devUrl = process.env.VITE_DEV_SERVER_URL;
-  if (devUrl) {
-    mainWindow.loadURL(devUrl);
-    mainWindow.webContents.openDevTools();
-  } else {
-    mainWindow.loadFile(
-      path.join(__dirname, "..", "..", "dist", "renderer", "index.html"),
-    );
-  }
-
-
-  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    require("electron").shell.openExternal(url);
-    return { action: "deny" };
-  });
-}
 
 // In dev, read locales straight from src so edits show without a rebuild/restart.
 // (VITE_DEV_SERVER_URL is only set by the `npm run dev` script.)
@@ -1261,33 +1271,25 @@ ipcMain.handle("diagnose-network", async (): Promise<any> => {
   if (process.platform === "win32") {
     return new Promise((resolve) => {
       // Improved script: Searches for both KM-TEST and Loopback, and uses tags for reliable parsing
+      // NEW
       const psScript = `
-        $ssid = ""
-        try {
-          $ssidRaw = (netsh wlan show interfaces | Select-String "SSID" | Select-String -NotMatch "BSSID" | Select-Object -First 1)
-          if ($ssidRaw) { $ssid = $ssidRaw.ToString().Split(':')[1].Trim() }
-        } catch {}
+  $ssid = ""
+  try {
+    $ssidRaw = (netsh wlan show interfaces | Select-String "SSID" | Select-String -NotMatch "BSSID" | Select-Object -First 1)
+    if ($ssidRaw) { $ssid = $ssidRaw.ToString().Split(':')[1].Trim() }
+  } catch {}
 
-        $profile = ""
-        try {
-          $profile = Get-NetConnectionProfile | Where-Object { $_.InterfaceAlias -like "*Wi-Fi*" -or $_.InterfaceDescription -like "*Wi-Fi*" } | Select-Object -ExpandProperty NetworkCategory -First 1
-        } catch {}
+  $profile = ""
+  try {
+    $profile = Get-NetConnectionProfile | Where-Object { $_.InterfaceAlias -like "*Wi-Fi*" -or $_.InterfaceDescription -like "*Wi-Fi*" } | Select-Object -ExpandProperty NetworkCategory -First 1
+  } catch {}
 
-        # Search thoroughly for the loopback adapter
-        $loopback = Get-NetAdapter | Where-Object { 
-          $_.InterfaceDescription -like "*KM-TEST*" -or 
-          $_.InterfaceDescription -like "*Loopback*" -or 
-          $_.Name -like "*Loopback*" 
-        } | Select-Object -First 1
-        
-        $port3001 = netstat -ano | Select-String ":3001" | Select-String "LISTENING"
-        
-        # We use prefix tags so the JavaScript code can find the data regardless of line numbers
-        Write-Host "MAYO_SSID:$ssid"
-        Write-Host "MAYO_PROFILE:$profile"
-        Write-Host "MAYO_LOOPBACK:$($loopback -ne $null)"
-        Write-Host "MAYO_PORT:$($port3001 -ne $null)"
-      `;
+  $port3001 = netstat -ano | Select-String ":3001" | Select-String "LISTENING"
+
+  Write-Host "MAYO_SSID:$ssid"
+  Write-Host "MAYO_PROFILE:$profile"
+  Write-Host "MAYO_PORT:$($port3001 -ne $null)"
+`;
       execFile(
         "powershell.exe",
         ["-NoProfile", "-Command", psScript],
@@ -1331,26 +1333,6 @@ ipcMain.handle("diagnose-network", async (): Promise<any> => {
     port3001Listening: false,
   };
 });
-
-ipcMain.handle(
-  "launch-hardware-wizard",
-  async (): Promise<{ success: boolean; error?: string }> => {
-    return new Promise((resolve) => {
-      execFile(
-        "rundll32.exe",
-        ["shell32.dll,Control_RunDLL", "hdwwiz.cpl"],
-        { timeout: 10000 },
-        (error) => {
-          if (error) {
-            resolve({ success: false, error: error.message });
-          } else {
-            resolve({ success: true });
-          }
-        },
-      );
-    });
-  },
-);
 
 ipcMain.handle(
   "read-text-file",
@@ -1607,8 +1589,9 @@ app.whenReady().then(async () => {
   createWindow();
 
 
-
 });
+
+
 
 
 app.on("before-quit", () => {

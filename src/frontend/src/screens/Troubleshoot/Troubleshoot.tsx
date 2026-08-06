@@ -21,10 +21,8 @@ interface Props {
 interface NetworkDiagnosis {
   ssid: string | null;
   profileCategory: string | null;
-  loopbackAdapterPresent: boolean;
   port3001Listening: boolean;
 }
-
 const TroubleshootScreen: React.FC<Props> = ({ onBack }) => {
   const { t } = useTranslation();
 

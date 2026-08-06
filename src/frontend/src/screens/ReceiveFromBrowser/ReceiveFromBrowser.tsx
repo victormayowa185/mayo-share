@@ -113,33 +113,11 @@ const ReceiveFromBrowser: React.FC<Props> = ({
       setStartingHotspot(true);
       setHotspotStatus(t("checkingNetwork"));
       const localIP = await window.electronAPI.getLocalIP();
-      if (localIP) {
-        setHotspotStatus(t("usingExistingNetwork"));
-        const url = await window.electronAPI.startUploadServer(localIP);
-        setShareUrl(url);
-        setIsReceiving(true);
-        setStartingHotspot(false);
-        setHotspotStatus("");
-        const qrData = await QRCode.toDataURL(url, {
-          width: 220,
-          margin: 2,
-          color: { dark: "#7C3EFF", light: getQrLightColor() },
-        });
-        setQrDataUrl(qrData);
-        return;
+      if (!localIP) {
+        throw new Error(t("noNetworkFound"));
       }
-      setHotspotStatus(t("startingHotspotFallback"));
-      const status = await window.electronAPI.checkHotspotStatus();
-      let ip = status.ip;
-      if (!status.active) {
-        const result = await window.electronAPI.startHotspot();
-        if (result.includes("SUCCESS")) {
-          const ipMatch = result.match(/Hotspot IP \(for sharing\):\s*([\d.]+)/);
-          if (ipMatch && ipMatch[1]) ip = ipMatch[1];
-        } else { throw new Error(t("hotspotStartFailed") + ": " + result); }
-      }
-      setHotspotStatus(t("hotspotActiveStartingServer"));
-      const url = await window.electronAPI.startUploadServer();
+      setHotspotStatus(t("usingExistingNetwork"));
+      const url = await window.electronAPI.startUploadServer(localIP);
       setShareUrl(url);
       setIsReceiving(true);
       setStartingHotspot(false);

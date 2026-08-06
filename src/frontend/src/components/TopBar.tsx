@@ -25,7 +25,6 @@ const TopBar: React.FC<Props> = ({ onNavigate }) => {
   const menuRef = useRef<HTMLDivElement>(null);
   const itemRefs = useRef<(HTMLDivElement | null)[]>([]);
 
-  // Menu items for keyboard navigation
   const menuItems = [
     { id: "activity", icon: FaHistory, label: t("activity") },
     { id: "support", icon: FaQuestionCircle, label: t("getSupport") },
@@ -57,12 +56,11 @@ const TopBar: React.FC<Props> = ({ onNavigate }) => {
       gsap.fromTo(
         headerRef.current,
         { opacity: 0, y: -10 },
-        { opacity: 1, y: 0, duration: 0.35, ease: "power2.out" },
+        { opacity: 1, y: 0, duration: 0.35, ease: "power2.out" }
       );
     }
   }, []);
 
-  // ─── Apple-style enter / exit ───────────────────────────────────────────────
   useEffect(() => {
     if (dropdownOpen) {
       setIsRendered(true);
@@ -83,7 +81,6 @@ const TopBar: React.FC<Props> = ({ onNavigate }) => {
     }
   }, [dropdownOpen]);
 
-  // Entrance animation + focus the first item once the menu is mounted
   useEffect(() => {
     if (isRendered && dropdownOpen && menuRef.current) {
       gsap.killTweensOf(menuRef.current);
@@ -95,9 +92,8 @@ const TopBar: React.FC<Props> = ({ onNavigate }) => {
       setFocusedIndex(0);
       itemRefs.current[0]?.focus();
     }
-  }, [isRendered]);
+  }, [isRendered, dropdownOpen]);
 
-  // Auto-close as soon as the user scrolls / continues on the page
   useEffect(() => {
     if (!dropdownOpen) return;
     const close = () => setDropdownOpen(false);
@@ -138,14 +134,16 @@ const TopBar: React.FC<Props> = ({ onNavigate }) => {
 
   return (
     <header className={styles.topbar} ref={headerRef}>
-      {/* ─── Pill Container ─── */}
+      {isRendered && (
+        <div
+          className={styles.backdrop}
+          onClick={() => setDropdownOpen(false)}
+        />
+      )}
       <div className={styles.pill}>
-        {/* Logo */}
         <div className={styles.logo}>
           <img src={logo} alt="MAYO Share" className={styles.logoImg} />
         </div>
-
-        {/* Actions (right side) */}
         <div className={styles.actions}>
           <div className={styles.dropdownWrapper}>
             <button
@@ -160,45 +158,41 @@ const TopBar: React.FC<Props> = ({ onNavigate }) => {
             </button>
 
             {isRendered && (
-              <>
-                <div
-                  className={styles.backdrop}
-                  onClick={() => setDropdownOpen(false)}
-                />
-                <div
-                  ref={menuRef}
-                  className={styles.menu}
-                  role="menu"
-                  id="profile-menu"
-                  onKeyDown={handleKeyDown}
-                  style={{ opacity: 0 }}
-                >
-                  <div className={styles.menuItemMuted} role="presentation">
-                    <CgProfile size={18} aria-hidden="true" />
-                    <span>{hostname}</span>
-                  </div>
-                  <div className={styles.divider} role="separator" />
-                  {menuItems.map((item, idx) => {
-                    const Icon = item.icon;
-                    return (
-                      <div
-                        key={item.id}
-                        ref={(el) => { itemRefs.current[idx] = el; }}
-                        className={styles.menuItem}
-                        role="menuitem"
-                        tabIndex={-1}
-                        onClick={() => {
-                          onNavigate?.(item.id);
-                          setDropdownOpen(false);
-                        }}
-                      >
-                        <Icon size={16} aria-hidden="true" />
-                        <span>{item.label}</span>
-                      </div>
-                    );
-                  })}
+              <div
+                ref={menuRef}
+                className={styles.menu}
+                role="menu"
+                id="profile-menu"
+                onKeyDown={handleKeyDown}
+                style={{ opacity: 0 }}
+              >
+                <div className={styles.menuItemMuted} role="presentation">
+                  <CgProfile size={18} aria-hidden="true" />
+                  <span>{hostname}</span>
                 </div>
-              </>
+                <div className={styles.divider} role="separator" />
+                {menuItems.map((item, idx) => {
+                  const Icon = item.icon;
+                  return (
+                    <div
+                      key={item.id}
+                      ref={(el) => {
+                        itemRefs.current[idx] = el;
+                      }}
+                      className={styles.menuItem}
+                      role="menuitem"
+                      tabIndex={-1}
+                      onClick={() => {
+                        onNavigate?.(item.id);
+                        setDropdownOpen(false);
+                      }}
+                    >
+                      <Icon size={16} aria-hidden="true" />
+                      <span>{item.label}</span>
+                    </div>
+                  );
+                })}
+              </div>
             )}
           </div>
         </div>

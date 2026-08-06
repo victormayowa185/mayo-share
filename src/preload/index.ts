@@ -13,7 +13,7 @@ interface ActivityEntry {
 }
 
 contextBridge.exposeInMainWorld("electronAPI", {
-  checkHotspotStatus: () => ipcRenderer.invoke("check-hotspot-status"),
+
   getWifiSSID: (): Promise<string | null> =>
     ipcRenderer.invoke("get-wifi-ssid"),
   getActivity: (): Promise<ActivityEntry[]> => ipcRenderer.invoke("get-activity"),
@@ -44,7 +44,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   submitRating: (data: any) => ipcRenderer.invoke("submit-rating", data),
   getTranslations: (lang: string) =>
     ipcRenderer.invoke("get-translations", lang),
-  launchHardwareWizard: () => ipcRenderer.invoke("launch-hardware-wizard"),
+ 
   setDeviceName: (name: string) => ipcRenderer.invoke("set-device-name", name),
   clearActivity: () => ipcRenderer.invoke("clear-activity"),
 
@@ -67,7 +67,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.invoke("read-text-file", filePath),
   writeTextFile: (filePath: string, content: string) =>
     ipcRenderer.invoke("write-text-file", filePath, content),
-  startHotspot: () => ipcRenderer.invoke("start-hotspot"),
+
   selectFile: () => ipcRenderer.invoke("select-file"),
   getHostname: () => ipcRenderer.invoke("get-hostname"),
   selectFolder: (): Promise<FolderFile[] | null> =>
