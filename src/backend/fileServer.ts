@@ -67,11 +67,11 @@ export class FileServer extends EventEmitter {
     // Moves ZIP CPU cost to boot time. The actual download becomes pure
     // streaming I/O with zero on-the-fly formatting overhead.
     if (this.files.length > 0) {
-      const tmpDir = path.join(__dirname, "..", "tmp");
+      const tmpDir = path.join(os.tmpdir(), "mayo-share-tmp");
       await fs.mkdir(tmpDir, { recursive: true });
       this.zipPath = path.join(tmpDir, `mayo-share-${Date.now()}.zip`);
       await new Promise<void>((resolve, reject) => {
-    const output = createWriteStream(this.zipPath!, { highWaterMark: 16 * 1024 * 1024 });
+        const output = createWriteStream(this.zipPath!, { highWaterMark: 16 * 1024 * 1024 });
         const archive = new ZipArchive({ zlib: { level: 0 } });
         archive.on("error", reject);
         archive.on("warning", (err: Error) => console.warn("Zip warning:", err));
@@ -376,7 +376,7 @@ export class FileServer extends EventEmitter {
     this.files = [];
     this.fileMap.clear();
     if (this.zipPath) {
-      fs.unlink(this.zipPath).catch(() => {});
+      fs.unlink(this.zipPath).catch(() => { });
       this.zipPath = null;
     }
   }
