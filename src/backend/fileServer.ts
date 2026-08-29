@@ -26,8 +26,8 @@ export class FileServer extends EventEmitter {
   private fileMap: Map<string, SharedFile> = new Map();
   private strings: Record<string, string> = {};
   private lang: string = "en";
-  private zipPath: string | null = null; // pre-built at startup
-
+  private zipPath: string | null = null; 
+  private zipBuildPromise: Promise<string> | null = null;
   async start(
     filePaths: string[],
     relativePaths?: (string | undefined)[],
@@ -61,27 +61,6 @@ export class FileServer extends EventEmitter {
       };
       this.files.push(file);
       this.fileMap.set(relative, file);
-    }
-
-    // ─── PRE-BUILD ZIP AT STARTUP ───
-    // Moves ZIP CPU cost to boot time. The actual download becomes pure
-    // streaming I/O with zero on-the-fly formatting overhead.
-    if (this.files.length > 0) {
-      const tmpDir = path.join(os.tmpdir(), "mayo-share-tmp");
-      await fs.mkdir(tmpDir, { recursive: true });
-      this.zipPath = path.join(tmpDir, `mayo-share-${Date.now()}.zip`);
-      await new Promise<void>((resolve, reject) => {
-        const output = createWriteStream(this.zipPath!, { highWaterMark: 16 * 1024 * 1024 });
-        const archive = new ZipArchive({ zlib: { level: 0 } });
-        archive.on("error", reject);
-        archive.on("warning", (err: Error) => console.warn("Zip warning:", err));
-        output.on("close", () => resolve());
-        archive.pipe(output);
-        for (const f of this.files) {
-          archive.file(f.filePath, { name: f.relativePath });
-        }
-        archive.finalize();
-      });
     }
 
     return new Promise((resolve, reject) => {
@@ -159,30 +138,30 @@ export class FileServer extends EventEmitter {
             return;
           }
 
-          // ─── PRE-BUILT ZIP DOWNLOAD ───
+          // ─── ZIP DOWNLOAD (built on first request) ───
           if (url === "/download-all" || url === "/download-all.zip") {
             req.socket.setNoDelay(true);
             const clientIp = req.socket.remoteAddress || "unknown";
-            if (this.zipPath) {
-              const zipStat = await fs.stat(this.zipPath);
+            try {
+              const zipPath = await this.buildZipIfNeeded();
+              const zipStat = await fs.stat(zipPath);
               res.writeHead(200, {
                 "Content-Type": "application/zip",
                 "Content-Disposition": `attachment; filename="mayo-share.zip"`,
                 "Cache-Control": "no-cache",
                 "Content-Length": String(zipStat.size),
               });
-              const stream = createReadStream(this.zipPath, { highWaterMark: 16 * 1024 * 1024 });
+              const stream = createReadStream(zipPath, { highWaterMark: 16 * 1024 * 1024 });
               this.emit("download-started", -1, "All files (ZIP)");
-              try {
-                await pipeline(stream, res);
-                this.emit("download-completed", -1, "All files (ZIP)", clientIp);
-              } catch (err) {
-                console.error("ZIP pipeline error:", err);
+              await pipeline(stream, res);
+              this.emit("download-completed", -1, "All files (ZIP)", clientIp);
+            } catch (err) {
+              console.error("ZIP build/pipeline error:", err);
+              if (!res.headersSent) {
+                res.writeHead(500);
+                res.end("Error building ZIP");
               }
-              return;
             }
-            res.writeHead(503);
-            res.end("ZIP not ready");
             return;
           }
 
@@ -361,6 +340,31 @@ export class FileServer extends EventEmitter {
         reject(err);
       });
     });
+  }
+
+  private buildZipIfNeeded(): Promise<string> {
+    if (this.zipPath) return Promise.resolve(this.zipPath);
+    if (this.zipBuildPromise) return this.zipBuildPromise;
+    this.zipBuildPromise = (async () => {
+      const tmpDir = path.join(os.tmpdir(), "mayo-share-tmp");
+      await fs.mkdir(tmpDir, { recursive: true });
+      const zipPath = path.join(tmpDir, `mayo-share-${Date.now()}.zip`);
+      await new Promise<void>((resolve, reject) => {
+        const output = createWriteStream(zipPath, { highWaterMark: 16 * 1024 * 1024 });
+        const archive = new ZipArchive({ zlib: { level: 0 } });
+        archive.on("error", reject);
+        archive.on("warning", (err: Error) => console.warn("Zip warning:", err));
+        output.on("close", () => resolve());
+        archive.pipe(output);
+        for (const f of this.files) {
+          archive.file(f.filePath, { name: f.relativePath });
+        }
+        archive.finalize();
+      });
+      this.zipPath = zipPath;
+      return zipPath;
+    })();
+    return this.zipBuildPromise;
   }
 
   stop(): void {
