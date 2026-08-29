@@ -140,16 +140,7 @@ export class UploadServer extends EventEmitter {
         reject(new Error("UploadServer.start() requires a resolved LAN IP."));
         return;
       }
-
-      // Cluster mode for HTTPS: spread TLS CPU load across all cores
-      if (useEncryption && cluster.isPrimary) {
-        const numCPUs = os.cpus().length;
-        for (let i = 0; i < numCPUs; i++) {
-          cluster.fork();
-        }
-        resolve(`https://${ip || "192.168.137.1"}:${PORT}`);
-        return;
-      }
+      
 
       const requestHandler = async (req: IncomingMessage, res: ServerResponse) => {
         try {
