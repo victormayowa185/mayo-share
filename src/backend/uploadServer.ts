@@ -65,8 +65,14 @@ export class UploadServer extends EventEmitter {
     if (existing) return existing;
     const p = (async () => {
       await fs.mkdir(saveDir, { recursive: true });
+      // Just create the empty file — don't pre-stake out the full fileSize.
+      // That truncate() call was a one-time step every parallel chunk had
+      // to wait on before ANY of them could start writing, which is what
+      // caused the long "Preparing file..." stall on big files. Writing at
+      // an offset beyond the current end of the file extends it
+      // automatically, so nothing here needs the size up front.
       const fh = await fs.open(finalPath, "w");
-      try { if (fileSize > 0) await fh.truncate(fileSize); } finally { await fh.close(); }
+      await fh.close();
       if (!this.fileProgress.has(fileId)) this.fileProgress.set(fileId, new Set());
     })();
     this.fileInitLocks.set(fileId, p);
@@ -140,7 +146,7 @@ export class UploadServer extends EventEmitter {
         reject(new Error("UploadServer.start() requires a resolved LAN IP."));
         return;
       }
-      
+
 
       const requestHandler = async (req: IncomingMessage, res: ServerResponse) => {
         try {
